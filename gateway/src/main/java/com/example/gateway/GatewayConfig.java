@@ -6,6 +6,7 @@ import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 
 import java.nio.file.Path;
 
@@ -25,9 +26,12 @@ public class GatewayConfig {
     public RouteLocator opencodeRoute(RouteLocatorBuilder builder) {
         return builder.routes()
                 .route("opencode-server", r -> r
-                        // The /agent/run endpoint is handled locally by AguiController.
+                        // The /agent/run endpoint is handled locally by AgentRunController.
                         .path("/**")
                         .and().not(p -> p.path("/agent/run"))
+                        // 401 透传会让浏览器弹 Basic 认证框 —— 剥掉挑战头
+                        // （正确链路是 gateway 的 WebClient 带 opencode.server.* 认证）
+                        .filters(f -> f.removeResponseHeader(HttpHeaders.WWW_AUTHENTICATE))
                         .uri(OPENCODE_SERVER))
                 .build();
     }
