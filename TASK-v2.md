@@ -32,6 +32,13 @@
 
 **已知边界**：session 失效重建后旧 session 的历史不再可读（新会话从零开始）；A2UI surface 历史回放按 thread 最后快照恢复。
 
+**[补充 DONE] 2026-08-13（commit 9b708e9）用户重申项实测**：
+- **切换历史真实渲染到 DOM**：实测发现 fork 的 `useAgent` 按 threadId 克隆 agent，而 core 注册表中的 agent 是 Vue reactive 代理，`clone()` 内 `structuredClone(messages)` 直接抛 DataCloneError —— fork 修复（`toRaw` 解包）并导出 `getThreadClone`；`useThreads.switchTo` 把历史写入 CopilotChat 实际渲染的 per-thread clone。组件级测试用**真实 CopilotKitProvider + CopilotChat** 验证 user/assistant/reasoning 历史均渲染到 DOM（chatHistoryRender.test.ts），前端 22 测试全绿。
+
+**[DONE] 2026-08-13（commit 9b708e9）同批工程化项**：
+- **fork 自动构建**：`vue-frontend/scripts/build-fork.mjs` 挂在 prebuild/predev；fork dist 比 src 新则跳过（秒级），否则 npm install + build。实测：删 fork dist 后 `npm run build` 一次成功（1m21s 全量），产物 bundle 含 fork 最新代码（mergeAgents/getThreadClone/rawExisting 均在）；dev server 重启走 predev 后 :3001 公网 200
+- **controller 文件名冲突**：`AguiController.java`/`AgUiController.java`（仅大小写不同，Windows/macOS 会冲突）合并为 `AgentRunController.java`
+- **配置外置**：`AguiService` 模型 ID 改从 `agui.model.*` 读（WebClientConfig 的 opencode.server.url 原本就走配置；basic 认证见上方插队修复）
 
 ## 需求 2：真实 Agent 化（移除一切写死/mock）
 
