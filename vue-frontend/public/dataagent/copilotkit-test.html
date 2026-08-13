@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DataAgent · CopilotKit Debug</title>
+<style>
+  :root { --accent:#6366f1; --border:#e5e7eb; --muted:#6b7280; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; margin:0; background:#f8fafc; color:#374151; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .banner { background:#fef3c7; border:1px solid #f59e0b; color:#92400e; padding:8px 14px; border-radius:8px; font-size:12.5px; margin-bottom:16px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+  .card h2 { font-size:13px; color:var(--muted); margin:0 0 10px; text-transform:uppercase; letter-spacing:.04em; }
+  .kv { font-size:13px; margin:4px 0; } .kv b { color:#111827; }
+  input, textarea { width:100%; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit; }
+  button { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; margin-right:8px; }
+  button.secondary { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+  pre { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px 12px; font-size:11.5px; overflow:auto; max-height:300px; white-space:pre-wrap; word-break:break-all; }
+  .events { max-height:280px; overflow:auto; font-size:12px; font-family:ui-monospace,monospace; }
+  .ev { padding:2px 6px; border-radius:4px; margin:2px 0; background:#f1f5f9; }
+  .ev.terminal { background:#dcfce7; } .ev.tool { background:#ede9fe; } .ev.activity { background:#e0e7ff; } .ev.error { background:#fee2e2; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; }
+  .pill.on { background:#dcfce7; color:#166534; } .pill.off { background:#f1f5f9; color:var(--muted); }
+  .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DataAgent · CopilotKit Debug 页面 <span class="pill off" id="connPill">idle</span></h1>
+  <div class="banner">⚠️ DEBUG ONLY — 生产环境请关闭（nginx 中删除 /dataagent/copilotkit-test 的 location 即可）。</div>
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Run 控制</h2>
+        <div class="kv">agentId: <b>default</b>（HttpAgent → POST /agui-api/opencode/ag-ui）</div>
+        <div class="row"><label style="font-size:13px;white-space:nowrap">threadId</label>
+          <input id="threadId" /></div>
+        <div class="row"><textarea id="msg" rows="2" placeholder="消息，例如：分析本月销售情况 / 给我看销售概览">分析本月销售情况</textarea></div>
+        <div class="row">
+          <button id="send">发送消息</button>
+          <button class="secondary" id="sendAction">模拟 A2UI Action (refresh_sales)</button>
+          <button class="secondary" id="newThread">新 thread</button>
+        </div>
+        <div class="kv">收到 a2uiAction 响应（证明 Java 收到 action）:
+          <span class="pill off" id="actionPill">未收到</span></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>最后 RunAgentInput</h2>
+        <pre id="lastInput">（尚未发送）</pre>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>最近 event types</h2>
+        <div class="events" id="eventTypes">—</div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>事件明细（最近 200 条）</h2>
+        <pre id="eventLog">—</pre>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const threadInput = $('threadId');
+const genThread = () => 'debug-' + Math.random().toString(36).slice(2, 10);
+threadInput.value = genThread();
+let lastActionResponseOk = false;
+const recentTypes = [];
+const logLines = [];
+
+function pushEvent(ev) {
+  let type = '?';
+  try { type = JSON.parse(ev).type || '?' } catch { type = 'malformed' }
+  recentTypes.push(type);
+  if (recentTypes.length > 40) recentTypes.shift();
+  logLines.push(ev.slice(0, 500));
+  if (logLines.length > 200) logLines.shift();
+  $('eventTypes').innerHTML = recentTypes.map(t => {
+    const cls = t.includes('RUN_') ? (t === 'RUN_ERROR' ? 'error' : 'terminal')
+      : t.startsWith('TOOL') ? 'tool' : t.startsWith('ACTIVITY') ? 'activity' : '';
+    return `<span class="ev ${cls}">${t}</span>`;
+  }).join('');
+  $('eventLog').textContent = logLines.join('\n');
+}
+
+async function runAgent(body) {
+  $('connPill').className = 'pill on'; $('connPill').textContent = 'running';
+  $('lastInput').textContent = JSON.stringify(body, null, 2);
+  pushEvent(JSON.stringify({ type: '>>> POST /opencode/ag-ui' }));
+  try {
+    const res = await fetch('/agui-api/opencode/ag-ui', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+      body: JSON.stringify(body),
+    });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        const dataLine = chunk.split('\n').find(l => l.startsWith('data:'));
+        if (dataLine) pushEvent(dataLine.slice(5).trim());
+      }
+    }
+    $('connPill').textContent = 'done';
+  } catch (e) {
+    pushEvent(JSON.stringify({ type: 'CLIENT_ERROR', message: String(e) }));
+    $('connPill').textContent = 'error';
+    $('connPill').className = 'pill off';
+  }
+}
+
+$('send').onclick = () => runAgent({
+  threadId: threadInput.value,
+  runId: 'run-' + Math.random().toString(36).slice(2, 10),
+  messages: [{ role: 'user', content: $('msg').value }],
+  context: [
+    { description: 'A2UI catalog capabilities', value: 'DataAgent catalog: basic + MetricCard, DataTable, BarChart, LineChart, InsightCard, WarningCard, ActionButton' },
+    { description: 'A2UI Component Schema', value: '{"catalogId":"data-agent","components":{"MetricCard":{"properties":{"title":{"type":"string"},"value":{},"delta":{"type":"string"}}},"DataTable":{"properties":{"columns":{"type":"array"},"rows":{"type":"array"}}},"BarChart":{"properties":{"title":{"type":"string"},"xField":{"type":"string"},"yField":{"type":"string"},"data":{"type":"array"}}},"LineChart":{"properties":{"title":{"type":"string"},"xField":{"type":"string"},"yField":{"type":"string"},"data":{"type":"array"}}},"InsightCard":{"properties":{"title":{"type":"string"},"text":{"type":"string"}}},"WarningCard":{"properties":{"title":{"type":"string"},"text":{"type":"string"}}},"ActionButton":{"properties":{"label":{"type":"string"},"action":{}}}}}' },
+  ],
+});
+
+$('sendAction').onclick = async () => {
+  await runAgent({
+    threadId: threadInput.value,
+    runId: 'run-' + Math.random().toString(36).slice(2, 10),
+    messages: [{ role: 'user', content: '(a2ui action)' }],
+    forwardedProps: {
+      a2uiAction: {
+        version: 'v0.9',
+        action: { name: 'refresh_sales', surfaceId: 'sales-overview', sourceComponentId: 'debug', timestamp: new Date().toISOString(), context: {} },
+      },
+    },
+  });
+  // if the response contained an ACTIVITY_SNAPSHOT, Java received & routed the action
+  if (recentTypes.includes('ACTIVITY_SNAPSHOT')) {
+    $('actionPill').className = 'pill on';
+    $('actionPill').textContent = '已收到（Java 路由成功）';
+  }
+};
+
+$('newThread').onclick = () => { threadInput.value = genThread(); };
+</script>
+</body>
+</html>

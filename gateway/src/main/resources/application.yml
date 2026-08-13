@@ -1,0 +1,43 @@
+server:
+  port: 8090
+
+opencode:
+  server:
+    url: http://localhost:4096
+
+agui:
+  # deepseek-reasoner streams thinking (session.next.reasoning.*) so the UI can
+  # show the agent's thought process (需求7-4); deepseek-chat is the fast fallback.
+  model:
+    id: deepseek-reasoner
+    provider-id: deepseek
+  run-idle-timeout: PT120S
+  data-workspace: /home/ubuntu/opencode-agui-app/workspace
+
+spring:
+  application:
+    name: opencode-agui-gateway
+  cloud:
+    gateway:
+      # Preserve the original host header so the backend sees localhost:4096 traffic as-is.
+      preserve-host-header: false
+      # Global CORS so browser-based AG-UI clients can connect.
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origin-patterns: "*"
+            allowed-methods: "*"
+            allowed-headers: "*"
+            allow-credentials: true
+      # Routes are defined programmatically in GatewayConfig.java so the
+      # downstream target (localhost:4096) is visible in the Java source.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      probes:
+        enabled: true

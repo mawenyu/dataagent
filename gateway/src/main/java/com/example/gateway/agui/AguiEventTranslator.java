@@ -1,0 +1,617 @@
+package com.example.gateway.agui;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Translates OpenCode v2 native SSE events into standard AG-UI events.
+ *
+ * <p>OpenCode emits: session.next.text.started / .delta / .ended,
+ * session.next.tool.input.started / .delta / .ended, session.next.tool.called,
+ * session.next.step.started / .ended / .failed, etc.
+ * AG-UI expects: RUN_STARTED, TEXT_MESSAGE_START/CONTENT/END,
+ * TOOL_CALL_START/ARGS/END, RUN_FINISHED / RUN_ERROR, and optionally
+ * ACTIVITY_SNAPSHOT for A2UI surfaces.
+ *
+ * <p>Tool calls use the prompt-level {@code <tool_call>} contract (see
+ * {@link FrontendToolBridge}): the model's response either IS one block
+ * (frontend/client tool — the run ends after TOOL_CALL_END so the browser
+ * executes it) or is text followed by one block at the end (server-side
+ * render_a2ui — mirrored as TOOL_CALL_* and executed by
+ * {@link A2UiBridgeService} into an ACTIVITY_SNAPSHOT; the run continues).
+ * The translator detects the marker both at message start (lookahead) and
+ * mid-stream (holdback of a potential partial marker), so plain text streams
+ * with only a few characters of delay.
+ *
+ * <p>OpenCode builtin tool calls (bash, read, ...) are mirrored as
+ * TOOL_CALL_* for progress rendering, but never end the run.
+ *
+ * <p>Also owns the threadId -> opencode sessionId mapping so the public
+ * AG-UI contract never leaks the internal session model.
+ */
+@Service
+public class AguiEventTranslator {
+
+    private static final Logger log = LoggerFactory.getLogger(AguiEventTranslator.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String MARKER = FrontendToolBridge.MARKER;
+    private static final String END_MARKER = FrontendToolBridge.END_MARKER;
+
+    /** AG-UI threadId -> OpenCode sessionId */
+    private final Map<String, String> threadToSession = new ConcurrentHashMap<>();
+
+    private final FrontendToolBridge toolBridge;
+    private final A2UiBridgeService a2UiBridge;
+
+    public AguiEventTranslator(FrontendToolBridge toolBridge, A2UiBridgeService a2UiBridge) {
+        this.toolBridge = toolBridge;
+        this.a2UiBridge = a2UiBridge;
+    }
+
+    public String resolveSession(String threadId) {
+        return threadToSession.get(threadId);
+    }
+
+    public void bindSession(String threadId, String sessionId) {
+        threadToSession.put(threadId, sessionId);
+    }
+
+    /** Per-assistant-message streaming state for the tool-call lookahead. */
+    private enum MsgMode { BUFFERING, TEXT, TOOL_CALL }
+
+    private static final class MsgState {
+        final String agMsgId = "ag-" + UUID.randomUUID();
+        final StringBuilder buf = new StringBuilder();     // BUFFERING/TOOL_CALL accumulation
+        final StringBuilder pending = new StringBuilder(); // TEXT-mode holdback
+        MsgMode mode = MsgMode.BUFFERING;
+        boolean textStarted = false;
+    }
+
+    public Flux<ServerSentEvent<String>> translate(String threadId, String runId, Set<String> frontendTools,
+                                                   Flux<ServerSentEvent<String>> opencodeEvents) {
+        AtomicBoolean sawOutput = new AtomicBoolean(false);
+        AtomicBoolean terminalEmitted = new AtomicBoolean(false);
+        // 需求7: AG-UI 客户端状态机要求 STEP_FINISHED/RUN_FINISHED 与 STEP_STARTED 严格配对。
+        // OpenCode 的 step 会重叠（多个 step.started 先于 step.ended）且存在孤儿 step
+        // （started 后无 ended），因此跟踪"活跃集合"：ended 只关自己，终止事件前关掉所有残余。
+        Set<String> activeSteps = new java.util.LinkedHashSet<>();
+        Set<String> openReasoning = new java.util.LinkedHashSet<>();
+        Map<String, MsgState> msgStates = new ConcurrentHashMap<>();
+        Map<String, String> toolCallNames = new ConcurrentHashMap<>();
+        Set<String> toolCallStarted = ConcurrentHashMap.newKeySet();
+        Set<String> toolCallEnded = ConcurrentHashMap.newKeySet();
+
+        ServerSentEvent<String> runStarted = sse(agEvent("RUN_STARTED", runId, threadId));
+
+        Flux<ServerSentEvent<String>> body = opencodeEvents
+                .concatMap(event -> {
+                    String json = event.data();
+                    if (json == null || json.isBlank()) return Flux.empty();
+                    JsonNode node;
+                    try {
+                        node = MAPPER.readTree(json);
+                    } catch (Exception e) {
+                        return Flux.empty();
+                    }
+                    String type = node.path("type").asText("");
+                    JsonNode data = node.path("data");
+
+                    switch (type) {
+                        case "session.next.text.started": {
+                            String aMsgId = data.path("assistantMessageID").asText();
+                            msgStates.put(aMsgId, new MsgState());
+                            return Flux.empty(); // decide later: text vs tool_call
+                        }
+                        case "session.next.text.delta": {
+                            String aMsgId = data.path("assistantMessageID").asText();
+                            MsgState st = msgStates.get(aMsgId);
+                            if (st == null) return Flux.empty();
+                            String delta = data.path("delta").asText("");
+                            return Flux.fromIterable(
+                                    processDelta(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, delta));
+                        }
+                        case "session.next.text.ended": {
+                            String aMsgId = data.path("assistantMessageID").asText();
+                            MsgState st = msgStates.remove(aMsgId);
+                            if (st == null) return Flux.empty();
+                            return Flux.fromIterable(
+                                    processTextEnd(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st));
+                        }
+                        case "session.next.tool.input.started": {
+                            // builtin opencode tools — mirror for progress rendering only
+                            String callId = data.path("callID").asText();
+                            String name = data.path("name").asText();
+                            if (callId.isBlank()) return Flux.empty();
+                            toolCallNames.put(callId, name);
+                            toolCallStarted.add(callId);
+                            sawOutput.set(true);
+                            ObjectNode payload = base("TOOL_CALL_START", runId, threadId);
+                            payload.put("toolCallId", callId);
+                            payload.put("toolCallName", name);
+                            return Flux.just(sse(payload));
+                        }
+                        case "session.next.tool.input.delta": {
+                            String callId = data.path("callID").asText();
+                            if (!toolCallStarted.contains(callId)) return Flux.empty();
+                            ObjectNode payload = base("TOOL_CALL_ARGS", runId, threadId);
+                            payload.put("toolCallId", callId);
+                            payload.put("delta", data.path("delta").asText(""));
+                            return Flux.just(sse(payload));
+                        }
+                        case "session.next.tool.input.ended": {
+                            String callId = data.path("callID").asText();
+                            if (!toolCallStarted.contains(callId) || !toolCallEnded.add(callId))
+                                return Flux.empty();
+                            ObjectNode payload = base("TOOL_CALL_END", runId, threadId);
+                            payload.put("toolCallId", callId);
+                            return Flux.just(sse(payload));
+                        }
+                        case "session.next.tool.called": {
+                            // fallback for models that don't stream tool input
+                            String callId = data.path("callID").asText();
+                            String name = data.path("tool").asText();
+                            if (callId.isBlank()) return Flux.empty();
+                            toolCallNames.putIfAbsent(callId, name);
+                            sawOutput.set(true);
+                            List<ServerSentEvent<String>> out = new ArrayList<>();
+                            if (toolCallStarted.add(callId)) {
+                                ObjectNode start = base("TOOL_CALL_START", runId, threadId);
+                                start.put("toolCallId", callId);
+                                start.put("toolCallName", name);
+                                ObjectNode args = base("TOOL_CALL_ARGS", runId, threadId);
+                                args.put("toolCallId", callId);
+                                args.put("delta", data.path("input").isMissingNode() ? "{}" : data.path("input").toString());
+                                ObjectNode end = base("TOOL_CALL_END", runId, threadId);
+                                end.put("toolCallId", callId);
+                                toolCallEnded.add(callId);
+                                out.add(sse(start));
+                                out.add(sse(args));
+                                out.add(sse(end));
+                            }
+                            // A "real" tool call to render_a2ui (the model emits it as a
+                            // genuine tool_call even though OpenCode can't execute it):
+                            // execute server-side and finish the run with the surface —
+                            // OpenCode's own "unknown tool" follow-up is dropped.
+                            if (a2UiBridge.isServerTool(name)) {
+                                log.info("server tool call (native): {} id={}", name, callId);
+                                closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
+                                closeAllActiveSteps(runId, threadId, activeSteps, out);
+                                a2UiBridge.execute(runId, threadId, data.path("input")).ifPresent(out::add);
+                                if (terminalEmitted.compareAndSet(false, true)) {
+                                    out.add(sse(base("RUN_FINISHED", runId, threadId)));
+                                }
+                            }
+                            return Flux.fromIterable(out);
+                        }
+                        case "session.next.step.failed": {
+                            if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
+                            List<ServerSentEvent<String>> out = new ArrayList<>();
+                            closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
+                            closeAllActiveSteps(runId, threadId, activeSteps, out);
+                            ObjectNode payload = base("RUN_ERROR", runId, threadId);
+                            String msg = data.path("error").path("message").asText("unknown error");
+                            payload.put("message", msg);
+                            out.add(sse(payload));
+                            return Flux.fromIterable(out);
+                        }
+                        case "session.next.step.started": {
+                            String stepId = data.path("assistantMessageID").asText("");
+                            String stepName = stepId.isBlank() ? "opencode-step" : "step-" + stepId;
+                            activeSteps.add(stepName);
+                            ObjectNode payload = base("STEP_STARTED", runId, threadId);
+                            payload.put("stepName", stepName);
+                            return Flux.just(sse(payload));
+                        }
+                        case "session.next.step.ended": {
+                            // OpenCode emits one step PER ASSISTANT TURN; finish=tool-calls
+                            // means the agent loop continues (more steps coming). Only a
+                            // terminal finish (stop/length/error/...) ends the AG-UI run.
+                            String finish = data.path("finish").asText("stop");
+                            List<ServerSentEvent<String>> out = new ArrayList<>();
+                            String endedId = data.path("assistantMessageID").asText("");
+                            String endedName = endedId.isBlank() ? "opencode-step" : "step-" + endedId;
+                            if (activeSteps.remove(endedName)) {
+                                out.add(stepFinished(runId, threadId, endedName));
+                            }
+                            JsonNode tokens = data.path("tokens");
+                            if (tokens.isObject()) {
+                                long input = tokens.path("input").asLong(0);
+                                long cacheRead = tokens.path("cache").path("read").asLong(0);
+                                ObjectNode usage = base("CUSTOM", runId, threadId);
+                                usage.put("name", "context_usage");
+                                ObjectNode v = usage.putObject("value");
+                                v.put("input", input);
+                                v.put("output", tokens.path("output").asLong(0));
+                                v.put("reasoning", tokens.path("reasoning").asLong(0));
+                                v.put("cacheRead", cacheRead);
+                                v.put("cacheWrite", tokens.path("cache").path("write").asLong(0));
+                                v.put("contextSize", input + cacheRead);
+                                v.put("finish", finish);
+                                out.add(sse(usage));
+                            }
+                            if ("tool-calls".equals(finish)) return Flux.fromIterable(out);
+                            if (terminalEmitted.compareAndSet(false, true)) {
+                                closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
+                                closeAllActiveSteps(runId, threadId, activeSteps, out);
+                                out.add(sse(base("RUN_FINISHED", runId, threadId)));
+                            }
+                            return Flux.fromIterable(out);
+                        }
+                        case "session.next.reasoning.started": {
+                            String rId = data.path("reasoningID").asText();
+                            if (rId.isBlank()) return Flux.empty();
+                            sawOutput.set(true);
+                            openReasoning.add(rId);
+                            ObjectNode start = base("REASONING_START", runId, threadId);
+                            start.put("messageId", rId);
+                            ObjectNode msgStart = base("REASONING_MESSAGE_START", runId, threadId);
+                            msgStart.put("messageId", rId);
+                            msgStart.put("role", "reasoning");
+                            return Flux.just(sse(start), sse(msgStart));
+                        }
+                        case "session.next.reasoning.delta": {
+                            String rId = data.path("reasoningID").asText();
+                            if (rId.isBlank()) return Flux.empty();
+                            ObjectNode payload = base("REASONING_MESSAGE_CONTENT", runId, threadId);
+                            payload.put("messageId", rId);
+                            payload.put("delta", data.path("delta").asText(""));
+                            return Flux.just(sse(payload));
+                        }
+                        case "session.next.reasoning.ended": {
+                            String rId = data.path("reasoningID").asText();
+                            if (rId.isBlank()) return Flux.empty();
+                            openReasoning.remove(rId);
+                            ObjectNode msgEnd = base("REASONING_MESSAGE_END", runId, threadId);
+                            msgEnd.put("messageId", rId);
+                            ObjectNode end = base("REASONING_END", runId, threadId);
+                            end.put("messageId", rId);
+                            return Flux.just(sse(msgEnd), sse(end));
+                        }
+                        case "session.next.tool.success": {
+                            String callId = data.path("callID").asText();
+                            if (callId.isBlank()) return Flux.empty();
+                            ObjectNode payload = base("TOOL_CALL_RESULT", runId, threadId);
+                            payload.put("toolCallId", callId);
+                            payload.put("messageId", "toolres-" + callId);
+                            payload.put("content", summarizeToolResult(data));
+                            return Flux.just(sse(payload));
+                        }
+                        case "session.next.tool.failed": {
+                            String callId = data.path("callID").asText();
+                            if (callId.isBlank()) return Flux.empty();
+                            ObjectNode payload = base("TOOL_CALL_RESULT", runId, threadId);
+                            payload.put("toolCallId", callId);
+                            payload.put("messageId", "toolres-" + callId);
+                            String msg = data.path("error").path("message").asText("unknown error");
+                            payload.put("content", "工具执行失败: " + msg);
+                            return Flux.just(sse(payload));
+                        }
+                        default:
+                            return Flux.empty();
+                    }
+                })
+                // ensure RUN_FINISHED is always emitted even if opencode ends silently
+                .concatWith(Flux.defer(() -> {
+                    if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
+                    List<ServerSentEvent<String>> tail = new ArrayList<>();
+                    closeOpenMessages(runId, threadId, msgStates, openReasoning, tail);
+                    closeAllActiveSteps(runId, threadId, activeSteps, tail);
+                    tail.add(sse(base("RUN_FINISHED", runId, threadId)));
+                    return Flux.fromIterable(tail);
+                }))
+                // close the run (and cancel the upstream opencode stream) at the first terminal event
+                .takeUntil(e -> {
+                    String d = e.data();
+                    return d != null && (d.contains("\"RUN_FINISHED\"") || d.contains("\"RUN_ERROR\""));
+                });
+
+        return Flux.concat(Flux.just(runStarted), body);
+    }
+
+    // ------------------------------------------------------------------
+    // text streaming with tool-call marker detection
+    // ------------------------------------------------------------------
+
+    private List<ServerSentEvent<String>> processDelta(String threadId, String runId, Set<String> frontendTools,
+                                                       AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
+                                                       Set<String> activeSteps,
+                                                       MsgState st, String delta) {
+        List<ServerSentEvent<String>> out = new ArrayList<>();
+        switch (st.mode) {
+            case BUFFERING -> {
+                st.buf.append(delta);
+                if (toolBridge.couldBecomeMarker(st.buf.toString())) return out;
+                // decided: plain text — flush buffer through the marker scanner
+                st.mode = MsgMode.TEXT;
+                st.pending.append(st.buf);
+                st.buf.setLength(0);
+                emitTextStart(runId, threadId, st, sawOutput, out);
+                scanText(runId, threadId, st, sawOutput, out);
+            }
+            case TEXT -> {
+                st.pending.append(delta);
+                scanText(runId, threadId, st, sawOutput, out);
+            }
+            case TOOL_CALL -> {
+                st.buf.append(delta);
+                scanToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, out);
+            }
+        }
+        return out;
+    }
+
+    /** TEXT mode: emit safe text, switch to TOOL_CALL if the marker appears. */
+    private void scanText(String runId, String threadId, MsgState st, AtomicBoolean sawOutput,
+                          List<ServerSentEvent<String>> out) {
+        String p = st.pending.toString();
+        int idx = p.indexOf(MARKER);
+        if (idx >= 0) {
+            String head = p.substring(0, idx);
+            if (!head.isEmpty()) emitTextContent(runId, threadId, st, head, sawOutput, out);
+            st.mode = MsgMode.TOOL_CALL;
+            st.buf.setLength(0);
+            st.buf.append(p.substring(idx + MARKER.length()));
+            st.pending.setLength(0);
+            return; // tool-call tail scanned on next delta / at text end
+        }
+        int hold = holdbackLen(p);
+        int emitLen = p.length() - hold;
+        if (emitLen > 0) {
+            emitTextContent(runId, threadId, st, p.substring(0, emitLen), sawOutput, out);
+            st.pending.delete(0, emitLen);
+        }
+    }
+
+    /** TOOL_CALL mode: accumulate until END_MARKER, then dispatch the call. */
+    private void scanToolCall(String threadId, String runId, Set<String> frontendTools,
+                              AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
+                              Set<String> activeSteps,
+                              MsgState st, List<ServerSentEvent<String>> out) {
+        String b = st.buf.toString();
+        int endIdx = b.indexOf(END_MARKER);
+        if (endIdx < 0) return;
+        String payload = b.substring(0, endIdx);
+        String remainder = b.substring(endIdx + END_MARKER.length());
+        dispatchToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st,
+                MARKER + payload + END_MARKER, out);
+        // anything after the end marker is treated as text again
+        st.mode = MsgMode.TEXT;
+        st.buf.setLength(0);
+        st.pending.setLength(0);
+        st.pending.append(remainder);
+        scanText(runId, threadId, st, sawOutput, out);
+    }
+
+    private List<ServerSentEvent<String>> processTextEnd(String threadId, String runId, Set<String> frontendTools,
+                                                         AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
+                                                         Set<String> activeSteps,
+                                                         MsgState st) {
+        List<ServerSentEvent<String>> out = new ArrayList<>();
+        switch (st.mode) {
+            case BUFFERING -> {
+                // whole-message contract: either one tool_call block or plain text
+                var parsed = toolBridge.parseToolCall(st.buf.toString());
+                if (parsed.isPresent()) {
+                    dispatchToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st,
+                            st.buf.toString(), out);
+                } else if (st.buf.length() > 0) {
+                    emitTextStart(runId, threadId, st, sawOutput, out);
+                    emitTextContent(runId, threadId, st, st.buf.toString(), sawOutput, out);
+                    emitTextEnd(runId, threadId, st, out);
+                }
+            }
+            case TEXT -> {
+                if (st.pending.length() > 0) {
+                    emitTextContent(runId, threadId, st, st.pending.toString(), sawOutput, out);
+                    st.pending.setLength(0);
+                }
+                emitTextEnd(runId, threadId, st, out);
+            }
+            case TOOL_CALL -> {
+                // truncated block — tolerate a missing end marker
+                String b = st.buf.toString();
+                String payload = b.contains(END_MARKER)
+                        ? b.substring(0, b.indexOf(END_MARKER))
+                        : b;
+                dispatchToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st,
+                        MARKER + payload + END_MARKER, out);
+                if (st.textStarted) emitTextEnd(runId, threadId, st, out);
+            }
+        }
+        return out;
+    }
+
+    /** Parse and route a tool call: server tool (render_a2ui) or frontend tool. */
+    private void dispatchToolCall(String threadId, String runId, Set<String> frontendTools,
+                                  AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
+                                  Set<String> activeSteps,
+                                  MsgState st, String rawBlock, List<ServerSentEvent<String>> out) {
+        var parsed = toolBridge.parseToolCall(rawBlock);
+        if (parsed.isEmpty()) {
+            log.warn("unparseable tool_call block; emitting as text");
+            if (!st.textStarted) emitTextStart(runId, threadId, st, sawOutput, out);
+            emitTextContent(runId, threadId, st, rawBlock, sawOutput, out);
+            return;
+        }
+        var call = parsed.get();
+        sawOutput.set(true);
+        if (!frontendTools.isEmpty() && !frontendTools.contains(call.name())
+                && !a2UiBridge.isServerTool(call.name())) {
+            log.warn("model called undeclared tool '{}' (declared: {})", call.name(), frontendTools);
+        }
+        String toolCallId = "call_" + UUID.randomUUID().toString().replace("-", "");
+        ObjectNode start = base("TOOL_CALL_START", runId, threadId);
+        start.put("toolCallId", toolCallId);
+        start.put("toolCallName", call.name());
+        start.put("parentMessageId", st.agMsgId);
+        out.add(sse(start));
+        ObjectNode args = base("TOOL_CALL_ARGS", runId, threadId);
+        args.put("toolCallId", toolCallId);
+        try {
+            args.put("delta", MAPPER.writeValueAsString(call.arguments()));
+        } catch (Exception e) {
+            args.put("delta", "{}");
+        }
+        out.add(sse(args));
+        ObjectNode end = base("TOOL_CALL_END", runId, threadId);
+        end.put("toolCallId", toolCallId);
+        out.add(sse(end));
+
+        if (a2UiBridge.isServerTool(call.name())) {
+            // server-side tool: execute now, run continues
+            log.info("server tool call: {} id={}", call.name(), toolCallId);
+            a2UiBridge.execute(runId, threadId, call.arguments()).ifPresent(out::add);
+            return;
+        }
+        // frontend tool: end the run so the browser executes it
+        log.info("frontend tool call: {} id={}", call.name(), toolCallId);
+        if (terminalEmitted.compareAndSet(false, true)) {
+            closeAllActiveSteps(runId, threadId, activeSteps, out);
+            out.add(sse(base("RUN_FINISHED", runId, threadId)));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // small emit helpers
+    // ------------------------------------------------------------------
+
+    private void emitTextStart(String runId, String threadId, MsgState st, AtomicBoolean sawOutput,
+                               List<ServerSentEvent<String>> out) {
+        if (st.textStarted) return;
+        st.textStarted = true;
+        sawOutput.set(true);
+        ObjectNode payload = base("TEXT_MESSAGE_START", runId, threadId);
+        payload.put("messageId", st.agMsgId);
+        payload.put("role", "assistant");
+        out.add(sse(payload));
+    }
+
+    private void emitTextContent(String runId, String threadId, MsgState st, String delta,
+                                 AtomicBoolean sawOutput, List<ServerSentEvent<String>> out) {
+        if (delta.isEmpty()) return;
+        emitTextStart(runId, threadId, st, sawOutput, out);
+        ObjectNode payload = base("TEXT_MESSAGE_CONTENT", runId, threadId);
+        payload.put("messageId", st.agMsgId);
+        payload.put("delta", delta);
+        out.add(sse(payload));
+    }
+
+    private void emitTextEnd(String runId, String threadId, MsgState st, List<ServerSentEvent<String>> out) {
+        if (!st.textStarted) return;
+        ObjectNode payload = base("TEXT_MESSAGE_END", runId, threadId);
+        payload.put("messageId", st.agMsgId);
+        out.add(sse(payload));
+    }
+
+    /** Close every still-open text message and reasoning stream before a terminal event. */
+    private void closeOpenMessages(String runId, String threadId, Map<String, MsgState> msgStates,
+                                   Set<String> openReasoning, List<ServerSentEvent<String>> out) {
+        for (MsgState st : msgStates.values()) {
+            if (st.textStarted) {
+                ObjectNode end = base("TEXT_MESSAGE_END", runId, threadId);
+                end.put("messageId", st.agMsgId);
+                out.add(sse(end));
+                st.textStarted = false;
+            }
+        }
+        msgStates.clear();
+        for (String rId : new ArrayList<>(openReasoning)) {
+            ObjectNode msgEnd = base("REASONING_MESSAGE_END", runId, threadId);
+            msgEnd.put("messageId", rId);
+            ObjectNode end = base("REASONING_END", runId, threadId);
+            end.put("messageId", rId);
+            out.add(sse(msgEnd));
+            out.add(sse(end));
+        }
+        openReasoning.clear();
+    }
+
+    /**
+     * 需求7: the AG-UI client state machine rejects RUN_FINISHED/RUN_ERROR while
+     * a step is active, and rejects STEP_FINISHED for a step never started.
+     * OpenCode steps overlap and can be orphaned, so we track the active set:
+     * step.ended closes only itself; terminal events close everything left.
+     */
+    private ServerSentEvent<String> stepFinished(String runId, String threadId, String stepName) {
+        ObjectNode payload = base("STEP_FINISHED", runId, threadId);
+        payload.put("stepName", stepName);
+        return sse(payload);
+    }
+
+    /** Emit STEP_FINISHED for every still-active step (orphans included), in start order. */
+    private void closeAllActiveSteps(String runId, String threadId, Set<String> activeSteps,
+                                     List<ServerSentEvent<String>> out) {
+        for (String name : new ArrayList<>(activeSteps)) {
+            out.add(stepFinished(runId, threadId, name));
+        }
+        activeSteps.clear();
+    }
+
+    /**
+     * Best-effort one-string summary of an OpenCode tool result: concatenates
+     * text parts of {@code content[]}, falls back to {@code structured} JSON,
+     * truncated so a huge tool output never floods the SSE stream.
+     */
+    private String summarizeToolResult(JsonNode data) {
+        StringBuilder sb = new StringBuilder();
+        for (JsonNode part : data.path("content")) {
+            if ("text".equals(part.path("type").asText())) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(part.path("text").asText(""));
+            }
+        }
+        if (sb.length() == 0 && data.path("structured").isObject() && !data.path("structured").isEmpty()) {
+            sb.append(data.path("structured").toString());
+        }
+        if (sb.length() == 0) sb.append("(无输出)");
+        String s = sb.toString();
+        return s.length() > 2000 ? s.substring(0, 2000) + "…(截断)" : s;
+    }
+
+    /** Length of the longest suffix of {@code s} that is a strict prefix of MARKER. */
+    private int holdbackLen(String s) {
+        int max = Math.min(s.length(), MARKER.length() - 1);
+        for (int k = max; k > 0; k--) {
+            if (MARKER.startsWith(s.substring(s.length() - k))) return k;
+        }
+        return 0;
+    }
+
+    private ObjectNode base(String type, String runId, String threadId) {
+        ObjectNode n = MAPPER.createObjectNode();
+        n.put("type", type);
+        n.put("runId", runId);
+        n.put("threadId", threadId);
+        n.put("timestamp", System.currentTimeMillis());
+        return n;
+    }
+
+    private ObjectNode agEvent(String type, String runId, String threadId) {
+        return base(type, runId, threadId);
+    }
+
+    private ServerSentEvent<String> sse(ObjectNode payload) {
+        try {
+            return ServerSentEvent.<String>builder()
+                    .data(MAPPER.writeValueAsString(payload))
+                    .build();
+        } catch (Exception e) {
+            log.error("Failed to serialize AG-UI event", e);
+            return ServerSentEvent.<String>builder().data("{}").build();
+        }
+    }
+}

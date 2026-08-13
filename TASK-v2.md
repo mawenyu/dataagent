@@ -1,0 +1,96 @@
+# TASK: DataAgent 会话管理 + 真实 Agent 化 + UI 绚丽化 + API 语义化 + 交付打包
+
+## 项目背景
+- 工程：`/home/ubuntu/opencode-agui-app/`（**不是 git 仓库，本次需 git init**）
+- 架构：Vue 3 + Vite + @copilotkit/vue(fork) 前端 → nginx `/agui-api/` → Java Spring Boot gateway(8090) → OpenCode server(4096, bun) → DeepSeek
+- 前端构建产物部署到 `/var/www/blog/agui/`，访问地址 `http://101.34.246.179/agui/`
+- 参考设计源码：`ref/adk-dashboard/`（CopilotKit 官方示例，Apple 风 B2B SaaS 浅色：#f8fafc 底 + 白卡 + #6366f1 靛蓝）
+- CopilotKit fork 源码在 `vue-frontend/` 本地依赖或 `packages/`（自行确认位置）
+
+## 需求 1：多会话管理（最高优先级）
+- 左侧会话侧边栏：会话列表（标题取首条用户消息截断）、新建会话、切换会话、删除会话、重命名（可选）
+- 会话历史**持久化**：刷新浏览器后会话列表和历史消息不丢失。推荐 gateway 提供会话持久化 API（POST /api/chat/threads 等，存文件或 H2/SQLite 均可，零外部依赖优先）；前端 localStorage 仅作缓存兜底
+- 每个会话独立 threadId，切换会话时加载该会话历史消息并渲染
+- OpenCode 侧：确认 threadId→OpenCode session 的映射在 gateway 已正确隔离
+
+## 需求 2：真实 Agent 化（移除一切写死/mock）
+- 排查 gateway 中所有写死/mock 逻辑：硬编码的 LLM 响应、mock 工具结果、demo 专用的假数据分支（如 `/ag-ui/a2ui-demo` 之类的演示端点）
+- 全部改为真实走 OpenCode → DeepSeek 的 agent 链路；a2uiAction 回传后的处理也要走真实 agent 续跑，而不是 Java 里 if/else 返回固定 surface
+- 保留 debug 页 `/dataagent/copilotkit-test` 不动
+
+## 需求 3：API URL 语义化（去 opencode 字样）
+- `/agui-api/opencode/ag-ui` → 改为按功能命名，如 `/agui-api/agent/run`（前端 HttpAgent 端点同步改）
+- 新增会话管理 API：`/agui-api/chat/threads`（GET 列表 / POST 新建 / DELETE 删除 / PATCH 重命名），`/agui-api/chat/threads/{id}/messages`（GET 历史）
+- nginx 配置 `/etc/nginx/` 中相关 location 同步更新；改完 `nginx -t && systemctl reload nginx`
+- 兼容策略：旧 `/opencode/ag-ui` 可保留 302 或保留一段时间，但前端必须用新 URL
+
+## 需求 4：UI 绚丽化（对齐 CopilotKit adk-dashboard / a2ui 示例水准）
+- 浅色 B2B SaaS 主题（#f8fafc 底、白卡、#6366f1 靛蓝 accent），参考 `ref/adk-dashboard/app_globals.css`
+- 布局：左侧会话栏（可折叠）+ 主聊天区 + A2UI surface 渲染区
+- 细节：消息气泡精致化、打字/加载动画（skeleton/渐变 shimmer）、A2UI 卡片悬停阴影过渡、图表配色用 chart-1~5 色板、空会话欢迎页（品牌 logo + 建议问题快捷入口）
+- 移动端基本可用（侧边栏抽屉化）
+- 禁止白屏、禁止默认深色简陋样式
+
+## 需求 5：设计文档入工程
+- `docs/design.md` 全面更新为详细设计方案：总体架构图（文字/mermaid）、多会话模型（thread/user 隔离）、API 一览表（新 URL）、A2UI surface 协议、frontend tool 机制、会话持久化方案、UI 设计系统（色板/组件规范）、部署拓扑（nginx 路由表）
+- 同步更新 `docs/ARCHITECTURE.md`、`docs/VERSIONS.md`
+
+## 需求 6：可移植交付包（用户要拷到公司电脑重建）
+**目标：拿到包的人在一台有 JDK17+、Maven、Node20+、bun 的干净机器上能完整重建并运行。**
+1. `git init` + 合理的 `.gitignore`（排除 node_modules/target/dist），全部源码入库，干净 commit 历史（按特性多个 commit）
+2. **开源修改可溯源**：
+   - CopilotKit vue fork：在 `patches/` 目录放针对上游版本的 unified diff patch（标注上游 repo URL + commit/tag），或直接把 fork 源码放 `vendor/` 并附 `vendor/README.md` 说明来源版本与修改点清单
+   - 其他所有修改过的开源组件同法处理
+3. `README.md` 重建指南：依赖清单（JDK/Maven/Node/bun 版本）、OpenCode server 安装与配置（含 opencode.json、DeepSeek key 配置方式）、前端 build 步骤（含 fork patch 应用步骤）、gateway `mvn package`、nginx 参考配置（`deploy/nginx.conf.example`）、启动顺序与验证 curl 命令
+4. `scripts/` 下提供一键脚本：`build-all.sh`（前端+gateway）、`run-dev.sh`
+5. 打包：`scripts/package.sh` 生成 `/var/www/blog/dataagent-v1.0.tar.gz`（含全部源码、patches、docs、脚本；**排除** node_modules、target、.git 可选保留、真实 API key——key 用 .env.example 占位）
+
+## 验收（全部实测，禁止口头完成）
+1. curl 公网 `http://101.34.246.179/agui/` 200；新 API 路径生效（`curl -H 'Host: 101.34.246.179'` 验证 nginx）
+2. 多会话实测：建 2 个会话各发消息 → 切换 → 历史正确 → 刷新页面后仍在
+3. 真实 agent 实测：问一个数据问题，确认 gateway 日志显示真实 OpenCode 调用、无 mock 分支命中
+4. 打包文件存在且 `tar -tzf` 校验内容完整；在公司电脑模拟验证：解包后按 README 步骤至少 `mvn -q compile` 和 `pnpm/npm install --dry-run` 层面可行
+5. 全程截图（侧边栏多会话、新 UI、深色终端日志）放入 `docs/screenshots/`
+
+## 需求 7：对话完整性与可观测性（用户实测发现阻断性 bug，优先级最高）
+**实测 bug**：发送"分析本月销售情况"后，前台只收到一条 "I'll help analyze this month's sales situation. Let me first understand what data is available." 就没了下文——流中断/挂起。必须先诊断根因（gateway SSE 流断？OpenCode question 工具挂起无超时？事件翻译丢事件？）并修复，这正是任务书遗留项"run 超时兜底"击中的场景。
+
+修复后必须实现并实测以下能力才算收工：
+1. **连续对话测试**：同一会话内连续 5+ 轮问答不中断、上下文正确（agent 记得前文）；用自动化脚本（curl SSE 或 playwright）跑通并留证据
+2. **渲染测试**：A2UI surface（MetricCard/BarChart/表格等）在真实 agent 回答中正确流式渲染；a2uiAction 回传后续跑正常
+3. **工具调用可见**：前端展示 tool call 过程（工具名、参数摘要、执行状态、结果摘要），可折叠
+4. **思考过程可见**：agent 的 reasoning/thinking 流式展示（样式区别于正式回答，如浅色斜体可折叠区块）
+5. **会话 context 用量显示**：显示当前会话 token/context size 占用（从 OpenCode 事件或 gateway 统计获取），如 "context: 12.3k/200k"，随对话增长更新
+6. **run 超时兜底**：agent 挂起（如 question 工具等待）时 gateway 侧超时终止并向前端发 RUN_ERROR，前端友好提示"可重试"，禁止无声卡死
+
+### [DONE] 2026-08-13 需求7 全部完成（实测证据如下，截图在 docs/screenshots/）
+
+**根因（三层叠加，均实证）**：
+1. **主因 — gateway 提前断流**：OpenCode 的 `session.next.step.ended` 是每个 assistant turn 结束（`finish=tool-calls` 表示还要继续），而 gateway `AgUiProtocolService.streamEvents()` 用 `takeUntil(step.ended)` 在第一个 step 就切断 SSE。实测该 prompt 一次产生 3+ step（bash+glob → read → 最终回答），第一刀切完用户只见首条消息。
+2. **次因 — OpenCode 权限挂起**：agent 读 workspace 触发 `external_directory` 权限询问（`/api/permission/request` 实测捕获 pending），无头服务器无人应答 → 工具永远 running → 零事件。修复：opencode server 改为以 app 项目根为 cwd 启动（workspace/ 变实例内部路径；项目级 opencode.json 由此真正生效）。
+3. **三因 — AG-UI 状态机配对**：step 会重叠/孤儿化（实测多个 step.started 先于 step.ended、存在永不 ended 的孤儿 step），native render_a2ui 截断 run 时还有未关闭的 text/reasoning 消息 → 客户端报 "RUN_FINISHED while steps/text messages are still active"。修复：translator 跟踪活跃 step 集合 + 打开的 text/reasoning 消息，step.ended 只关自己，终止事件前关闭全部残余。
+
+**修复清单（TDD，gateway 32 测试全绿）**：
+- `streamEvents`：只在 `step.ended(finish!=tool-calls)` 或 `step.failed` 终止上游流
+- translator 新增：STEP_STARTED/FINISHED（唯一名严格配对）、TOOL_CALL_RESULT（tool.success/failed 结果摘要，截断 2k）、REASONING_* 全生命周期、CUSTOM context_usage（contextSize=input+cacheRead）
+- run 超时兜底：`agui.run-idle-timeout`（默认 PT120S，空闲判挂起）→ RUN_ERROR("运行超时…可重试") + `POST /api/session/{id}/abort` 清理残留
+- 模型可配置（`agui.model.id/provider-id`），默认切 **deepseek-reasoner**（实测 reasoning 流 + 工具调用正常，思考过程 UI 可见）
+- prompt 注入数据工作目录提示（`agui.data-workspace`），agent 直接在 workspace/ 找数据；种入示例数据 workspace/sales-2026-08.csv
+- 前端：顶栏 context 徽章（useContextUsage 订阅 CUSTOM 事件，"context: 95.3k/128k"）；DefaultToolRender 注册通配工具渲染器（名称/状态/参数/结果，可折叠）；on-error toast 提示可重试
+
+**实测证据**：
+- 连续对话：`scripts/test-multi-turn.sh` 5 轮 7 断言全过（含"记得暗号蓝鲸42"），context 逐轮增长 3068→7270；证据 docs/screenshots/req7-multi-turn-evidence.log
+- A2UI：真实 agent 产出 ACTIVITY_SNAPSHOT（MetricCard×3+BarChart+DataTable+InsightCard，data path 绑定）；a2uiAction（drill_down_region 华南）走真实 agent 续跑并更新 surface
+- 工具/思考/context 徽章：浏览器实测截图 docs/screenshots/req7-02-final.png；部署产物静态校验通过（bundle 含 context-badge/context_usage/copilot-tool-render/重试提示）
+- 超时兜底：单测 `hungRunTimesOutWithRunError`（断言 RUN_ERROR + abort）+ 两次真实挂起均 120s 后 RUN_ERROR + abort 收尾（gateway 日志）
+- 页面：http://101.34.246.179/agui/ 200；debug 页 /agui/dataagent/copilotkit-test.html 200
+
+**已知边界**：旧实例 session 重启后可能 wedge（空闲超时覆盖）；native render_a2ui 截断的 run 无 tokens 来源，不发 context_usage。
+
+
+## 工作方式约束
+- TDD：每特性先写/改测试再实现；gateway 测试 `./mvnw test`，前端单测跑通
+- 每完成一个需求 commit 一次（commit message 中文，说明 why）
+- 随时更新本文件：在对应需求下追加 `[DONE] 日期 + 实测证据`
+- 服务重启：gateway `systemctl --user restart` 或原有启动脚本；opencode server 重启前确认端口释放
+- 遇到问题先诊断根因，禁止无脑重试

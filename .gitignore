@@ -1,0 +1,16 @@
+# 构建产物与依赖
+node_modules/
+target/
+dist/
+
+# 日志与本地环境
+*.log
+.env
+.env.local
+
+# 第三方参考源码（不入库，交付包也不需要；fork 溯源走 patches/ + vendor/README）
+ref/
+
+# 系统垃圾
+.DS_Store
+vendor/copilotkit-src/
