@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { z } from 'zod'
 import { CopilotKitProvider, CopilotChat } from '@copilotkit/vue'
 import { dataAgent } from './agents/dataAgent'
 import { dataAgentCatalog } from './a2ui/dataAgentCatalog'
 import { useContextUsage } from './composables/useContextUsage'
+import { useThreads } from './composables/useThreads'
 import DefaultToolRender from './components/DefaultToolRender.vue'
+import ThreadSidebar from './components/ThreadSidebar.vue'
 
 // Registered via the fork's `directAgents` prop (see packages/copilotkit-vue/FORK.md).
 // Business code never touches agents__unsafe_dev_only / selfManagedAgents.
 const agents = {
   default: dataAgent,
 }
+
+// 需求1: 多会话管理（gateway 持久化为权威，localStorage 兜底）
+const threadsApi = useThreads(dataAgent)
+onMounted(() => threadsApi.init())
+// run 结束后 gateway 用首条消息命名 → 刷新侧边栏列表
+dataAgent.subscribe({ onRunFinalized: () => { void threadsApi.refresh() } })
 
 // 需求7-5: context 用量徽章（gateway 在每个 step 结束发 CUSTOM context_usage）
 const { contextSize, label: contextLabel } = useContextUsage(dataAgent)
@@ -92,7 +100,22 @@ function handleChatError({ error }: { error: Error }) {
           :a2ui="{ catalog: dataAgentCatalog, includeSchema: true }"
         >
           <DefaultToolRender />
-          <CopilotChat agent-id="default" class="chat" :on-error="handleChatError" />
+          <div class="chat-layout">
+            <ThreadSidebar
+              :threads="threadsApi.threads.value"
+              :current-id="threadsApi.currentId.value"
+              @new="threadsApi.createNew()"
+              @switch="threadsApi.switchTo($event)"
+              @remove="threadsApi.remove($event)"
+              @rename="(id: string, title: string) => threadsApi.rename(id, title)"
+            />
+            <CopilotChat
+              agent-id="default"
+              class="chat"
+              :thread-id="threadsApi.currentId.value"
+              :on-error="handleChatError"
+            />
+          </div>
         </CopilotKitProvider>
       </div>
     </main>
@@ -228,7 +251,13 @@ body {
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.04);
   overflow: hidden;
 }
-.chat { flex: 1; min-height: 0; }
+.chat { flex: 1; min-height: 0; min-width: 0; }
+.chat-layout { flex: 1; min-height: 0; display: flex; }
+
+/* 需求1 移动端基本可用：窄屏时侧边栏收起（抽屉化在需求4完善） */
+@media (max-width: 720px) {
+  .chat-layout .sidebar { display: none; }
+}
 
 /* ---- Toasts (showNotification frontend tool) ---- */
 .toast-stack {

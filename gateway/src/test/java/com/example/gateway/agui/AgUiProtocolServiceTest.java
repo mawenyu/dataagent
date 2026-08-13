@@ -45,6 +45,7 @@ class AgUiProtocolServiceTest {
         boolean hangEventStream = false;
         final List<String> aborts = new ArrayList<>();
         final List<String> modelSets = new ArrayList<>();
+        final List<String> sessionHistory = new ArrayList<>();
 
         WebClient client() {
             return WebClient.builder().exchangeFunction(this::exchange).build();
@@ -76,6 +77,21 @@ class AgUiProtocolServiceTest {
                 return Mono.just(ClientResponse.create(HttpStatus.OK)
                         .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE)
                         .body(body).build());
+            }
+            // GET /api/session/{id}/message — 历史消息（脚本化）；先于通用 session GET
+            if (path.matches("/api/session/[^/]+/message") && "GET".equals(method)) {
+                String body = sessionHistory.isEmpty() ? "{\"data\":[]}" : sessionHistory.remove(0);
+                return json(body);
+            }
+            // GET /api/session/{id} — 存活校验；stub 只认自己创建的 session
+            if (path.startsWith("/api/session/") && "GET".equals(method)) {
+                String sid = path.substring("/api/session/".length());
+                boolean alive = false;
+                for (int i = 1; i <= sessionCreates; i++) {
+                    if (("ses_stub_" + i).equals(sid)) { alive = true; break; }
+                }
+                if (alive) return json("{\"data\":{\"id\":\"" + sid + "\"}}");
+                return Mono.just(ClientResponse.create(HttpStatus.NOT_FOUND).build());
             }
             return Mono.just(ClientResponse.create(HttpStatus.NOT_FOUND).build());
         }
@@ -124,6 +140,7 @@ class AgUiProtocolServiceTest {
     @BeforeEach
     void setUp() {
         stub = new StubOpenCode();
+        threadStore = new ChatThreadStore(storeDir);
         surfaceRegistry = new A2UiSurfaceRegistry();
         A2UiService a2UiService = new A2UiService();
         A2UiBridgeService bridge = new A2UiBridgeService(a2UiService, surfaceRegistry);
@@ -131,7 +148,7 @@ class AgUiProtocolServiceTest {
         AguiEventTranslator translator = new AguiEventTranslator(toolBridge, bridge);
         A2UiActionHandler actionHandler = new A2UiActionHandler(a2UiService, surfaceRegistry);
         service = new AgUiProtocolService(stub.client(), translator, toolBridge, a2UiService,
-                bridge, actionHandler, surfaceRegistry, new AllowAllThreadAccessPolicy());
+                bridge, actionHandler, surfaceRegistry, new AllowAllThreadAccessPolicy(), threadStore);
     }
 
     // ------------------------------------------------------------ helpers ---
@@ -541,11 +558,63 @@ class AgUiProtocolServiceTest {
                 new A2UiBridgeService(new A2UiService(), surfaceRegistry),
                 new A2UiActionHandler(new A2UiService(), surfaceRegistry),
                 surfaceRegistry, new AllowAllThreadAccessPolicy(),
-                java.time.Duration.ofSeconds(10), "/tmp/ws", "deepseek-reasoner", "deepseek");
+                java.time.Duration.ofSeconds(10), "/tmp/ws", "deepseek-reasoner", "deepseek",
+                new ChatThreadStore(storeDir));
         stub.eventStreams.add(textStep("m1", "ok"));
         custom.run(userMsg("t-model", "hi")).collectList().block(java.time.Duration.ofSeconds(10));
         assertEquals(1, stub.modelSets.size());
         assertTrue(stub.modelSets.get(0).contains("deepseek-reasoner"));
+    }
+
+    // ---- 需求 1: 多会话持久化、session 失效重建 ----
+
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path storeDir;
+
+    private ChatThreadStore threadStore;
+
+    @Test
+    void runAutoCreatesThreadWithTitleFromFirstMessage() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        run(userMsg("t-auto", "分析本月销售情况，越详细越好"));
+        var t = threadStore.getThread("t-auto").orElseThrow();
+        assertTrue(t.title().startsWith("分析本月销售情况"), "title from first user message");
+        assertNotNull(t.sessionId(), "thread bound to its OpenCode session");
+        assertEquals("ses_stub_1", t.sessionId());
+    }
+
+    @Test
+    void staleSessionIsRecreatedOnRun() {
+        threadStore.createThread("t-stale", null);
+        threadStore.bindSession("t-stale", "ses_dead"); // stub 不认识它（GET 404）
+        stub.eventStreams.add(textStep("m1", "ok"));
+        run(userMsg("t-stale", "hi"));
+        assertEquals(1, stub.sessionCreates, "dead session must be recreated");
+        assertEquals("ses_stub_1", threadStore.resolveSession("t-stale"), "mapping rebound");
+    }
+
+    @Test
+    void liveSessionIsReusedAcrossRuns() {
+        stub.eventStreams.add(textStep("m1", "one"));
+        stub.eventStreams.add(textStep("m2", "two"));
+        run(userMsg("t-reuse", "one"));
+        run(userMsg("t-reuse", "two"));
+        assertEquals(1, stub.sessionCreates, "liveness check must not recreate live sessions");
+    }
+
+    @Test
+    void surfaceSnapshotPersistedForReplay() {
+        String stream =
+                ocEvent("session.next.tool.called",
+                        "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"tool\":\"render_a2ui\",\"input\":{"
+                                + "\"surfaceId\":\"sales-card\",\"components\":["
+                                + "{\"component\":\"MetricCard\",\"id\":\"root\",\"title\":\"本月销售额\",\"value\":\"1,234\"}]}}")
+                + ocEvent("session.next.step.ended", "{}");
+        stub.eventStreams.add(stream);
+        run(userMsg("t-surf", "render"));
+        assertEquals(1, threadStore.listSurfaces("t-surf").size(),
+                "ACTIVITY_SNAPSHOT persisted so history replay can re-render the surface");
+        assertEquals("sales-card", threadStore.listSurfaces("t-surf").get(0).surfaceId());
     }
 
     @Test

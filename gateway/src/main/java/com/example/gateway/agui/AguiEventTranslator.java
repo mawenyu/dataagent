@@ -40,8 +40,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>OpenCode builtin tool calls (bash, read, ...) are mirrored as
  * TOOL_CALL_* for progress rendering, but never end the run.
  *
- * <p>Also owns the threadId -> opencode sessionId mapping so the public
- * AG-UI contract never leaks the internal session model.
+ * * <p>The threadId -> sessionId mapping lives in {@link ChatThreadStore}
+ * (需求1: persisted, with stale-session rebinding in AgUiProtocolService).
  */
 @Service
 public class AguiEventTranslator {
@@ -51,23 +51,12 @@ public class AguiEventTranslator {
     private static final String MARKER = FrontendToolBridge.MARKER;
     private static final String END_MARKER = FrontendToolBridge.END_MARKER;
 
-    /** AG-UI threadId -> OpenCode sessionId */
-    private final Map<String, String> threadToSession = new ConcurrentHashMap<>();
-
     private final FrontendToolBridge toolBridge;
     private final A2UiBridgeService a2UiBridge;
 
     public AguiEventTranslator(FrontendToolBridge toolBridge, A2UiBridgeService a2UiBridge) {
         this.toolBridge = toolBridge;
         this.a2UiBridge = a2UiBridge;
-    }
-
-    public String resolveSession(String threadId) {
-        return threadToSession.get(threadId);
-    }
-
-    public void bindSession(String threadId, String sessionId) {
-        threadToSession.put(threadId, sessionId);
     }
 
     /** Per-assistant-message streaming state for the tool-call lookahead. */

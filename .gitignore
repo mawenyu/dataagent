@@ -14,3 +14,4 @@ ref/
 # 系统垃圾
 .DS_Store
 vendor/copilotkit-src/
+gateway/data/

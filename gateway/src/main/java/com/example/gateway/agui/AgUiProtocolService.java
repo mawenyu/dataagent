@@ -64,18 +64,20 @@ public class AgUiProtocolService {
     private final String dataWorkspace;
     private final String modelId;
     private final String providerId;
+    private final ChatThreadStore threadStore;
 
-    /** Convenience constructor for tests — default idle timeout + workspace + model. */
+    /** Convenience constructor for tests — default everything, throwaway temp store. */
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
                                FrontendToolBridge toolBridge, A2UiService a2UiService,
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
                                A2UiSurfaceRegistry surfaceRegistry,
                                ThreadAccessPolicy threadAccessPolicy) {
         this(opencodeWebClient, translator, toolBridge, a2UiService, a2UiBridge, actionHandler,
-                surfaceRegistry, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE);
+                surfaceRegistry, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
     }
 
-    /** Convenience constructor for tests — custom idle timeout, default workspace + model. */
+    /** Convenience constructor for tests — custom idle timeout. */
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
                                FrontendToolBridge toolBridge, A2UiService a2UiService,
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
@@ -83,7 +85,20 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout) {
         this(opencodeWebClient, translator, toolBridge, a2UiService, a2UiBridge, actionHandler,
-                surfaceRegistry, threadAccessPolicy, runIdleTimeout, DEFAULT_DATA_WORKSPACE);
+                surfaceRegistry, threadAccessPolicy, runIdleTimeout, DEFAULT_DATA_WORKSPACE,
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
+    }
+
+    /** Convenience constructor for tests — store given (需求1 persistence assertions). */
+    public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
+                               FrontendToolBridge toolBridge, A2UiService a2UiService,
+                               A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
+                               A2UiSurfaceRegistry surfaceRegistry,
+                               ThreadAccessPolicy threadAccessPolicy,
+                               ChatThreadStore threadStore) {
+        this(opencodeWebClient, translator, toolBridge, a2UiService, a2UiBridge, actionHandler,
+                surfaceRegistry, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore);
     }
 
     /** Convenience constructor for tests — custom timeout + workspace, default model. */
@@ -95,7 +110,7 @@ public class AgUiProtocolService {
                                Duration runIdleTimeout, String dataWorkspace) {
         this(opencodeWebClient, translator, toolBridge, a2UiService, a2UiBridge, actionHandler,
                 surfaceRegistry, threadAccessPolicy, runIdleTimeout, dataWorkspace,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID);
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -111,7 +126,8 @@ public class AgUiProtocolService {
                                @org.springframework.beans.factory.annotation.Value("${agui.model.id:" + DEFAULT_MODEL_ID + "}")
                                String modelId,
                                @org.springframework.beans.factory.annotation.Value("${agui.model.provider-id:" + DEFAULT_PROVIDER_ID + "}")
-                               String providerId) {
+                               String providerId,
+                               ChatThreadStore threadStore) {
         this.webClient = opencodeWebClient;
         this.translator = translator;
         this.toolBridge = toolBridge;
@@ -124,6 +140,15 @@ public class AgUiProtocolService {
         this.dataWorkspace = dataWorkspace;
         this.modelId = modelId;
         this.providerId = providerId;
+        this.threadStore = threadStore;
+    }
+
+    private static ChatThreadStore throwawayStore() {
+        try {
+            return new ChatThreadStore(java.nio.file.Files.createTempDirectory("agui-threads-test"));
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
     }
 
     public Flux<ServerSentEvent<String>> run(RunAgentInput input) {
@@ -147,6 +172,46 @@ public class AgUiProtocolService {
             log.warn("thread access denied: user={} thread={}", uid, threadId);
             return Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"thread access denied\"}"));
         }
+
+        // 需求1: 自动建档（前端可不显式 POST /chat/threads）+ 首条用户消息作标题
+        if (threadStore.getThread(threadId).isEmpty()) {
+            threadStore.createThread(threadId, null);
+        }
+        String firstUser = extractLastUserMessage(input.messages());
+        if (firstUser != null) threadStore.setTitleFromFirstMessage(threadId, firstUser);
+        threadStore.touch(threadId);
+
+        return doRun(input, uid, threadId, runId)
+                .doOnNext(e -> persistSurfaceSnapshot(threadId, e));
+    }
+
+    /** 需求1: 把 ACTIVITY_SNAPSHOT 的 surface 内容落盘，供历史回放重放看板。 */
+    private void persistSurfaceSnapshot(String threadId, ServerSentEvent<String> e) {
+        String d = e.data();
+        if (d == null || !d.contains("ACTIVITY_SNAPSHOT") || !d.contains("a2ui-surface")) return;
+        try {
+            JsonNode n = new com.fasterxml.jackson.databind.ObjectMapper().readTree(d);
+            String surfaceId = null;
+            for (JsonNode op : n.path("content").path("a2ui_operations")) {
+                JsonNode cs = op.path("createSurface");
+                if (cs.isObject()) {
+                    surfaceId = cs.path("surfaceId").asText(null);
+                    break;
+                }
+            }
+            if (surfaceId == null) {
+                String mid = n.path("messageId").asText("");
+                if (mid.startsWith("a2ui-")) surfaceId = mid.substring("a2ui-".length());
+            }
+            if (surfaceId != null && !surfaceId.isBlank()) {
+                threadStore.saveSurface(threadId, surfaceId, n.path("content").toString());
+            }
+        } catch (Exception ex) {
+            log.debug("surface persist skipped: {}", ex.getMessage());
+        }
+    }
+
+    private Flux<ServerSentEvent<String>> doRun(RunAgentInput input, String uid, String threadId, String runId) {
 
         // A2UI action callback (TASK §13): v1 log + v2 deterministic routing;
         // anything else becomes an A2UI_ACTION prompt for the agent.
@@ -307,10 +372,14 @@ public class AgUiProtocolService {
         return sseRaw(sb.toString());
     }
 
+    /**
+     * 需求1: threadId→sessionId 映射持久化在 {@link ChatThreadStore}；
+     * 复用前先存活校验（GET /api/session/{id}），失效（重启后 wedge / 404）
+     * 自动创建新 session 并重新绑定，避免整线程报废。
+     */
     private Mono<String> resolveOrCreateSession(String threadId) {
-        String existing = translator.resolveSession(threadId);
-        if (existing != null) return Mono.just(existing);
-        return webClient.post()
+        String existing = threadStore.resolveSession(threadId);
+        Mono<String> create = webClient.post()
                 .uri("/api/session")
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .bodyValue(Map.of())
@@ -319,8 +388,19 @@ public class AgUiProtocolService {
                 .map(node -> {
                     String sessionId = node.path("data").path("id").asText();
                     if (sessionId.isBlank()) throw new IllegalStateException("session create returned no id");
-                    translator.bindSession(threadId, sessionId);
+                    threadStore.bindSession(threadId, sessionId);
                     return sessionId;
+                });
+        if (existing == null) return create;
+        return webClient.get()
+                .uri("/api/session/{id}", existing)
+                .retrieve()
+                .toBodilessEntity()
+                .map(r -> existing)
+                .onErrorResume(e -> {
+                    log.warn("session {} for thread {} is stale ({}), recreating",
+                            existing, threadId, e.getMessage());
+                    return create;
                 });
     }
 

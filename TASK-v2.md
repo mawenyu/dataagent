@@ -13,6 +13,26 @@
 - 每个会话独立 threadId，切换会话时加载该会话历史消息并渲染
 - OpenCode 侧：确认 threadId→OpenCode session 的映射在 gateway 已正确隔离
 
+### [DONE] 2026-08-13 需求1 完成（实测证据）
+
+**实现**：
+- gateway 新增 `ChatThreadStore`（单文件 threads.json 原子写，零外部依赖，默认 `data/`，`agui.store-dir` 可配）：thread 元数据（标题取首条用户消息截断 30 字）+ threadId→sessionId 映射 + 每 thread 的 A2UI surface 快照（供历史回放重放看板）
+- REST API：`GET/POST /chat/threads`、`PATCH/DELETE /chat/threads/{id}`、`GET /chat/threads/{id}/messages`（实时从 OpenCode session 拉历史 → AG-UI Message[]：reasoning/assistant/toolCalls/tool 结果全转换；实测发现 OpenCode 历史"最新在前"且 user 文本在 m.text 含 prompt 包装，均已处理）
+- run 时自动建档 + 命名 + touch；ACTIVITY_SNAPSHOT 统一 tap 落盘
+- **session 失效自动重建**：复用前 GET /api/session/{id} 存活校验，404/异常则新建并 rebind（实测：注入 bogus sessionId → 日志 "stale … recreating" → run 正常完成 + 映射更新）
+- 前端 `useThreads`（API 权威 + localStorage 兜底）+ `ThreadSidebar`（列表/新建/切换/删除确认/双击重命名）+ App.vue 集成（CopilotChat :thread-id 驱动；run 结束后自动刷新列表拿新标题）；窄屏暂隐藏侧边栏（抽屉化在需求4）
+
+**实测**（curl 全链路 + 重启验证）：
+- 建 demo-A/demo-B 各发消息 → 列表标题自动生成、sessionId 各自绑定、历史各自隔离（A 红枫77 / B 青竹99）
+- demo-A 第二轮问"暗号甲是什么" → agent 答"红枫77"（上下文正确）
+- PATCH 重命名为"青竹暗号会话"、DELETE 删除均生效
+- gateway 重启后 threads + sessionId 映射完整保留
+- 前端 21 vitest 全绿（useThreads 8 + ThreadSidebar 5 等）；部署 bundle 静态校验含 thread-sidebar/dataagent.threads/chat/threads
+- gateway 53 测试全绿
+
+**已知边界**：session 失效重建后旧 session 的历史不再可读（新会话从零开始）；A2UI surface 历史回放按 thread 最后快照恢复。
+
+
 ## 需求 2：真实 Agent 化（移除一切写死/mock）
 - 排查 gateway 中所有写死/mock 逻辑：硬编码的 LLM 响应、mock 工具结果、demo 专用的假数据分支（如 `/ag-ui/a2ui-demo` 之类的演示端点）
 - 全部改为真实走 OpenCode → DeepSeek 的 agent 链路；a2uiAction 回传后的处理也要走真实 agent 续跑，而不是 Java 里 if/else 返回固定 surface

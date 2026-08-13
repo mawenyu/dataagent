@@ -1,9 +1,13 @@
 package com.example.gateway;
 
+import com.example.gateway.agui.ChatThreadStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.nio.file.Path;
 
 /**
  * Programmatic routing for the OpenCode AG-UI gateway.
@@ -26,5 +30,11 @@ public class GatewayConfig {
                         .and().not(p -> p.path("/agent/run"))
                         .uri(OPENCODE_SERVER))
                 .build();
+    }
+
+    /** 需求1: 会话持久化目录（默认 gateway 工作目录下 data/，可用 agui.store-dir 覆盖）。 */
+    @Bean
+    public ChatThreadStore chatThreadStore(@Value("${agui.store-dir:data}") String storeDir) {
+        return new ChatThreadStore(Path.of(storeDir));
     }
 }
