@@ -8,5 +8,5 @@ import { HttpAgent } from '@ag-ui/client'
  * No API keys in the browser; the gateway owns all downstream credentials.
  */
 export const dataAgent = new HttpAgent({
-  url: '/agui-api/opencode/ag-ui',
+  url: '/agui-api/agent/run',
 })

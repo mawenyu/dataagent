@@ -55,10 +55,8 @@ public class AgUiProtocolService {
     private final WebClient webClient;
     private final AguiEventTranslator translator;
     private final FrontendToolBridge toolBridge;
-    private final A2UiService a2UiService;
     private final A2UiBridgeService a2UiBridge;
     private final A2UiActionHandler actionHandler;
-    private final A2UiSurfaceRegistry surfaceRegistry;
     private final ThreadAccessPolicy threadAccessPolicy;
     private final Duration runIdleTimeout;
     private final String dataWorkspace;
@@ -68,56 +66,47 @@ public class AgUiProtocolService {
 
     /** Convenience constructor for tests — default everything, throwaway temp store. */
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
-                               FrontendToolBridge toolBridge, A2UiService a2UiService,
+                               FrontendToolBridge toolBridge,
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
-                               A2UiSurfaceRegistry surfaceRegistry,
                                ThreadAccessPolicy threadAccessPolicy) {
-        this(opencodeWebClient, translator, toolBridge, a2UiService, a2UiBridge, actionHandler,
-                surfaceRegistry, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
+        this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
                 DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
     }
 
     /** Convenience constructor for tests — custom idle timeout. */
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
-                               FrontendToolBridge toolBridge, A2UiService a2UiService,
+                               FrontendToolBridge toolBridge,
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
-                               A2UiSurfaceRegistry surfaceRegistry,
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout) {
-        this(opencodeWebClient, translator, toolBridge, a2UiService, a2UiBridge, actionHandler,
-                surfaceRegistry, threadAccessPolicy, runIdleTimeout, DEFAULT_DATA_WORKSPACE,
+        this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, runIdleTimeout, DEFAULT_DATA_WORKSPACE,
                 DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
     }
 
     /** Convenience constructor for tests — store given (需求1 persistence assertions). */
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
-                               FrontendToolBridge toolBridge, A2UiService a2UiService,
+                               FrontendToolBridge toolBridge,
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
-                               A2UiSurfaceRegistry surfaceRegistry,
                                ThreadAccessPolicy threadAccessPolicy,
                                ChatThreadStore threadStore) {
-        this(opencodeWebClient, translator, toolBridge, a2UiService, a2UiBridge, actionHandler,
-                surfaceRegistry, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
+        this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
                 DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore);
     }
 
     /** Convenience constructor for tests — custom timeout + workspace, default model. */
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
-                               FrontendToolBridge toolBridge, A2UiService a2UiService,
+                               FrontendToolBridge toolBridge,
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
-                               A2UiSurfaceRegistry surfaceRegistry,
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout, String dataWorkspace) {
-        this(opencodeWebClient, translator, toolBridge, a2UiService, a2UiBridge, actionHandler,
-                surfaceRegistry, threadAccessPolicy, runIdleTimeout, dataWorkspace,
+        this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, runIdleTimeout, dataWorkspace,
                 DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
-                               FrontendToolBridge toolBridge, A2UiService a2UiService,
+                               FrontendToolBridge toolBridge,
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
-                               A2UiSurfaceRegistry surfaceRegistry,
                                ThreadAccessPolicy threadAccessPolicy,
                                @org.springframework.beans.factory.annotation.Value("${agui.run-idle-timeout:PT120S}")
                                Duration runIdleTimeout,
@@ -131,10 +120,8 @@ public class AgUiProtocolService {
         this.webClient = opencodeWebClient;
         this.translator = translator;
         this.toolBridge = toolBridge;
-        this.a2UiService = a2UiService;
         this.a2UiBridge = a2UiBridge;
         this.actionHandler = actionHandler;
-        this.surfaceRegistry = surfaceRegistry;
         this.threadAccessPolicy = threadAccessPolicy;
         this.runIdleTimeout = runIdleTimeout;
         this.dataWorkspace = dataWorkspace;
@@ -213,45 +200,18 @@ public class AgUiProtocolService {
 
     private Flux<ServerSentEvent<String>> doRun(RunAgentInput input, String uid, String threadId, String runId) {
 
-        // A2UI action callback (TASK §13): v1 log + v2 deterministic routing;
-        // anything else becomes an A2UI_ACTION prompt for the agent.
+        // 需求2: A2UI action 回传一律走真实 agent 续跑（无任何 Java 侧 if/else
+        // 固定 surface）。action 被翻译成 A2UI_ACTION prompt，由 agent 判断并
+        // 用 render_a2ui 更新同名 surface。
         if (input.forwardedProps() != null && input.forwardedProps().containsKey("a2uiAction")) {
             Object rawAction = input.forwardedProps().get("a2uiAction");
             log.info("A2UI action received on thread {} (user={}): {}", threadId, uid, rawAction);
-            var parsed = actionHandler.parse(rawAction);
-            if (parsed.isPresent() && actionHandler.isDeterministic(parsed.get().name())) {
-                ServerSentEvent<String> runStarted = sseRaw("{\"type\":\"RUN_STARTED\",\"runId\":\"" + runId + "\",\"threadId\":\"" + threadId + "\"}");
-                ServerSentEvent<String> snapshot = actionHandler.handleDeterministic(uid, threadId, runId, parsed.get());
-                ServerSentEvent<String> runFinished = sseRaw("{\"type\":\"RUN_FINISHED\",\"runId\":\"" + runId + "\",\"threadId\":\"" + threadId + "\"}");
-                return Flux.concat(Flux.just(runStarted, snapshot, runFinished));
-            }
-            // needs agent judgment -> A2UI_ACTION prompt, normal agent run below
             StringBuilder p = new StringBuilder();
             if (a2UiBridge.hasA2uiContext(input.context())) {
                 p.append(a2UiBridge.buildServerToolSection(input.context())).append("\n\n");
             }
             p.append(actionHandler.buildAgentPrompt(rawAction));
             return runAgent(input, uid, threadId, runId, p.toString());
-        }
-
-        // Stage-10 fixed A2UI surface: deterministic trigger, no LLM call.
-        // "销售概览" -> short text + hardcoded 销售概览 surface.
-        String lastUser = extractLastUserMessage(input.messages());
-        if (lastUser != null && lastUser.contains("销售概览")) {
-            log.info("fixed A2UI surface requested on thread {}", threadId);
-            // §14: register the fixed surface so refresh_sales reuses its messageId
-            surfaceRegistry.register(uid, threadId, A2UiService.SALES_SURFACE_ID,
-                    A2UiService.DATA_AGENT_CATALOG_ID, null, null);
-            return Flux.concat(
-                    Flux.just(
-                            sseRaw("{\"type\":\"RUN_STARTED\",\"runId\":\"" + runId + "\",\"threadId\":\"" + threadId + "\"}"),
-                            textEvent("TEXT_MESSAGE_START", runId, threadId, "msg-fixed-intro", null),
-                            textEvent("TEXT_MESSAGE_CONTENT", runId, threadId, "msg-fixed-intro",
-                                    "这是今日销售概览（Java 硬编码 Surface，经 ACTIVITY_SNAPSHOT 下发）："),
-                            textEvent("TEXT_MESSAGE_END", runId, threadId, "msg-fixed-intro", null),
-                            a2UiService.salesOverviewSnapshot(runId, threadId, "今日销售额：123,456"),
-                            sseRaw("{\"type\":\"RUN_FINISHED\",\"runId\":\"" + runId + "\",\"threadId\":\"" + threadId + "\"}")
-                    ));
         }
 
         // AG-UI frontend-tool contract (see FrontendToolBridge):
@@ -268,7 +228,7 @@ public class AgUiProtocolService {
         } else {
             String userMessage = extractLastUserMessage(input.messages());
             if (userMessage == null || userMessage.isBlank()) {
-                return Flux.just(a2UiService.salesOverviewSnapshot(runId, threadId, "未收到用户输入"));
+                return Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"empty user message\"}"));
             }
             // Prompt assembly: client-tool contract (browser tools) + server-tool
             // contract (render_a2ui, only when the client advertised A2UI via
@@ -338,38 +298,6 @@ public class AgUiProtocolService {
                     log.warn("failed to abort OpenCode session {}: {}", sessionId, e.getMessage());
                     return Mono.empty();
                 });
-    }
-
-    /** Demo entry: emit the hardcoded A2UI sales-overview surface without any LLM call. */
-    public Flux<ServerSentEvent<String>> a2uiDemo() {
-        String threadId = "demo-thread";
-        String runId = "demo-run-" + UUID.randomUUID();
-        return Flux.concat(
-                Flux.just(sseRaw("{\"type\":\"RUN_STARTED\",\"runId\":\"" + runId + "\",\"threadId\":\"" + threadId + "\"}")),
-                Flux.just(a2UiService.salesOverviewSnapshot(runId, threadId, "今日销售额：123,456")),
-                Flux.just(sseRaw("{\"type\":\"RUN_FINISHED\",\"runId\":\"" + runId + "\",\"threadId\":\"" + threadId + "\"}"))
-        );
-    }
-
-    /** Build a TEXT_MESSAGE_* event with a fixed messageId (used by hardcoded demo runs). */
-    private ServerSentEvent<String> textEvent(String type, String runId, String threadId,
-                                              String messageId, String delta) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"type\":\"").append(type)
-                .append("\",\"runId\":\"").append(runId)
-                .append("\",\"threadId\":\"").append(threadId)
-                .append("\",\"messageId\":\"").append(messageId).append("\"");
-        if ("TEXT_MESSAGE_START".equals(type)) sb.append(",\"role\":\"assistant\"");
-        if (delta != null) {
-            sb.append(",\"delta\":");
-            try {
-                sb.append(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(delta));
-            } catch (Exception e) {
-                sb.append("\"\"" );
-            }
-        }
-        sb.append("}");
-        return sseRaw(sb.toString());
     }
 
     /**

@@ -146,9 +146,9 @@ class AgUiProtocolServiceTest {
         A2UiBridgeService bridge = new A2UiBridgeService(a2UiService, surfaceRegistry);
         FrontendToolBridge toolBridge = new FrontendToolBridge();
         AguiEventTranslator translator = new AguiEventTranslator(toolBridge, bridge);
-        A2UiActionHandler actionHandler = new A2UiActionHandler(a2UiService, surfaceRegistry);
-        service = new AgUiProtocolService(stub.client(), translator, toolBridge, a2UiService,
-                bridge, actionHandler, surfaceRegistry, new AllowAllThreadAccessPolicy(), threadStore);
+        A2UiActionHandler actionHandler = new A2UiActionHandler();
+        service = new AgUiProtocolService(stub.client(), translator, toolBridge,
+                bridge, actionHandler, new AllowAllThreadAccessPolicy(), threadStore);
     }
 
     // ------------------------------------------------------------ helpers ---
@@ -269,15 +269,15 @@ class AgUiProtocolServiceTest {
     }
 
     @Test
-    void fixedA2uiSurfaceTriggerSkipsLlm() {
+    void 需求2_销售概览触发词也走真实LLM() {
+        // 原来的 Java 硬编码 surface 分支已删除 —— 任何用户消息都走 OpenCode
+        stub.eventStreams.add(textStep("m1", "好的，来看销售概览"));
         List<JsonNode> events = run(userMsg("t-fixed", "给我看销售概览"));
         List<String> types = types(events);
-        assertTrue(types.contains("ACTIVITY_SNAPSHOT"));
-        assertEquals(0, stub.sessionCreates, "fixed surface must not call OpenCode");
-        JsonNode snap = events.stream().filter(e -> "ACTIVITY_SNAPSHOT".equals(e.path("type").asText())).findFirst().orElseThrow();
-        assertEquals("a2ui-sales-overview", snap.path("messageId").asText());
-        assertEquals("a2ui-surface", snap.path("activityType").asText());
-        assertTrue(snap.path("replace").asBoolean());
+        assertEquals(1, stub.sessionCreates, "必须走真实 OpenCode，不再有硬编码 surface 分支");
+        assertTrue(stub.prompts.get(0).contains("销售概览"));
+        assertFalse(types.contains("ACTIVITY_SNAPSHOT"), "无 render_a2ui 调用时不应有 surface");
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1));
     }
 
     @Test
@@ -306,49 +306,50 @@ class AgUiProtocolServiceTest {
     }
 
     @Test
-    void buttonClickActionIsDeterministicAndReusesMessageId() {
-        // run 1: fixed surface registers the surface for user anonymous
-        run(userMsg("t-act", "给我看销售概览"));
-        // run 2: simulate the browser's forwardedProps.a2uiAction
+    void 需求2_a2uiAction一律走真实agent续跑() {
+        // 原来的 deterministic 路由（refresh_sales → Java 固定 surface）已删除；
+        // action 被翻译成 A2UI_ACTION prompt 交给 agent 判断
+        stub.eventStreams.add(textStep("m1", "看板已更新"));
         RunAgentInput actionRun = new RunAgentInput("t-act", "run-act", null,
-                List.of(Map.of("role", "user", "content", "给我看销售概览")), null, null,
+                List.of(Map.of("role", "user", "content", "x")), null, null,
                 Map.of("a2uiAction", Map.of("version", "v0.9", "action", Map.of(
                         "name", "refresh_sales", "surfaceId", "sales-overview",
                         "sourceComponentId", "refreshBtn", "timestamp", "t", "context", Map.of()))));
         List<JsonNode> events = run(actionRun);
-        List<String> types = types(events);
-        assertTrue(types.contains("ACTIVITY_SNAPSHOT"));
-        assertEquals(0, stub.sessionCreates, "deterministic action must not call OpenCode");
-        JsonNode snap = events.stream().filter(e -> "ACTIVITY_SNAPSHOT".equals(e.path("type").asText())).findFirst().orElseThrow();
-        assertEquals("a2ui-sales-overview", snap.path("messageId").asText(), "surface update reuses messageId");
-        assertTrue(snap.toString().contains("已刷新"));
+        assertEquals(1, stub.sessionCreates, "action 必须走真实 OpenCode agent 续跑");
+        assertTrue(stub.prompts.get(0).contains("A2UI_ACTION"), "action 翻译为 agent prompt");
+        assertTrue(stub.prompts.get(0).contains("refresh_sales"));
+        assertEquals("RUN_FINISHED", types(events).get(types(events).size() - 1));
     }
 
     @Test
-    void surfaceUpdatesKeepStableMessageIdAcrossRuns() {
-        run(userMsg("t-upd", "给我看销售概览"));
-        for (int i = 0; i < 2; i++) {
-            RunAgentInput actionRun = new RunAgentInput("t-upd", "run-u" + i, null,
-                    List.of(Map.of("role", "user", "content", "x")), null, null,
-                    Map.of("a2uiAction", Map.of("action", Map.of(
-                            "name", "refresh_sales", "surfaceId", "sales-overview",
-                            "sourceComponentId", "b", "timestamp", "t", "context", Map.of()))));
-            List<JsonNode> events = run(actionRun);
-            JsonNode snap = events.stream().filter(e -> "ACTIVITY_SNAPSHOT".equals(e.path("type").asText())).findFirst().orElseThrow();
-            assertEquals("a2ui-sales-overview", snap.path("messageId").asText());
-        }
+    void surfaceUpdatesKeepStableMessageIdAcrossRuns() throws Exception {
+        // 真实路径：agent 两次 render_a2ui 同一 surfaceId → registry 保证 messageId 稳定（原地更新）
+        A2UiService a2UiService = new A2UiService();
+        A2UiBridgeService bridge = new A2UiBridgeService(a2UiService, surfaceRegistry);
+        var args = MAPPER.valueToTree(Map.of("surfaceId", "sales-card",
+                "components", List.of(Map.of("component", "MetricCard", "id", "root", "title", "t", "value", "v"))));
+        var snap1 = bridge.execute("anonymous", "run-1", "t-upd", args).orElseThrow();
+        var snap2 = bridge.execute("anonymous", "run-2", "t-upd", args).orElseThrow();
+        String mid1 = MAPPER.readTree(snap1.data()).path("messageId").asText();
+        String mid2 = MAPPER.readTree(snap2.data()).path("messageId").asText();
+        assertEquals(mid1, mid2, "same surfaceId → stable messageId (in-place update)");
     }
 
     @Test
     void twoUsersHaveIsolatedSurfaces() {
         // same threadId + surfaceId, different users -> separate registry entries
-        run(userMsg("t-iso", "给我看销售概览")); // anonymous
-        service.run(userMsg("t-iso", "给我看销售概览"), "alice").collectList().block();
-        assertTrue(surfaceRegistry.find("anonymous", "t-iso", A2UiService.SALES_SURFACE_ID).isPresent());
-        assertTrue(surfaceRegistry.find("alice", "t-iso", A2UiService.SALES_SURFACE_ID).isPresent());
+        A2UiService a2UiService = new A2UiService();
+        A2UiBridgeService bridge = new A2UiBridgeService(a2UiService, surfaceRegistry);
+        var args = MAPPER.valueToTree(Map.of("surfaceId", "sales-card",
+                "components", List.of(Map.of("component", "MetricCard", "id", "root", "title", "t", "value", "v"))));
+        bridge.execute("anonymous", "run-1", "t-iso", args);
+        bridge.execute("alice", "run-1", "t-iso", args);
+        assertTrue(surfaceRegistry.find("anonymous", "t-iso", "sales-card").isPresent());
+        assertTrue(surfaceRegistry.find("alice", "t-iso", "sales-card").isPresent());
         assertNotEquals(
-                surfaceRegistry.find("anonymous", "t-iso", A2UiService.SALES_SURFACE_ID).orElseThrow().userId(),
-                surfaceRegistry.find("alice", "t-iso", A2UiService.SALES_SURFACE_ID).orElseThrow().userId());
+                surfaceRegistry.find("anonymous", "t-iso", "sales-card").orElseThrow().userId(),
+                surfaceRegistry.find("alice", "t-iso", "sales-card").orElseThrow().userId());
     }
 
     @Test
@@ -470,10 +471,10 @@ class AgUiProtocolServiceTest {
         AguiEventTranslator translator = new AguiEventTranslator(new FrontendToolBridge(),
                 new A2UiBridgeService(new A2UiService(), surfaceRegistry));
         AgUiProtocolService shortTimeout = new AgUiProtocolService(stub.client(), translator,
-                new FrontendToolBridge(), new A2UiService(),
+                new FrontendToolBridge(),
                 new A2UiBridgeService(new A2UiService(), surfaceRegistry),
-                new A2UiActionHandler(new A2UiService(), surfaceRegistry),
-                surfaceRegistry, new AllowAllThreadAccessPolicy(), java.time.Duration.ofMillis(300));
+                new A2UiActionHandler(),
+                new AllowAllThreadAccessPolicy(), java.time.Duration.ofMillis(300));
         List<JsonNode> events = shortTimeout.run(userMsg("t-hang", "hi"))
                 .map(ServerSentEvent::data)
                 .map(d -> {
@@ -554,10 +555,10 @@ class AgUiProtocolServiceTest {
         AgUiProtocolService custom = new AgUiProtocolService(stub.client(),
                 new AguiEventTranslator(new FrontendToolBridge(),
                         new A2UiBridgeService(new A2UiService(), surfaceRegistry)),
-                new FrontendToolBridge(), new A2UiService(),
+                new FrontendToolBridge(),
                 new A2UiBridgeService(new A2UiService(), surfaceRegistry),
-                new A2UiActionHandler(new A2UiService(), surfaceRegistry),
-                surfaceRegistry, new AllowAllThreadAccessPolicy(),
+                new A2UiActionHandler(),
+                new AllowAllThreadAccessPolicy(),
                 java.time.Duration.ofSeconds(10), "/tmp/ws", "deepseek-reasoner", "deepseek",
                 new ChatThreadStore(storeDir));
         stub.eventStreams.add(textStep("m1", "ok"));
@@ -625,8 +626,8 @@ class AgUiProtocolServiceTest {
         FrontendToolBridge toolBridge = new FrontendToolBridge();
         AguiEventTranslator translator = new AguiEventTranslator(toolBridge, bridge);
         AgUiProtocolService denying = new AgUiProtocolService(stub.client(), translator, toolBridge,
-                a2UiService, bridge, new A2UiActionHandler(a2UiService, surfaceRegistry),
-                surfaceRegistry, (userId, threadId) -> false);
+                bridge, new A2UiActionHandler(),
+                (userId, threadId) -> false);
         List<JsonNode> events = denying.run(userMsg("t-deny", "hi"), "mallory")
                 .map(ServerSentEvent::data)
                 .map(d -> {

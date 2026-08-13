@@ -126,45 +126,4 @@ public class A2UiService {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Stage-10 fixed demo surface: 销售概览
-    // ------------------------------------------------------------------
-
-    public static final String SALES_SURFACE_ID = "sales-overview";
-    public static final String SALES_MESSAGE_ID = "a2ui-sales-overview";
-
-    /**
-     * The hardcoded minimal surface: Card > Column > Text("销售概览") +
-     * Text bound to the data model (/salesLine) + a refresh Button whose
-     * A2UI action (refresh_sales) loops back via forwardedProps.a2uiAction
-     * (TASK §13). Exercises createSurface + updateComponents +
-     * updateDataModel in one snapshot.
-     */
-    public List<ObjectNode> salesOverviewOps(String salesLine) {
-        ArrayNode comps = components(
-                component("Card", "root", Map.of("child", "col")),
-                component("Column", "col", Map.of("children", List.of("title", "value", "refreshBtn"))),
-                component("Text", "title", Map.of("text", "销售概览", "variant", "h3")),
-                component("Text", "value", Map.of(
-                        "text", Map.of("path", "salesLine"),
-                        "variant", "h2")),
-                component("Button", "refreshBtn", Map.of(
-                        "child", "refreshLabel",
-                        "variant", "primary",
-                        "action", Map.of("event", Map.of(
-                                "name", "refresh_sales",
-                                "context", Map.of())))),
-                component("Text", "refreshLabel", Map.of("text", "刷新销售额"))
-        );
-        return List.of(
-                createSurface(SALES_SURFACE_ID, DATA_AGENT_CATALOG_ID),
-                updateComponents(SALES_SURFACE_ID, comps),
-                updateDataModel(SALES_SURFACE_ID, "/",
-                        MAPPER.valueToTree(Map.of("salesLine", salesLine)))
-        );
-    }
-
-    public ServerSentEvent<String> salesOverviewSnapshot(String runId, String threadId, String salesLine) {
-        return activitySnapshot(runId, threadId, SALES_MESSAGE_ID, salesOverviewOps(salesLine));
-    }
 }

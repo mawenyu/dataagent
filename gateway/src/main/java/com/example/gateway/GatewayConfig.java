@@ -11,19 +11,18 @@ import org.springframework.http.HttpHeaders;
 import java.nio.file.Path;
 
 /**
- * Programmatic routing for the OpenCode AG-UI gateway.
+ * Programmatic routing for the DataAgent gateway.
  *
- * <p>All requests arriving on port 8090 are forwarded to
- * {@code http://localhost:4096}. The route is explicit so the downstream
- * target is visible in Java code rather than hidden entirely in YAML.</p>
+ * <p>Requests not handled by local controllers are forwarded to the OpenCode
+ * server. The downstream target comes from {@code opencode.server.url}
+ * (application.yml) — no hardcoded host/port in Java.</p>
  */
 @Configuration
 public class GatewayConfig {
 
-    private static final String OPENCODE_SERVER = "http://localhost:4096";
-
     @Bean
-    public RouteLocator opencodeRoute(RouteLocatorBuilder builder) {
+    public RouteLocator opencodeRoute(RouteLocatorBuilder builder,
+                                      @Value("${opencode.server.url}") String opencodeUrl) {
         return builder.routes()
                 .route("opencode-server", r -> r
                         // The /agent/run endpoint is handled locally by AgentRunController.
@@ -32,7 +31,7 @@ public class GatewayConfig {
                         // 401 透传会让浏览器弹 Basic 认证框 —— 剥掉挑战头
                         // （正确链路是 gateway 的 WebClient 带 opencode.server.* 认证）
                         .filters(f -> f.removeResponseHeader(HttpHeaders.WWW_AUTHENTICATE))
-                        .uri(OPENCODE_SERVER))
+                        .uri(opencodeUrl))
                 .build();
     }
 

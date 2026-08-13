@@ -10,7 +10,7 @@ PASS=0; FAIL=0
 run_turn() {
   local run_id="$1" msg="$2" out
   out="/tmp/mt-$THREAD-$run_id.sse"
-  timeout 170 curl -sN "$BASE/opencode/ag-ui" -H 'Content-Type: application/json' \
+  timeout 170 curl -sN "$BASE/agent/run" -H 'Content-Type: application/json' \
     -d "{\"threadId\":\"$THREAD\",\"runId\":\"$run_id\",\"messages\":[{\"role\":\"user\",\"content\":\"$msg\"}]}" \
     > "$out"
   python3 - "$out" <<'EOF'

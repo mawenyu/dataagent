@@ -35,7 +35,7 @@
     <div>
       <div class="card">
         <h2>Run 控制</h2>
-        <div class="kv">agentId: <b>default</b>（HttpAgent → POST /agui-api/opencode/ag-ui）</div>
+        <div class="kv">agentId: <b>default</b>（HttpAgent → POST /agui-api/agent/run）</div>
         <div class="row"><label style="font-size:13px;white-space:nowrap">threadId</label>
           <input id="threadId" /></div>
         <div class="row"><textarea id="msg" rows="2" placeholder="消息，例如：分析本月销售情况 / 给我看销售概览">分析本月销售情况</textarea></div>
@@ -91,9 +91,9 @@ function pushEvent(ev) {
 async function runAgent(body) {
   $('connPill').className = 'pill on'; $('connPill').textContent = 'running';
   $('lastInput').textContent = JSON.stringify(body, null, 2);
-  pushEvent(JSON.stringify({ type: '>>> POST /opencode/ag-ui' }));
+  pushEvent(JSON.stringify({ type: '>>> POST /agent/run' }));
   try {
-    const res = await fetch('/agui-api/opencode/ag-ui', {
+    const res = await fetch('/agui-api/agent/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
       body: JSON.stringify(body),
