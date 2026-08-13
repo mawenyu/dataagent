@@ -42,6 +42,12 @@
 
 ## 需求 2：真实 Agent 化（移除一切写死/mock）
 
+### [DONE] 2026-08-13（commit d8f8bb5，目标形态直达，无历史残留）
+- 删除：`/opencode/ag-ui/a2ui-demo` 演示端点、"销售概览"硬编码 surface 分支、A2UiActionHandler deterministic 路由（refresh_sales 等 Java 假数据）、A2UiService 演示方法、AguiService+AgentRunRequest（与 AgUiProtocolService 职责重复的旧透传层）、旧 React `frontend/` 目录
+- a2uiAction 回传一律 A2UI_ACTION prompt 走真实 agent 续跑（单测断言 A2UI_ACTION 入 prompt 且创建真实 session）
+- 测试改写为目标形态后 gateway 55 全绿；实测 debug 页 `/agui/dataagent/copilotkit-test.html` 200 且走真实链路
+- **硬编码排查结论**：前端/fork/构建产物均无浏览器侧绝对地址（用户本地 :4096 直连来自旧交付包）；gateway 唯一硬编码（GatewayConfig 路由目标）已改读 `opencode.server.url`
+
 > **插队修复 [DONE] 2026-08-13：OpenCode basic 认证支持（commit e9ea915）**
 > 用户本地以 OPENCODE_SERVER_USERNAME/PASSWORD 启动 OpenCode 后，gateway 无认证头 → 401 + WWW-Authenticate 透传 → 浏览器弹 Basic 认证框。
 > 修复：application.yml 新增 `opencode.server.username/password`（可空明文）；WebClientConfig 有凭证时带 Authorization: Basic 默认头；代理路由剥掉 WWW-Authenticate 兜底。
@@ -56,6 +62,12 @@
 - 新增会话管理 API：`/agui-api/chat/threads`（GET 列表 / POST 新建 / DELETE 删除 / PATCH 重命名），`/agui-api/chat/threads/{id}/messages`（GET 历史）
 - nginx 配置 `/etc/nginx/` 中相关 location 同步更新；改完 `nginx -t && systemctl reload nginx`
 - 兼容策略：旧 `/opencode/ag-ui` 可保留 302 或保留一段时间，但前端必须用新 URL
+
+### [DONE] 2026-08-13（commit d8f8bb5，按用户架构决策：不保留旧路径，直接删除）
+- 标准 AG-UI 端点：`/opencode/ag-ui` → **`/agent/run`**（前端 HttpAgent、debug 页、测试脚本同步改；全局 grep 代码零残留）
+- 会话管理 API：`/chat/threads`（GET/POST/PATCH/DELETE）+ `/chat/threads/{id}/messages`（需求1 已落地）
+- nginx 两处站点配置本就按 `/agui-api/` 前缀透传（无 opencode 特定路径），无需改动；实测 `http://101.34.246.179/agui-api/agent/run` 公网 RUN_FINISHED、vite dev :3001 同路径 RUN_FINISHED
+
 
 ## 需求 4：UI 绚丽化（对齐 CopilotKit adk-dashboard / a2ui 示例水准）
 - 浅色 B2B SaaS 主题（#f8fafc 底、白卡、#6366f1 靛蓝 accent），参考 `ref/adk-dashboard/app_globals.css`
