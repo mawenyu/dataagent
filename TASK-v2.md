@@ -34,6 +34,12 @@
 
 
 ## 需求 2：真实 Agent 化（移除一切写死/mock）
+
+> **插队修复 [DONE] 2026-08-13：OpenCode basic 认证支持（commit e9ea915）**
+> 用户本地以 OPENCODE_SERVER_USERNAME/PASSWORD 启动 OpenCode 后，gateway 无认证头 → 401 + WWW-Authenticate 透传 → 浏览器弹 Basic 认证框。
+> 修复：application.yml 新增 `opencode.server.username/password`（可空明文）；WebClientConfig 有凭证时带 Authorization: Basic 默认头；代理路由剥掉 WWW-Authenticate 兜底。
+> 实测：4098 起带认证 opencode（直连 401 + 挑战头）→ 一次性 gateway(8091) 带凭证发完整 RunAgentInput → 200 全链跑完（reasoning + RUN_FINISHED）；本地无认证回归 200 正常。
+
 - 排查 gateway 中所有写死/mock 逻辑：硬编码的 LLM 响应、mock 工具结果、demo 专用的假数据分支（如 `/ag-ui/a2ui-demo` 之类的演示端点）
 - 全部改为真实走 OpenCode → DeepSeek 的 agent 链路；a2uiAction 回传后的处理也要走真实 agent 续跑，而不是 Java 里 if/else 返回固定 surface
 - 保留 debug 页 `/dataagent/copilotkit-test` 不动
