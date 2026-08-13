@@ -6,8 +6,8 @@ opencode:
     url: http://localhost:4096
     # OpenCode server 以 OPENCODE_SERVER_USERNAME/PASSWORD 启动时在此配置；
     # 留空表示无认证（本地默认）。明文即可（内网组件间凭证）。
-    username: ""
-    password: ""
+    username: "opencode"
+    password: "6EUNdhPwmwXP2HBalxmNKAjmUzW8WzdRHrH8iEhSFT0"
 
 agui:
   # deepseek-reasoner streams thinking (session.next.reasoning.*) so the UI can

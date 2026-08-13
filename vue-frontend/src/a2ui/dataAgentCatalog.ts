@@ -20,6 +20,9 @@ const bindable = (t: z.ZodTypeAny) => z.union([t, z.object({ path: z.string() })
 const boundString = bindable(z.string())
 const rowData = z.array(z.record(z.string(), z.any()))
 
+// chart-1~5 色板（对齐 ref/adk-dashboard 设计系统）
+export const CHART_PALETTE = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+
 // ---------------------------------------------------------------- styles ---
 const cardStyle = {
   background: '#ffffff',
@@ -46,7 +49,7 @@ const MetricCard = createVueComponent(
   ({ props }: any) => {
     const trendColor =
       props.trend === 'down' ? '#ef4444' : props.trend === 'flat' ? '#6b7280' : '#10b981'
-    return h('div', { style: cardStyle }, [
+    return h('div', { class: 'da-card', style: cardStyle }, [
       h('p', { style: titleStyle }, String(props.title ?? '')),
       h('p', { style: valueStyle }, String(props.value ?? '')),
       props.delta != null
@@ -71,7 +74,7 @@ const DataTable = createVueComponent(
     const rows: any[][] = props.rows ?? []
     const th = { textAlign: 'left' as const, fontSize: '12px', color: '#6b7280', padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }
     const td = { fontSize: '13px', color: '#374151', padding: '6px 10px', borderBottom: '1px solid #f1f5f9' }
-    return h('div', { style: { ...cardStyle, overflowX: 'auto' } }, [
+    return h('div', { class: 'da-card', style: { ...cardStyle, overflowX: 'auto' } }, [
       props.title ? h('p', { style: titleStyle }, String(props.title)) : null,
       h('table', { style: { width: '100%', borderCollapse: 'collapse' } }, [
         h('thead', [h('tr', columns.map((c) => h('th', { style: th, key: c }, c)))]),
@@ -90,7 +93,7 @@ const DataTable = createVueComponent(
 interface ChartProps { title?: string; xField: string; yField: string; data: Record<string, any>[] }
 
 function chartFrame(title: string | undefined, plot: VNode) {
-  return h('div', { style: cardStyle }, [
+  return h('div', { class: 'da-card', style: cardStyle }, [
     title ? h('p', { style: titleStyle }, title) : null,
     plot,
   ])
@@ -110,7 +113,7 @@ function renderBarChart(props: ChartProps) {
     const x = padL + i * barW + barW * 0.15
     return [
       h('rect', {
-        key: 'b' + i, x, y: H - 20 - bh, width: barW * 0.7, height: bh, rx: 3, fill: '#6366f1',
+        key: 'b' + i, x, y: H - 20 - bh, width: barW * 0.7, height: bh, rx: 3, fill: CHART_PALETTE[i % CHART_PALETTE.length],
       }),
       h('text', {
         key: 'l' + i, x: x + barW * 0.35, y: H - 6, 'text-anchor': 'middle',
@@ -176,7 +179,7 @@ const InsightCard = createVueComponent(
     }),
   } as any,
   ({ props }: any) =>
-    h('div', { style: { ...cardStyle, borderLeft: '4px solid #6366f1', background: '#eef2ff' } }, [
+    h('div', { class: 'da-card', style: { ...cardStyle, borderLeft: '4px solid #6366f1', background: '#eef2ff' } }, [
       h('p', { style: { ...titleStyle, color: '#4338ca' } }, String(props.title ?? '')),
       h('p', { style: { fontSize: '13px', color: '#374151', margin: 0 } }, String(props.text ?? '')),
     ]),
@@ -188,7 +191,7 @@ const WarningCard = createVueComponent(
     schema: z.object({ title: boundString, text: boundString }),
   } as any,
   ({ props }: any) =>
-    h('div', { style: { ...cardStyle, borderLeft: '4px solid #f59e0b', background: '#fffbeb' } }, [
+    h('div', { class: 'da-card', style: { ...cardStyle, borderLeft: '4px solid #f59e0b', background: '#fffbeb' } }, [
       h('p', { style: { ...titleStyle, color: '#b45309' } }, String(props.title ?? '')),
       h('p', { style: { fontSize: '13px', color: '#374151', margin: 0 } }, String(props.text ?? '')),
     ]),

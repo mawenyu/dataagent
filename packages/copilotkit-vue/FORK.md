@@ -34,7 +34,12 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
    CopilotChat (direct-agent multi-session setups).
 7. `src/v2/hooks/index.ts` — re-export `getThreadClone` so direct-agent apps
    can write loaded history into the per-thread clone that CopilotChat renders.
-8. Packaging only (not shipped to npm): `package.json` name stays
+8. `src/v2/components/chat/CopilotChatView.vue` — welcome-screen gating drops
+   the `!hasExplicitThreadId` condition. In direct-agent setups an explicit
+   threadId with zero messages is a fresh chat and must show the welcome
+   screen (upstream assumes explicit threadId implies a runtime /connect
+   history replay).
+9. Packaging only (not shipped to npm): `package.json` name stays
    `@copilotkit/vue`, version `1.67.1-fork.1`, `workspace:*` deps rewritten to
    pinned published versions, devDeps trimmed; `tsconfig.json` inlined
    (`@copilotkit/typescript-config` removed).

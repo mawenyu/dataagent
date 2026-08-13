@@ -55,6 +55,21 @@ const frontendTools = [
   },
 ]
 
+// 需求4: 侧边栏可折叠（移动端抽屉化）
+const sidebarOpen = ref(true)
+function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
+function closeSidebarOnMobile() {
+  if (window.innerWidth <= 720) sidebarOpen.value = false
+}
+onMounted(() => { if (window.innerWidth <= 720) sidebarOpen.value = false })
+
+// 需求4: 空会话欢迎页的建议问题
+const welcomeSuggestions = [
+  { title: '本月销售分析', desc: '总销售额 / 区域排名 / 品类结构', prompt: '分析本月销售情况' },
+  { title: '销售看板', desc: '指标卡 + 柱状图直观呈现', prompt: '分析本月各区域销售额，并用图表看板展示' },
+  { title: '趋势与异常', desc: '按日趋势、峰值与低谷解读', prompt: '本月按日销售趋势如何？指出峰值和异常低谷' },
+]
+
 // 需求7-6: run 超时/失败时给用户明确提示（而不是无声卡死），告知可重试
 function handleChatError({ error }: { error: Error }) {
   pushToast({
@@ -69,6 +84,7 @@ function handleChatError({ error }: { error: Error }) {
   <div class="page">
     <header class="topbar">
       <div class="brand">
+        <button class="sidebar-toggle" title="折叠/展开会话栏" @click="toggleSidebar">☰</button>
         <div class="logo" aria-hidden="true">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -101,20 +117,67 @@ function handleChatError({ error }: { error: Error }) {
         >
           <DefaultToolRender />
           <div class="chat-layout">
-            <ThreadSidebar
-              :threads="threadsApi.threads.value"
-              :current-id="threadsApi.currentId.value"
-              @new="threadsApi.createNew()"
-              @switch="threadsApi.switchTo($event)"
-              @remove="threadsApi.remove($event)"
-              @rename="(id: string, title: string) => threadsApi.rename(id, title)"
-            />
+            <Transition name="drawer">
+              <ThreadSidebar
+                v-if="sidebarOpen"
+                :threads="threadsApi.threads.value"
+                :current-id="threadsApi.currentId.value"
+                @new="threadsApi.createNew()"
+                @switch="threadsApi.switchTo($event); closeSidebarOnMobile()"
+                @remove="threadsApi.remove($event)"
+                @rename="(id: string, title: string) => threadsApi.rename(id, title)"
+              />
+            </Transition>
+            <div v-if="sidebarOpen" class="drawer-backdrop" @click="toggleSidebar"></div>
             <CopilotChat
               agent-id="default"
               class="chat"
               :thread-id="threadsApi.currentId.value"
               :on-error="handleChatError"
-            />
+            >
+              <template #welcome-screen="{ modelValue, isRunning, onUpdateModelValue, onSubmitMessage }">
+                <div class="welcome" data-testid="welcome-screen">
+                  <div class="welcome-logo" aria-hidden="true">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="4" y1="20" x2="4" y2="12" />
+                      <line x1="10" y1="20" x2="10" y2="6" />
+                      <line x1="16" y1="20" x2="16" y2="14" />
+                      <line x1="22" y1="20" x2="22" y2="9" />
+                    </svg>
+                  </div>
+                  <h2>DataAgent 数据分析助手</h2>
+                  <p class="welcome-sub">用自然语言分析 workspace 里的数据，自动生成图表看板</p>
+                  <div class="welcome-grid">
+                    <button
+                      v-for="sg in welcomeSuggestions"
+                      :key="sg.title"
+                      class="welcome-card"
+                      @click="onSubmitMessage(sg.prompt)"
+                    >
+                      <strong>{{ sg.title }}</strong>
+                      <span>{{ sg.desc }}</span>
+                    </button>
+                  </div>
+                  <!-- welcome-screen 槽替换整个视图（含输入框），所以这里自绘输入区 -->
+                  <div class="welcome-input">
+                    <textarea
+                      :value="modelValue"
+                      placeholder="输入你的数据问题，回车发送…"
+                      rows="1"
+                      :disabled="isRunning"
+                      @input="onUpdateModelValue(($event.target as HTMLTextAreaElement).value)"
+                      @keydown.enter.exact.prevent="onSubmitMessage(modelValue)"
+                    ></textarea>
+                    <button
+                      class="welcome-send"
+                      :disabled="isRunning || !modelValue || !modelValue.trim()"
+                      @click="onSubmitMessage(modelValue)"
+                    >发送</button>
+                  </div>
+                </div>
+              </template>
+            </CopilotChat>
           </div>
         </CopilotKitProvider>
       </div>
@@ -254,9 +317,149 @@ body {
 .chat { flex: 1; min-height: 0; min-width: 0; }
 .chat-layout { flex: 1; min-height: 0; display: flex; }
 
-/* 需求1 移动端基本可用：窄屏时侧边栏收起（抽屉化在需求4完善） */
+/* ---- 需求4: 侧边栏折叠/抽屉 ---- */
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: #4b5563;
+  font-size: 15px;
+  cursor: pointer;
+  margin-right: 4px;
+  transition: background 0.15s ease;
+}
+.sidebar-toggle:hover { background: var(--muted); }
+.chat-layout { position: relative; }
+.drawer-enter-active, .drawer-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
+.drawer-enter-from, .drawer-leave-to { transform: translateX(-12px); opacity: 0; }
+.drawer-backdrop { display: none; }
+
 @media (max-width: 720px) {
-  .chat-layout .sidebar { display: none; }
+  .chat-layout .sidebar {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    z-index: 30;
+    box-shadow: 4px 0 24px rgba(15, 23, 42, 0.12);
+  }
+  .chat-layout .drawer-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    background: rgba(15, 23, 42, 0.35);
+  }
+}
+
+/* ---- 需求4: A2UI 卡片悬停阴影过渡 ---- */
+.da-card {
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+.da-card:hover {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+/* ---- 需求4: 空会话欢迎页 ---- */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px 32px;
+  min-height: 100%;
+}
+.welcome-input {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 28px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.welcome-input:focus-within { border-color: #c7d2fe; box-shadow: 0 0 0 3px var(--ring); }
+.welcome-input textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 14px;
+  padding: 8px 10px;
+  font-family: inherit;
+  color: var(--foreground);
+}
+.welcome-send {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.welcome-send:hover:not(:disabled) { background: #4f46e5; }
+.welcome-send:disabled { opacity: 0.45; cursor: not-allowed; }
+.welcome-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+  margin-bottom: 20px;
+}
+.welcome h2 { font-size: 20px; margin: 0 0 8px; color: #111827; letter-spacing: -0.01em; }
+.welcome-sub { font-size: 14px; color: var(--muted-foreground); margin: 0 0 28px; }
+.welcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 640px;
+}
+.welcome-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.welcome-card:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+  transform: translateY(-2px);
+}
+.welcome-card strong { font-size: 14px; color: #111827; }
+.welcome-card span { font-size: 12.5px; color: var(--muted-foreground); }
+
+/* ---- shimmer 加载动画（suggestion/加载占位通用） ---- */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.2s infinite linear;
 }
 
 /* ---- Toasts (showNotification frontend tool) ---- */

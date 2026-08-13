@@ -194,8 +194,10 @@ const shouldShowWelcomeScreen = computed(
   () =>
     props.messages.length === 0 &&
     props.welcomeScreen !== false &&
-    !props.isConnecting &&
-    !props.hasExplicitThreadId,
+    !props.isConnecting,
+  // FORK CHANGE: dropped `!props.hasExplicitThreadId` — in direct-agent setups
+  // (no runtime /connect) an explicit threadId with zero messages IS a fresh
+  // chat and should show the welcome screen.
 );
 const hasAddFileAction = computed(() => hasListener("onAddFile"));
 const hasStopAction = computed(() => hasListener("onStop"));
