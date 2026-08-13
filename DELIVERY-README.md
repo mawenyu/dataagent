@@ -6,7 +6,7 @@
 
 ```
 浏览器 (Vue3 + @copilotkit/vue fork + @ag-ui/client)
-   │  AG-UI over SSE (POST /opencode/ag-ui)
+   │  AG-UI over SSE (POST /agui-api/agent/run)
    ▼
 Java Gateway (Spring Cloud Gateway, :8090)
    │  事件翻译 / A2UI surface 注册 / a2uiAction 路由 / frontend tool 桥接
@@ -20,9 +20,8 @@ OpenCode server (:4096, bun)  →  DeepSeek LLM
 |---|---|
 | `gateway/` | Java Spring Boot 网关（AG-UI 协议端点 + A2UI 桥），Java 17 + Maven |
 | `vue-frontend/` | **现行前端**（Vue 3 + Vite），部署到 `/agui/` |
-| `packages/copilotkit-vue` | @copilotkit/vue 1.67.1 内部 fork（`directAgents` 支持），详见其 `FORK.md` |
+| `packages/copilotkit-vue` | @copilotkit/vue 1.67.1 内部 fork（`directAgents` 支持），详见其 `FORK.md` 与 `patches/copilotkit-vue-fork.patch` |
 | `vendor/copilotkit-src` | CopilotKit 上游 monorepo（tag v1.67.1，含 .git），fork 的溯源基线 |
-| `frontend/` | 旧 React 前端，**已废弃**，仅存档参考 |
 | `ref/` | 参考源码（CopilotKit adk-dashboard 官方示例、ag-ui 上游），不参与构建 |
 | `scripts/` | 实测脚本（连续对话 test-multi-turn.sh、需求7 UI 事件 test-ui-req7.py） |
 | `docs/` | 设计文档（design.md / ARCHITECTURE.md / VERSIONS.md）与实测证据 screenshots/ |
@@ -73,7 +72,8 @@ mvn spring-boot:run   # 或 mvn package 后 java -jar target/*.jar
 ```bash
 cd vue-frontend
 npm install       # 自动通过 file:../packages/copilotkit-vue 安装 fork
-npm run build     # 产物在 dist/，vite base 已配置为 /agui/
+npm run build     # prebuild 钩子（scripts/build-fork.mjs）自动先构建 fork，无需手动
+                  # 产物在 dist/；vite base 已配置为 /agui/（dev server 为 /）
 # 部署：cp -r dist/* /var/www/<站点根>/agui/
 ```
 
@@ -81,7 +81,7 @@ npm run build     # 产物在 dist/，vite base 已配置为 /agui/
 
 ```nginx
 location /agui/ { alias /var/www/blog/agui/; try_files $uri $uri/ /agui/index.html; }
-location /agui-api/ { proxy_pass http://127.0.0.1:8090/;   # 注意尾部斜杠：/agui-api/opencode/ag-ui → /opencode/ag-ui
+location /agui-api/ { proxy_pass http://127.0.0.1:8090/;   # 注意尾部斜杠：/agui-api/agent/run → /agent/run
     proxy_http_version 1.1; proxy_set_header Connection "";
     proxy_buffering off; proxy_read_timeout 600s; }         # SSE 必须关缓冲
 ```
@@ -99,8 +99,32 @@ bash scripts/test-multi-turn.sh http://127.0.0.1:8090        # 连续对话 5 �
 
 - 基线：上游 `CopilotKit/CopilotKit` **tag v1.67.1**（`vendor/copilotkit-src` 为含 .git 的完整溯源副本，remote = github.com/CopilotKit/CopilotKit.git）
 - fork 产物：`packages/copilotkit-vue`（前端以 `file:` 依赖）
-- **完整 diff 清单与原因**：`packages/copilotkit-vue/FORK.md`（共 6 项：directAgents prop、mergeAgents、a2ui adapter 导出修复、打包名等）
 - 上游 MIT License 已保留
+
+### 如何查看 fork 改动（逐行可见）
+
+1. **patch 文件**：`patches/copilotkit-vue-fork.patch` —— 上游 v1.67.1 `packages/vue` → 本 fork 的完整 unified diff（src 全部修改 + 新增文件 + package.json/tsconfig.json/package-lock.json 变动），git 生成、含 `a/` `b/` 前缀。
+2. **复现 fork**：
+   ```bash
+   # 在任意干净目录：
+   git clone --depth 1 --branch v1.67.1 https://github.com/CopilotKit/CopilotKit.git
+   cd CopilotKit && mv packages/vue packages/copilotkit-vue   # patch 的目标路径
+   git init -q . && git add -A && git commit -qm base          # git apply 需要索引
+   git apply /path/to/patches/copilotkit-vue-fork.patch
+   # 得到的 packages/copilotkit-vue 与本仓库内的 fork 完全一致（已实测 diff -rq 无差异）
+   ```
+3. **改动摘要（9 项）**：
+   1. `CopilotKitProvider` 新增 `directAgents` prop（业务代码不碰 `agents__unsafe_dev_only`）
+   2. `mergeAgents.ts`（新文件，directAgents 合并优先级）
+   3. directAgents 单测（新文件）
+   4. `v2/index.ts` 显式导出 a2ui adapter 的 `createVueComponent`/`createBinderlessVueComponent`（上游 barrel 遮蔽）
+   5. `use-agent.ts` `toRaw` 修复：core 注册表的 reactive 代理导致 clone() 的 structuredClone 炸 DataCloneError
+   6. `hooks/index.ts` 导出 `getThreadClone`（多会话历史写入 per-thread clone）
+   7. `CopilotChatView.vue` welcome 屏去掉 `!hasExplicitThreadId` 门控（direct-agent 下显式 threadId 也是新会话）
+   8. `java-wire-contract.test.ts`（新文件，AG-UI 事件契约回归）
+   9. 打包：`package.json`（file: 依赖钉版）/ `tsconfig.json` / `package-lock.json`、新增 `FORK.md`/`LICENSE`
+   
+   逐条原因见 `packages/copilotkit-vue/FORK.md`。
 
 其余组件（ag-ui client、A2UI、OpenCode、Spring）均为未修改的上游版本，按版本号从官方渠道获取。
 
@@ -111,9 +135,10 @@ bash scripts/test-multi-turn.sh http://127.0.0.1:8090        # 连续对话 5 �
 
 ## 当前版本状态
 
-- ✅ 全链路无 Node Runtime：Vue → Java gateway → OpenCode → DeepSeek
-- ✅ A2UI surface 流式渲染 + a2uiAction 回传确定性路由 + 组件白名单
-- ✅ frontend tool 桥接、双用户隔离、auth deny 策略
-- ✅ 需求7（进行中交付）：连续对话实测通过（上下文记忆验证）、run 超时兜底、SSE 事件（reasoning/tool/context usage）后端就绪
-- 🚧 进行中：多会话管理 UI、API 语义化重命名（/opencode → /agent）、UI 绚丽化、context 用量前端展示
+- ✅ 全链路无 Node Runtime：Vue → Java gateway → OpenCode → DeepSeek（无 mock，唯一 agent 入口 POST /agui-api/agent/run）
+- ✅ 需求1 多会话管理（gateway 持久化 + 侧边栏 + 历史回放 + session 失效自动重建）
+- ✅ 需求2/3 去 mock + API 语义化（/agent/run + /chat/threads，无历史残留）
+- ✅ 需求7 对话完整性与可观测性（reasoning/工具调用/context 用量可见 + run 超时兜底）
+- ✅ OpenCode basic 认证支持（opencode.server.username/password）
+- 🚧 进行中：UI 绚丽化（需求4）、设计文档（需求5）
 - 详见 `TASK-v2.md`（任务书，含逐项 [DONE] 实测证据）与 `docs/design.md`
