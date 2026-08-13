@@ -1,6 +1,7 @@
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import type { Ref } from 'vue'
 import type { AbstractAgent } from '@ag-ui/client'
+import { getThreadClone } from '@copilotkit/vue'
 
 /**
  * 需求1: 多会话管理。
@@ -73,6 +74,8 @@ export function useThreads(agent: AbstractAgent) {
     } catch { /* gateway 挂掉时也允许本地新建（run 时会自动建档） */ }
     currentId.value = id
     agent.setMessages([])
+    await nextTick()
+    getThreadClone(agent, id)?.setMessages([])
     if (!threads.value.find((t) => t.id === id)) {
       threads.value = [{ id, title: '新会话', sessionId: null, createdAt: '', updatedAt: '' }, ...threads.value]
     }
@@ -80,19 +83,22 @@ export function useThreads(agent: AbstractAgent) {
     return id
   }
 
-  /** 切换会话：加载该会话历史消息并渲染。 */
+  /** 切换会话：加载该会话历史消息并渲染（写入 CopilotChat 实际渲染的 per-thread clone）。 */
   async function switchTo(id: string): Promise<void> {
     if (id === currentId.value) return
     currentId.value = id
     persistCache()
+    let history: unknown[] = []
     try {
       const res = await fetch(`${API}/${id}/messages`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const body = await res.json()
-      agent.setMessages(body.data ?? [])
-    } catch {
-      agent.setMessages([])
-    }
+      history = body.data ?? []
+    } catch { /* 拉取失败则空历史 */ }
+    // 等 useAgent 的 watch 创建/复用 clone 后再写入
+    await nextTick()
+    const target = getThreadClone(agent, id) ?? agent
+    target.setMessages(history as any)
   }
 
   async function remove(id: string): Promise<void> {

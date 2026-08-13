@@ -1,4 +1,8 @@
 export { useAgent, UseAgentUpdate } from "./use-agent";
+// FORK ADDITION: apps that drive thread switching themselves (direct-agent
+// setups without a runtime /connect endpoint) need to write history into the
+// per-thread clone that CopilotChat actually renders.
+export { getThreadClone } from "./use-agent";
 export { useAgentContext } from "./use-agent-context";
 export type { AgentContextInput, JsonSerializable } from "./use-agent-context";
 export { useFrontendTool } from "./use-frontend-tool";

@@ -1,4 +1,4 @@
-import { computed, shallowRef, toValue, triggerRef, watch } from "vue";
+import { computed, shallowRef, toRaw, toValue, triggerRef, watch } from "vue";
 import type { MaybeRefOrGetter } from "vue";
 import { DEFAULT_AGENT_ID } from "@copilotkit/shared";
 import { HttpAgent } from "@ag-ui/client";
@@ -175,9 +175,15 @@ export function useAgent(props: UseAgentProps = {}) {
       provisionalAgentCache.delete(cacheKey);
       provisionalAgentCache.delete(id);
 
+      // FORK FIX: the core registry stores agents inside Vue-reactive state,
+      // so getAgent() may return a reactive proxy whose .messages array is
+      // itself a Proxy — structuredClone() in AbstractAgent.clone() then throws
+      // DataCloneError ("could not be cloned") and threadId-scoped chats break.
+      // Unwrap to the raw instance before cloning.
+      const rawExisting = toRaw(existing) as AbstractAgent;
       const resolvedAgent = resolvedThreadId
-        ? getOrCreateThreadClone(existing, resolvedThreadId, core.headers)
-        : existing;
+        ? getOrCreateThreadClone(rawExisting, resolvedThreadId, core.headers)
+        : rawExisting;
       const shouldForceUpdate = agent.value === resolvedAgent;
       agent.value = resolvedAgent;
       subscriptionAgent.value = resolvedAgent;

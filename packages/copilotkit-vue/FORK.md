@@ -27,7 +27,14 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
    never surfaces them: the `./a2ui` barrel resolves to `a2ui.ts`, shadowing
    the `a2ui/` directory). Needed so the app can register whitelisted custom
    A2UI catalog components (TASK §15).
-6. Packaging only (not shipped to npm): `package.json` name stays
+6. `src/v2/hooks/use-agent.ts` — `resolveAgent` unwraps the core-registry
+   agent with `toRaw()` before per-thread cloning. Without it, the registry's
+   Vue-reactive wrapper makes `AbstractAgent.clone()`'s `structuredClone(this.
+   messages)` throw `DataCloneError`, breaking any `threadId`-scoped
+   CopilotChat (direct-agent multi-session setups).
+7. `src/v2/hooks/index.ts` — re-export `getThreadClone` so direct-agent apps
+   can write loaded history into the per-thread clone that CopilotChat renders.
+8. Packaging only (not shipped to npm): `package.json` name stays
    `@copilotkit/vue`, version `1.67.1-fork.1`, `workspace:*` deps rewritten to
    pinned published versions, devDeps trimmed; `tsconfig.json` inlined
    (`@copilotkit/typescript-config` removed).

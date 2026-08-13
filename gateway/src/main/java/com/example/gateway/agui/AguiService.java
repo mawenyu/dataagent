@@ -31,13 +31,16 @@ public class AguiService {
 
     private static final Logger log = LoggerFactory.getLogger(AguiService.class);
 
-    private static final String MODEL_ID = "deepseek-chat";
-    private static final String PROVIDER_ID = "deepseek";
-
     private final WebClient webClient;
+    private final String modelId;
+    private final String providerId;
 
-    public AguiService(WebClient opencodeWebClient) {
+    public AguiService(WebClient opencodeWebClient,
+                       @org.springframework.beans.factory.annotation.Value("${agui.model.id:deepseek-chat}") String modelId,
+                       @org.springframework.beans.factory.annotation.Value("${agui.model.provider-id:deepseek}") String providerId) {
         this.webClient = opencodeWebClient;
+        this.modelId = modelId;
+        this.providerId = providerId;
     }
 
     /**
@@ -77,12 +80,12 @@ public class AguiService {
                 .uri("/api/session/{id}/model", sessionId)
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .bodyValue(Map.of("model", Map.of(
-                        "id", MODEL_ID,
-                        "providerID", PROVIDER_ID)))
+                        "id", modelId,
+                        "providerID", providerId)))
                 .retrieve()
                 .toBodilessEntity()
                 .then()
-                .doOnSuccess(v -> log.info("Model set for session {} ({} / {})", sessionId, MODEL_ID, PROVIDER_ID));
+                .doOnSuccess(v -> log.info("Model set for session {} ({} / {})", sessionId, modelId, providerId));
     }
 
     private Mono<Void> sendPrompt(String sessionId, String message) {
