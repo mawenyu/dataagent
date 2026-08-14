@@ -62,6 +62,8 @@ public class A2UiActionHandler {
                 "The user interacted with an A2UI surface rendered earlier in this conversation " +
                 "(see the action name, surfaceId and context above). Decide how to respond: answer " +
                 "directly in text, and if the UI should change, call render_a2ui with the SAME surfaceId to " +
-                "update that surface in place. Use the data workspace for any data lookups.";
+                "update that surface in place (keep the existing components, append or replace the result " +
+                "section). Actions like 筛选/提交/下钻/刷新 MUST update the surface via render_a2ui, " +
+                "not just text. Use the data workspace for any data lookups.";
     }
 }

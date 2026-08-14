@@ -1,0 +1,16 @@
+== run 1: render form surface ==
+(attempt 1) COMPONENTS=Card,Column,TextField,ChoicePicker,CheckBox,Button
+TERMINAL=RUN_FINISHED
+PASS: 表单 surface 已渲染
+PASS: 含 TextField
+PASS: 含 ChoicePicker
+PASS: 含 CheckBox
+PASS: 含提交按钮
+== run 2: user submits the form (a2uiAction) ==
+SURFACES=sales-filter
+TERMINAL=RUN_FINISHED
+TEXT=筛选完成：**华北 + 品类含"笔记本"，不含退货**（数据中无退货记录）。命中 9 条，总销量 27，总销售额 ¥188,973。
+PASS: action 续跑正常结束
+PASS: agent 读到筛选条件并回答
+PASS: 同名 surface 就地更新(或新结果 surface)
+== RESULT: 8 passed, 0 failed ==

@@ -157,6 +157,9 @@ public class A2UiBridgeService {
         sb.append("<server_tools>\n");
         sb.append("You can render rich UI surfaces in the user's chat with the server-side tool \"")
                 .append(RENDER_TOOL_NAME).append("\".\n");
+        // 2026-08-15 实测：模型经常只答文字不调工具 —— 明确触发条件
+        sb.append("Whenever the user asks for a dashboard / 看板 / 表单 / form / chart / 筛选器 or any UI surface, ")
+                .append("you MUST call this tool to render it — never answer with text only.\n");
         sb.append("To call it, put ONE <tool_call> block at the END of your response. Any explanatory text MUST come before the block; nothing after it:\n");
         sb.append("<tool_call>{\"name\":\"").append(RENDER_TOOL_NAME)
                 .append("\",\"arguments\":{...}}</tool_call>\n");
