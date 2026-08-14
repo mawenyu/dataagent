@@ -547,7 +547,9 @@ class AgUiProtocolServiceTest {
     void promptIncludesDataWorkspaceHint() {
         stub.eventStreams.add(textStep("m1", "ok"));
         run(userMsg("t-ws", "分析本月销售情况"));
-        assertTrue(stub.prompts.get(0).contains("/workspace"),
+        // 可移植性修复后默认是相对路径 "workspace"（opencode cwd=项目根），
+        // 断言提示指向默认工作目录而不是过时的绝对路径。
+        assertTrue(stub.prompts.get(0).contains("数据工作目录: " + AgUiProtocolService.DEFAULT_DATA_WORKSPACE),
                 "prompt should point the agent at the data workspace directory");
     }
 
