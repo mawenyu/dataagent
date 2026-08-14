@@ -48,8 +48,8 @@ public class AgUiProtocolService {
      */
     static final Duration DEFAULT_RUN_IDLE_TIMEOUT = Duration.ofSeconds(120);
 
-    /** Where the agent should look for user data files (示例/上传数据). */
-    private static final String DEFAULT_DATA_WORKSPACE_VALUE = "/home/ubuntu/opencode-agui-app/workspace";
+    /** Where the agent should look for user data files (示例/上传数据). Portable default: ./workspace. */
+    private static final String DEFAULT_DATA_WORKSPACE_VALUE = "workspace";
     static final String DEFAULT_DATA_WORKSPACE = DEFAULT_DATA_WORKSPACE_VALUE;
 
     private final WebClient webClient;

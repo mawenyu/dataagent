@@ -20,6 +20,7 @@ OpenCode server (:4096, bun)  →  DeepSeek LLM
 |---|---|
 | `gateway/` | Java Spring Boot 网关（AG-UI 协议端点 + A2UI 桥），Java 17 + Maven |
 | `vue-frontend/` | **现行前端**（Vue 3 + Vite），部署到 `/agui/` |
+| `agents/` | **OpenCode2 定制层**：plugins/tools/skills/commands/subagents + `build-opencode.sh` 一键构建部署（配合 fork [`mawenyu/opencode@dataagent-v2`](https://github.com/mawenyu/opencode/tree/dataagent-v2)） |
 | `packages/copilotkit-vue` | @copilotkit/vue 1.67.1 内部 fork（`directAgents` 支持），详见其 `FORK.md` 与 `patches/copilotkit-vue-fork.patch` |
 | `vendor/copilotkit-src` | CopilotKit 上游 monorepo（tag v1.67.1，含 .git），fork 的溯源基线 |
 | `ref/` | 参考源码（CopilotKit adk-dashboard 官方示例、ag-ui 上游），不参与构建 |
@@ -38,25 +39,24 @@ OpenCode server (:4096, bun)  →  DeepSeek LLM
 
 ### 1. OpenCode server（agent 后端）
 
-OpenCode 源码：https://github.com/anomalyco/opencode （本部署用其 `packages/opencode`，以 bun 跑源码方式启动）。
+OpenCode 源码：**fork [`mawenyu/opencode@dataagent-v2`](https://github.com/mawenyu/opencode/tree/dataagent-v2)**（= 上游 v2 + MCP Tool Bridge 等定制）。
 
 ```bash
 # 安装 bun 后：
-git clone https://github.com/anomalyco/opencode.git opencode-src
-export DEEPSEEK_API_KEY='sk-...'   # 见 .env.example
-cd /path/to/本工程                  # cwd 必须是本工程根（opencode.json 所在处）
-bun run /path/to/opencode-src/packages/opencode/src/index.ts serve --port 4096 --hostname 127.0.0.1
-```
-
-参考生产启动脚本（key 不落库，自行注入）：
-
-```bash
-#!/bin/bash
+git clone --depth 50 --branch dataagent-v2 https://github.com/mawenyu/opencode.git opencode-fork
+cd opencode-fork && bun install
+# 部署扩展到本工程 .opencode/（plugins/tools/skills/commands + opencode.jsonc）
+bash /path/to/本工程/agents/build-opencode.sh --target /path/to/本工程 --skip-build
+# 在本工程根创建 tsconfig.json（bun 转译 fork 内 tsx 需要）：
+echo '{"compilerOptions":{"jsx":"preserve","jsxImportSource":"@opentui/solid"}}' > /path/to/本工程/tsconfig.json
+# 启动（cwd 必须是本工程根，读取 .opencode/opencode.jsonc 里的 deepseek provider）：
 cd /path/to/本工程
-unset OPENCODE_MODELS_PATH
-export DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY"
-exec bun run /path/to/opencode-src/packages/opencode/src/index.ts serve --port 4096 --hostname 127.0.0.1
+echo 'OPENCODE_SERVER_PASSWORD=<同 gateway application.yml 的 opencode.server.password>' > .env.opencode && chmod 600 .env.opencode
+set -a; . ./.env.opencode; set +a
+bun run --conditions=browser /path/to/opencode-fork/packages/cli/src/index.ts serve --port 4096 --hostname 127.0.0.1
 ```
+
+> 注意：DeepSeek key 在 `.opencode/opencode.jsonc` 的 `provider.deepseek.apiKey`（不入库，参考 `agents/opencode.jsonc.example`）；serve 密码只认环境变量 `OPENCODE_SERVER_PASSWORD`。
 
 ### 2. Java gateway
 

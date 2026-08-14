@@ -15,3 +15,9 @@ ref/
 .DS_Store
 vendor/copilotkit-src/
 gateway/data/
+
+# 运行时密钥/本地环境
+.env.opencode
+.opencode/opencode.jsonc
+.opencode/
+tsconfig.json

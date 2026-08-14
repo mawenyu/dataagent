@@ -8,7 +8,7 @@
  *
  * 依赖解析：直接相对引用 monorepo 源码（免 bun add @opencode-ai/plugin）。
  */
-import { Plugin } from "/home/ubuntu/opencode-v2-verify/packages/plugin/src/promise/index.ts"
+import { Plugin } from "@opencode-ai/plugin"
 
 export default Plugin.define({
   id: "acme.demo",
