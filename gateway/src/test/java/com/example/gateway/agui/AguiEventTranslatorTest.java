@@ -409,6 +409,32 @@ class AguiEventTranslatorTest {
         assertTrue(rStart.path("messageId").asText().startsWith("m1"), "synthesized reasoning id");
     }
 
+    /**
+     * 回归：2026-08-15 实测捕获的 v2 真实事件流（含 durable.seq 缺口）。
+     * 最后一步的 session.text.* 在 gateway 输出中整条丢失（只见 STEP_FINISHED +
+     * RUN_FINISHED）。本测试用真实流钉住该场景，必须产出 TEXT_MESSAGE_*。
+     */
+    @Test
+    void realCapturedStreamWithSeqGapsStillEmitsFinalText() throws Exception {
+        java.io.InputStream in = getClass().getResourceAsStream("/real-stream-text-drop.json");
+        assertNotNull(in, "test resource missing");
+        JsonNode arr = MAPPER.readTree(in.readAllBytes());
+        List<ServerSentEvent<String>> raw = new java.util.ArrayList<>();
+        for (JsonNode e : arr) {
+            raw.add(ServerSentEvent.<String>builder().data(MAPPER.writeValueAsString(e)).build());
+        }
+        List<JsonNode> events = translate(Flux.fromIterable(raw)
+                .map(AguiEventTranslator::normalizeDialect));
+        List<String> types = types(events);
+        assertTrue(types.contains("TEXT_MESSAGE_START"), "final-step text must stream: " + types);
+        assertTrue(types.contains("TEXT_MESSAGE_CONTENT"), "final-step text deltas must stream");
+        String text = events.stream()
+                .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
+                .map(e -> e.path("delta").asText()).reduce("", String::concat);
+        assertTrue(text.contains("137"), "answer text preserved, got: " + text);
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1));
+    }
+
     private static String json(String s) {        try {
             return MAPPER.writeValueAsString(s);
         } catch (Exception e) {

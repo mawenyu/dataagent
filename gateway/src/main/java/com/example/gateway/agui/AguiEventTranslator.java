@@ -119,13 +119,18 @@ public class AguiEventTranslator {
                     switch (type) {
                         case "session.next.text.started": {
                             String aMsgId = data.path("assistantMessageID").asText();
-                            msgStates.put(aMsgId, new MsgState());
+                            // 不覆盖可能已由迟到 delta 懒建的状态（否则会丢掉已缓冲内容）
+                            msgStates.putIfAbsent(aMsgId, new MsgState());
                             return Flux.empty(); // decide later: text vs tool_call
                         }
                         case "session.next.text.delta": {
                             String aMsgId = data.path("assistantMessageID").asText();
-                            MsgState st = msgStates.get(aMsgId);
-                            if (st == null) return Flux.empty();
+                            // 防御：delta 先于 started 到达（残余乱序）时懒建状态，
+                            // 不再静默丢弃（emitTextStart 会先补 TEXT_MESSAGE_START）。
+                            MsgState st = msgStates.computeIfAbsent(aMsgId, k -> {
+                                log.warn("text.delta before text.started for {}; synthesizing state", k);
+                                return new MsgState();
+                            });
                             String delta = data.path("delta").asText("");
                             return Flux.fromIterable(
                                     processDelta(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, delta));
@@ -426,9 +431,21 @@ public class AguiEventTranslator {
         });
     }
 
+    /**
+     * 定序身份 = 事件流种类 + id。2026-08-15 实测 bug：step.started 与 text.*
+     * 共用 assistantMessageID，step.started 先下发时会把属于 text.started 的
+     * delta 提前回放（锚点碰撞），delta 排在 text.started 之前输出而被翻译器
+     * 丢弃 —— 最终回答整条丢失。按种类隔离后，step 事件不再是任何 delta 的锚点。
+     */
     private static String eventIdOf(String type, JsonNode data) {
-        if (type.startsWith("session.next.reasoning.")) return data.path("reasoningID").asText("");
-        if (type.startsWith("session.next.tool.")) return data.path("callID").asText("");
+        if (type.startsWith("session.next.reasoning."))
+            return "reasoning:" + data.path("reasoningID").asText("");
+        if (type.startsWith("session.next.tool."))
+            return "tool:" + data.path("callID").asText("");
+        if (type.startsWith("session.next.step."))
+            return "step:" + data.path("assistantMessageID").asText("");
+        if (type.startsWith("session.next.text."))
+            return "text:" + data.path("assistantMessageID").asText("");
         return data.path("assistantMessageID").asText("");
     }
 
