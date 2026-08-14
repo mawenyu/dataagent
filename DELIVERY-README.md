@@ -58,6 +58,21 @@ bun run --conditions=browser /path/to/opencode-fork/packages/cli/src/index.ts se
 
 > 注意：DeepSeek key 在 `.opencode/opencode.jsonc` 的 `provider.deepseek.apiKey`（不入库，参考 `agents/opencode.jsonc.example`）；serve 密码只认环境变量 `OPENCODE_SERVER_PASSWORD`。
 
+### 1.1 生产启动方式（tmux 常驻，本服务器现行方式）
+
+```bash
+tmux new-session -d -s opencode2-4096 -x 220 -y 50 \
+  "cd /home/ubuntu/dataagent && unset OPENCODE_MODELS_PATH \
+   && set -a && . ./.env.opencode && set +a \
+   && bun run --conditions=browser /home/ubuntu/opencode-fork/packages/cli/src/index.ts \
+        serve --port 4096 --hostname 127.0.0.1 2>&1 | tee /tmp/opencode2.log"
+```
+
+要点：
+- **cwd 必须是本工程根**（读 `.opencode/opencode.jsonc` 的 provider + `tsconfig.json` 的 jsxImportSource，否则 bun 转译 fork 内 tsx 时报 `Cannot find module 'react/jsx-dev-runtime'`）
+- 密码通过 `.env.opencode` 注入（`chmod 600`），不要写进 tmux 命令行（`ps` 可见）
+- 健康检查：`curl -u opencode:<pw> http://127.0.0.1:4096/api/health` 返回 200
+
 ### 2. Java gateway
 
 ```bash
