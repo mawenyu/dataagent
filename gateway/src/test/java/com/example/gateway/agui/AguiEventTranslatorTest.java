@@ -353,6 +353,25 @@ class AguiEventTranslatorTest {
                 "timed-out gap must force-flush the buffered end");
     }
 
+    /** 实测：DeepSeek 每个 step 的 reasoning 块复用同一 reasoningID（reasoning-0），
+        直接透传会让 AG-UI 消息列表出现重复 id —— translator 按出现次序去重。 */
+    @Test
+    void reusedReasoningIdGetsUniqueMessageIds() {
+        String one = "{\"type\":\"session.next.reasoning.started\",\"data\":{\"assistantMessageID\":\"m1\",\"reasoningID\":\"reasoning-0\"}}"
+                + "\n\n{\"type\":\"session.next.reasoning.delta\",\"data\":{\"assistantMessageID\":\"m1\",\"reasoningID\":\"reasoning-0\",\"delta\":\"想\"}}"
+                + "\n\n{\"type\":\"session.next.reasoning.ended\",\"data\":{\"assistantMessageID\":\"m1\",\"reasoningID\":\"reasoning-0\",\"text\":\"想\"}}";
+        List<JsonNode> events = translate(Flux.just(
+                ServerSentEvent.<String>builder().data(one).build(),
+                ServerSentEvent.<String>builder().data(one).build(),
+                oc("session.next.step.ended", "{}")));
+        List<String> reasoningStartIds = events.stream()
+                .filter(e -> "REASONING_MESSAGE_START".equals(e.path("type").asText()))
+                .map(e -> e.path("messageId").asText()).toList();
+        assertEquals(2, reasoningStartIds.size());
+        assertNotEquals(reasoningStartIds.get(0), reasoningStartIds.get(1),
+                "reused upstream reasoningID must map to distinct AG-UI messageIds");
+    }
+
     private static String json(String s) {        try {
             return MAPPER.writeValueAsString(s);
         } catch (Exception e) {

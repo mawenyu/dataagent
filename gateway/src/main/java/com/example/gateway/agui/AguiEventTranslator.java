@@ -92,6 +92,10 @@ public class AguiEventTranslator {
         // （started 后无 ended），因此跟踪"活跃集合"：ended 只关自己，终止事件前关掉所有残余。
         Set<String> activeSteps = new java.util.LinkedHashSet<>();
         Set<String> openReasoning = new java.util.LinkedHashSet<>();
+        // 实测：DeepSeek 每个 step 的 reasoning 块复用同一 reasoningID（reasoning-0）。
+        // AG-UI 消息按 id 归并，重复 id 会互相污染 —— 每次 started 生成唯一 id。
+        Map<String, Integer> reasoningSeen = new ConcurrentHashMap<>();
+        Map<String, String> reasoningCurrent = new ConcurrentHashMap<>();
         Map<String, MsgState> msgStates = new ConcurrentHashMap<>();
         Map<String, String> toolCallNames = new ConcurrentHashMap<>();
         Set<String> toolCallStarted = ConcurrentHashMap.newKeySet();
@@ -257,25 +261,28 @@ public class AguiEventTranslator {
                             String rId = data.path("reasoningID").asText();
                             if (rId.isBlank()) return Flux.empty();
                             sawOutput.set(true);
-                            openReasoning.add(rId);
+                            String unique = rId + "#" + reasoningSeen.merge(rId, 1, Integer::sum);
+                            reasoningCurrent.put(rId, unique);
+                            openReasoning.add(unique);
                             ObjectNode start = base("REASONING_START", runId, threadId);
-                            start.put("messageId", rId);
+                            start.put("messageId", unique);
                             ObjectNode msgStart = base("REASONING_MESSAGE_START", runId, threadId);
-                            msgStart.put("messageId", rId);
+                            msgStart.put("messageId", unique);
                             msgStart.put("role", "reasoning");
                             return Flux.just(sse(start), sse(msgStart));
                         }
                         case "session.next.reasoning.delta": {
-                            String rId = data.path("reasoningID").asText();
-                            if (rId.isBlank()) return Flux.empty();
+                            String rId = reasoningCurrent.get(data.path("reasoningID").asText());
+                            if (rId == null) return Flux.empty();
                             ObjectNode payload = base("REASONING_MESSAGE_CONTENT", runId, threadId);
                             payload.put("messageId", rId);
                             payload.put("delta", data.path("delta").asText(""));
                             return Flux.just(sse(payload));
                         }
                         case "session.next.reasoning.ended": {
-                            String rId = data.path("reasoningID").asText();
-                            if (rId.isBlank()) return Flux.empty();
+                            String raw = data.path("reasoningID").asText();
+                            String rId = reasoningCurrent.remove(raw);
+                            if (rId == null) return Flux.empty();
                             openReasoning.remove(rId);
                             ObjectNode msgEnd = base("REASONING_MESSAGE_END", runId, threadId);
                             msgEnd.put("messageId", rId);

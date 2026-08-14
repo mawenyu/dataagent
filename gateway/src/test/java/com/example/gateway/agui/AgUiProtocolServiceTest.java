@@ -514,7 +514,7 @@ class AgUiProtocolServiceTest {
         assertTrue(types.contains("REASONING_END"));
         JsonNode start = events.stream()
                 .filter(e -> "REASONING_MESSAGE_START".equals(e.path("type").asText())).findFirst().orElseThrow();
-        assertEquals("r1", start.path("messageId").asText());
+        assertEquals("r1#1", start.path("messageId").asText(), "reasoning id 加出现次序后缀（上游会复用同一 id）");
         assertEquals("reasoning", start.path("role").asText());
         String deltas = events.stream()
                 .filter(e -> "REASONING_MESSAGE_CONTENT".equals(e.path("type").asText()))
