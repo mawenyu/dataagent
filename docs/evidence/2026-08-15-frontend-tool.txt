@@ -1,0 +1,14 @@
+== turn 1: agent calls the frontend tool ==
+TOOL=showNotification
+CALLID=call_a6b7bfbd354e4bf0b09e922e881fe56f
+ARGS={"title":"部署完成","message":"v2 上线成功","type":"success"}
+TERMINAL=RUN_FINISHED
+PASS: agent 调起 showNotification
+PASS: 参数含标题
+PASS: run 正常结束(等浏览器执行)
+== turn 2: browser sends role=tool result, agent continues ==
+TERMINAL=RUN_FINISHED
+TEXT=通知已成功显示。
+PASS: 续跑正常结束
+PASS: agent 基于工具结果回答
+== RESULT: 5 passed, 0 failed ==
