@@ -53,11 +53,24 @@ public class AguiEventTranslator {
 
     private final FrontendToolBridge toolBridge;
     private final A2UiBridgeService a2UiBridge;
+    private final java.time.Duration reorderTimeout;
 
+    /** 测试用：默认乱序兜底超时。 */
     public AguiEventTranslator(FrontendToolBridge toolBridge, A2UiBridgeService a2UiBridge) {
+        this(toolBridge, a2UiBridge, DEFAULT_REORDER_TIMEOUT);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AguiEventTranslator(FrontendToolBridge toolBridge, A2UiBridgeService a2UiBridge,
+                               @org.springframework.beans.factory.annotation.Value("${agui.event-reorder-timeout:PT3S}")
+                               java.time.Duration reorderTimeout) {
         this.toolBridge = toolBridge;
         this.a2UiBridge = a2UiBridge;
+        this.reorderTimeout = reorderTimeout;
     }
+
+    /** 乱序缓存的兜底超时（agui.event-reorder-timeout 可配，默认 3s）。 */
+    static final java.time.Duration DEFAULT_REORDER_TIMEOUT = java.time.Duration.ofSeconds(3);
 
     /** Per-assistant-message streaming state for the tool-call lookahead. */
     private enum MsgMode { BUFFERING, TEXT, TOOL_CALL }
@@ -86,7 +99,7 @@ public class AguiEventTranslator {
 
         ServerSentEvent<String> runStarted = sse(agEvent("RUN_STARTED", runId, threadId));
 
-        Flux<ServerSentEvent<String>> body = opencodeEvents
+        Flux<ServerSentEvent<String>> body = restoreOrder(opencodeEvents)
                 .concatMap(event -> {
                     String json = event.data();
                     if (json == null || json.isBlank()) return Flux.empty();
@@ -309,6 +322,197 @@ public class AguiEventTranslator {
                 });
 
         return Flux.concat(Flux.just(runStarted), body);
+    }
+
+    // ------------------------------------------------------------------
+    // fold by id/ordinal（OpenCode 事件乱序修复）
+    // ------------------------------------------------------------------
+
+    /**
+     * OpenCode 并发 fiber 不加锁，跨来源事件顺序不保证
+     * （core/session/runner/llm.ts:322-328 官方注释："every required event order
+     * is per-source ... Cross-source order is unconstrained"）。官方消费指引是
+     * "fold by id/ordinal rather than global position"
+     * （core/session/runner/publish-llm-event.ts:75-81）。
+     *
+     * <p>ordinal = durable.seq（每会话单调连续整数，非 delta 事件都带）；
+     * delta 事件无 seq，锚定其所属 id（assistantMessageID / callID /
+     * reasoningID）最近一个有 seq 的事件。</p>
+     *
+     * <p>规则：
+     * <ul>
+     *   <li>seq'd 事件进 TreeMap，按"无缺口连续前缀"下发（drain）</li>
+     *   <li>delta 锚点已下发 → 立即透传（若该 id 的 end 已缓存未下发，本 delta
+     *       仍先于 end 输出 —— end 先于部分 delta 到达的场景）</li>
+     *   <li>delta 锚点未下发（含 delta 先于 start）→ 缓存，锚点下发后回放</li>
+     *   <li>id 的 end 已下发后又来 delta → 按 seq 它属于已结束生命周期，丢弃</li>
+     *   <li>seq 缺口永不补齐 → 超时强制 flush（agui.event-reorder-timeout）</li>
+     *   <li>全流无 seq（旧 stub/测试流）→ 完全直通，保持旧行为</li>
+     * </ul></p>
+     */
+    Flux<ServerSentEvent<String>> restoreOrder(Flux<ServerSentEvent<String>> source) {
+        return Flux.create(sink -> {
+            EventOrderer orderer = new EventOrderer(sink, reorderTimeout.toMillis());
+            reactor.core.Disposable ticker = Flux.interval(java.time.Duration.ofMillis(200))
+                    .subscribe(t -> orderer.flushIfStale());
+            reactor.core.Disposable sub = source.subscribe(
+                    orderer::offer,
+                    sink::error,
+                    () -> {
+                        orderer.flushAll();
+                        sink.complete();
+                    });
+            sink.onDispose(() -> {
+                sub.dispose();
+                ticker.dispose();
+            });
+        });
+    }
+
+    private static String eventIdOf(String type, JsonNode data) {
+        if (type.startsWith("session.next.reasoning.")) return data.path("reasoningID").asText("");
+        if (type.startsWith("session.next.tool.")) return data.path("callID").asText("");
+        return data.path("assistantMessageID").asText("");
+    }
+
+    private static boolean isEndEvent(String type) {
+        return "session.next.text.ended".equals(type)
+                || "session.next.reasoning.ended".equals(type)
+                || "session.next.tool.input.ended".equals(type);
+    }
+
+    private static final class EventOrderer {
+        private final reactor.core.publisher.FluxSink<ServerSentEvent<String>> sink;
+        private final long timeoutMs;
+        private final java.util.TreeMap<Long, ServerSentEvent<String>> bySeq = new java.util.TreeMap<>();
+        private final Map<String, Long> anchorSeqById = new java.util.HashMap<>();
+        private final Map<String, List<ServerSentEvent<String>>> pendingDeltasById = new java.util.LinkedHashMap<>();
+        private final Set<String> endDrainedIds = new java.util.HashSet<>();
+        private boolean seqInitialized = false;
+        private long nextSeq = 0;
+        private long lastProgressMs = System.currentTimeMillis();
+
+        EventOrderer(reactor.core.publisher.FluxSink<ServerSentEvent<String>> sink, long timeoutMs) {
+            this.sink = sink;
+            this.timeoutMs = timeoutMs;
+        }
+
+        synchronized void offer(ServerSentEvent<String> e) {
+            String json = e.data();
+            if (json == null || json.isBlank()) {
+                emit(e);
+                return;
+            }
+            JsonNode node;
+            try {
+                node = MAPPER.readTree(json);
+            } catch (Exception ex) {
+                emit(e);
+                return;
+            }
+            String type = node.path("type").asText("");
+            JsonNode data = node.path("data");
+            long seq = node.path("durable").path("seq").asLong(-1);
+            String id = eventIdOf(type, data);
+
+            if (type.endsWith(".delta")) {
+                if (!seqInitialized || id.isEmpty()) {
+                    emit(e); // 全流无 seq（旧行为直通）/ 无归属 id
+                    return;
+                }
+                if (endDrainedIds.contains(id)) {
+                    // 场景c：end 已下发后的迟到 delta —— 丢弃，不发孤立 CONTENT
+                    log.debug("drop late delta for id {} (end already emitted)", id);
+                    return;
+                }
+                Long anchor = anchorSeqById.get(id);
+                if (anchor == null || anchor >= nextSeq) {
+                    // 场景b：锚点未下发（delta 先于 start 或锚点还在等缺口）→ 缓存待回放
+                    pendingDeltasById.computeIfAbsent(id, k -> new ArrayList<>()).add(e);
+                } else {
+                    // 锚点已下发。即使该 id 的 end 已缓存在 bySeq（end 先于部分 delta
+                    // 到达，场景a），本 delta 现在下发也必然排在 end 之前。
+                    emit(e);
+                }
+                return;
+            }
+
+            if (seq < 0) {
+                emit(e); // 无 seq 的非 delta 事件：无法定序，尽力直通
+                return;
+            }
+            if (!seqInitialized) {
+                seqInitialized = true;
+                nextSeq = seq; // 中途订阅：以首个 seq 为基线，之前的无关
+            }
+            if (seq < nextSeq) {
+                emit(e); // 缺口已越过才迟到的 seq —— 尽力直通
+                return;
+            }
+            // 锚点在"下发"时更新（emitHeld），不能在到达时更新 —— 否则缓存未下发
+            // 的 end 会抢先成为锚点，导致后续 delta 排到 end 之后（实测复现）。
+            bySeq.put(seq, e);
+            drain();
+        }
+
+        private void drain() {
+            while (!bySeq.isEmpty() && bySeq.firstKey() == nextSeq) {
+                emitHeld(bySeq.pollFirstEntry().getValue(), nextSeq);
+                nextSeq++;
+            }
+        }
+
+        private void emitHeld(ServerSentEvent<String> e, long seq) {
+            emit(e);
+            String type = typeOf(e);
+            String id = idOf(e);
+            if (!id.isEmpty()) {
+                anchorSeqById.put(id, seq);
+                List<ServerSentEvent<String>> pending = pendingDeltasById.remove(id);
+                if (pending != null) pending.forEach(this::emit); // 锚点下发 → 回放缓存的 delta
+                if (isEndEvent(type)) endDrainedIds.add(id);
+            }
+        }
+
+        synchronized void flushIfStale() {
+            if (bySeq.isEmpty() && pendingDeltasById.isEmpty()) return;
+            if (System.currentTimeMillis() - lastProgressMs < timeoutMs) return;
+            log.warn("event reorder timeout ({}ms): force-flush nextSeq={} bufferedSeq={} pendingDeltaIds={}",
+                    timeoutMs, nextSeq, bySeq.size(), pendingDeltasById.size());
+            flushAll();
+        }
+
+        synchronized void flushAll() {
+            while (!bySeq.isEmpty()) {
+                var entry = bySeq.pollFirstEntry();
+                emitHeld(entry.getValue(), entry.getKey());
+                nextSeq = entry.getKey() + 1;
+            }
+            pendingDeltasById.values().forEach(list -> list.forEach(this::emit));
+            pendingDeltasById.clear();
+        }
+
+        private void emit(ServerSentEvent<String> e) {
+            lastProgressMs = System.currentTimeMillis();
+            sink.next(e);
+        }
+
+        private static String typeOf(ServerSentEvent<String> e) {
+            try {
+                return MAPPER.readTree(e.data()).path("type").asText("");
+            } catch (Exception ex) {
+                return "";
+            }
+        }
+
+        private static String idOf(ServerSentEvent<String> e) {
+            try {
+                JsonNode n = MAPPER.readTree(e.data());
+                return eventIdOf(n.path("type").asText(""), n.path("data"));
+            } catch (Exception ex) {
+                return "";
+            }
+        }
     }
 
     // ------------------------------------------------------------------

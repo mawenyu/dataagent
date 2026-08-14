@@ -34,6 +34,27 @@ class AguiEventTranslatorTest {
                 .data("{\"type\":\"" + type + "\",\"data\":" + dataJson + "}").build();
     }
 
+    /** 带 durable.seq 的 OpenCode 事件（seq 是官方 fold 契约里的 ordinal）。 */
+    private static ServerSentEvent<String> ocSeq(String type, String dataJson, long seq) {
+        return ServerSentEvent.<String>builder()
+                .data("{\"type\":\"" + type + "\",\"durable\":{\"seq\":" + seq + "},\"data\":" + dataJson + "}").build();
+    }
+
+    private List<JsonNode> translateWithTimeout(Flux<ServerSentEvent<String>> events, java.time.Duration reorderTimeout) {
+        A2UiService a2UiService = new A2UiService();
+        AguiEventTranslator t = new AguiEventTranslator(new FrontendToolBridge(),
+                new A2UiBridgeService(a2UiService, new A2UiSurfaceRegistry()), reorderTimeout);
+        return t.translate("thread", "run", Set.of("showNotification"), events)
+                .map(ServerSentEvent::data)
+                .map(d -> {
+                    try {
+                        return MAPPER.readTree(d);
+                    } catch (Exception e) {
+                        throw new RuntimeException("bad event: " + d, e);
+                    }
+                }).collectList().block(java.time.Duration.ofSeconds(10));
+    }
+
     private List<JsonNode> translate(Flux<ServerSentEvent<String>> events) {
         return translator.translate("thread", "run", Set.of("showNotification"), events)
                 .map(ServerSentEvent::data)
@@ -213,6 +234,123 @@ class AguiEventTranslatorTest {
                 .filter(e -> "step-ghost".equals(e.path("stepName").asText())).count());
         // all STEP_FINISHED before RUN_FINISHED
         assertTrue(types.lastIndexOf("STEP_FINISHED") < types.size() - 1);
+    }
+
+
+    // ==================================================================
+    // 事件乱序（fold by id/ordinal）—— OpenCode 并发 fiber 不加锁，
+    // 跨来源顺序不保证（core/session/runner/llm.ts:322 官方注释）
+    // ==================================================================
+
+    /** 正常顺序 + seq：行为与无 seq 一致（对照组）。 */
+    @Test
+    void orderedStreamUnchanged() {
+        List<JsonNode> events = translate(Flux.just(
+                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"hello\"}"),
+                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 2),
+                ocSeq("session.next.step.ended", "{}", 3)));
+        List<String> types = types(events);
+        assertTrue(types.indexOf("TEXT_MESSAGE_START") < types.indexOf("TEXT_MESSAGE_CONTENT"));
+        assertTrue(types.indexOf("TEXT_MESSAGE_CONTENT") < types.indexOf("TEXT_MESSAGE_END"));
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1));
+    }
+
+    /** 跨 id 乱序：text end(seq=4) 先于 tool end(seq=3) 到达 → 按 seq 重排后下发。 */
+    @Test
+    void crossIdEndsReorderedBySeq() {
+        // seq 分配与"同源有序"一致（tool.input.started 2 < ended 3），
+        // 但跨来源乱序到达：text.ended(4) 先于 tool.input.ended(3) 到达
+        List<JsonNode> events = translate(Flux.just(
+                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                ocSeq("session.next.tool.input.started", "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"name\":\"bash\"}", 2),
+                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
+                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 4),   // 先到（seq 更大）
+                ocSeq("session.next.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"text\":\"ls\"}", 3), // 后到（seq 更小）
+                ocSeq("session.next.step.ended", "{\"finish\":\"stop\"}", 5)));
+        List<String> types = types(events);
+        int textEnd = types.indexOf("TEXT_MESSAGE_END");
+        int toolEnd = types.indexOf("TOOL_CALL_END");
+        assertTrue(textEnd >= 0 && toolEnd >= 0, "both ends emitted");
+        assertTrue(toolEnd < textEnd, "tool end (seq=3) must precede text end (seq=4) despite arrival order");
+    }
+
+    /** end 先于部分 delta 到达：delta 仍应在 END 前输出。 */
+    @Test
+    void endBeforeSomeDeltasStillOrdered() {
+        List<JsonNode> events = translate(Flux.just(
+                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"前\"}"),
+                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 3), // seq 2 缺席 → end 缓存
+                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"后\"}"), // end 已到达未下发
+                ocSeq("session.next.step.ended", "{\"finish\":\"tool-calls\"}", 2),  // 补上缺口 → end 才下发（非终止，run 继续）
+                ocSeq("session.next.step.ended", "{\"finish\":\"stop\"}", 4)));
+        List<String> types = types(events);
+        String allText = events.stream()
+                .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
+                .map(e -> e.path("delta").asText()).reduce("", String::concat);
+        assertEquals("前后", allText, "deltas in arrival order, all before END");
+        assertTrue(types.indexOf("TEXT_MESSAGE_END") > types.lastIndexOf("TEXT_MESSAGE_CONTENT"));
+    }
+
+    /** delta 先于 start 到达：缓存，start 下发后回放。 */
+    @Test
+    void deltaBeforeStartIsReplayed() {
+        List<JsonNode> events = translate(Flux.just(
+                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"other\"}", 1), // 建立 seq 基线
+                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"早到的\"}"), // m1 的 start 还没到
+                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"other\"}", 2),
+                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 3),
+                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
+                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 4),
+                ocSeq("session.next.step.ended", "{}", 5)));
+        List<String> types = types(events);
+        String allText = events.stream()
+                .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
+                .map(e -> e.path("delta").asText()).reduce("", String::concat);
+        assertEquals("早到的正文", allText, "early delta replayed after START, before later delta");
+        assertTrue(types.indexOf("TEXT_MESSAGE_START") < types.indexOf("TEXT_MESSAGE_CONTENT"));
+    }
+
+    /** end 已下发后迟到的 delta：按 seq 它属于已结束生命周期 → 丢弃。 */
+    @Test
+    void lateDeltaAfterEndIsDropped() {
+        List<JsonNode> events = translate(Flux.just(
+                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
+                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 2),
+                ocSeq("session.next.step.ended", "{\"finish\":\"stop\"}", 3),
+                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"幽灵\"}")));
+        String allText = events.stream()
+                .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
+                .map(e -> e.path("delta").asText()).reduce("", String::concat);
+        assertEquals("正文", allText, "late delta must be dropped, no orphan CONTENT after END");
+    }
+
+    /** seq 缺口永不补齐：超时兜底强制 flush（不卡死），记 warn。 */
+    @Test
+    void permanentGapFlushesAfterTimeout() {
+        A2UiService a2UiService = new A2UiService();
+        AguiEventTranslator t = new AguiEventTranslator(new FrontendToolBridge(),
+                new A2UiBridgeService(a2UiService, new A2UiSurfaceRegistry()), java.time.Duration.ofMillis(300));
+        // 上游永不 complete（Flux.never）→ 只有超时 flush 能放出 TEXT_MESSAGE_END
+        List<JsonNode> events = t.translate("thread", "run", Set.of(), Flux.just(
+                        ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                        oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"hi\"}"),
+                        ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 3)) // seq 2 永远不来
+                        .concatWith(Flux.never()))
+                .takeUntil(e -> e.data() != null && e.data().contains("TEXT_MESSAGE_END"))
+                .map(ServerSentEvent::data)
+                .map(d -> {
+                    try {
+                        return MAPPER.readTree(d);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }).collectList().block(java.time.Duration.ofSeconds(10));
+        assertNotNull(events);
+        assertEquals("TEXT_MESSAGE_END", types(events).get(types(events).size() - 1),
+                "timed-out gap must force-flush the buffered end");
     }
 
     private static String json(String s) {        try {

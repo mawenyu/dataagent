@@ -16,6 +16,8 @@ agui:
     id: deepseek-reasoner
     provider-id: deepseek
   run-idle-timeout: PT120S
+  # 乱序事件缓存的兜底超时（fold by id/ordinal 的 seq 缺口永不补齐时强制 flush）
+  event-reorder-timeout: PT3S
   data-workspace: /home/ubuntu/opencode-agui-app/workspace
 
 spring:
