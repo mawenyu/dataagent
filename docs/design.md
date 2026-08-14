@@ -1,87 +1,146 @@
-# OpenCode2 + AG-UI + Spring Boot Gateway 项目设计文档
+# DataAgent 设计文档：CopilotKit Vue + Spring Boot AG-UI/A2UI（无 Node Runtime）
 
-## 1. 项目目标
+> 更新：2026-08-15（全能力演示版）。取代早期 React + Kimi 草案 —— 现行栈是
+> **Vue 3 + @copilotkit/vue（fork）+ DeepSeek（经 OpenCode2 v2）**。
+> 架构决策与"为什么无 Node Runtime"见 docs/ARCHITECTURE.md。
 
-构建一个三层架构的 AI Agent 应用：
-
-- **Agent 引擎层**：OpenCode2（`opencode serve` headless server），模型使用 Kimi K3（用户的 Kimi API key，provider: `kimi-for-coding`）
-- **Agent Gateway 层**：Java Spring Boot，作为前端与 OpenCode server 之间的协议网关
-- **前端层**：基于 AG-UI 协议的聊天界面，支持流式输出（SSE）
-
-## 2. 总体架构
+## 1. 总体架构
 
 ```
-┌─────────────┐   HTTP/SSE    ┌──────────────────────┐   HTTP/SSE   ┌─────────────────┐    Anthropic API    ┌──────────┐
-│  AG-UI      │ ────────────▶ │  Spring Boot         │ ───────────▶ │  OpenCode2      │ ─────────────────▶ │  Kimi K3 │
-│  Frontend   │ ◀──────────── │  Agent Gateway       │ ◀─────────── │  Server (:4096) │ ◀───────────────── │  API     │
-│  (Nginx)    │   AG-UI 事件流 │  (:8090)             │  opencode    │  (headless)     │   (api.kimi.com)   │          │
-└─────────────┘               └──────────────────────┘   SSE 事件    └─────────────────┘                    └──────────┘
+┌──────────────────────────────────────────────────────────┐
+│ 浏览器  Vue 3 + @copilotkit/vue 1.67.1-fork.1             │
+│  ├─ CopilotChat（消息流 / reasoning 折叠 / 工具卡 / 欢迎页）│
+│  ├─ HttpAgent（@ag-ui/client）POST /agui-api/agent/run    │
+│  ├─ frontendTools: showNotification（浏览器侧执行）        │
+│  ├─ renderToolCalls: render_a2ui 命名渲染器(generative UI) │
+│  │   + "*" 通配可折叠渲染器(DefaultToolRender)             │
+│  ├─ A2UI renderer（本地 catalog = basic + 7 个业务组件）    │
+│  └─ ThreadSidebar（多会话）+ context 徽章 + toast           │
+└──────────────────────┬───────────────────────────────────┘
+                       │ AG-UI（SSE）
+┌──────────────────────▼───────────────────────────────────┐
+│ Spring Boot gateway :8090（WebFlux）                      │
+│  ├─ AgentRunController   POST /agent/run                  │
+│  ├─ AgUiProtocolService  session 解析/prompt 组装/超时兜底 │
+│  ├─ AguiEventTranslator  OpenCode v2 事件 → AG-UI 事件    │
+│  │   （fold by id/ordinal 定序，按事件流种类隔离锚点）      │
+│  ├─ FrontendToolBridge   <tool_call> prompt 契约           │
+│  ├─ A2UiBridgeService    render_a2ui → ACTIVITY_SNAPSHOT  │
+│  │   （嵌套组件拍平 + null 属性剥离 + 白名单校验）          │
+│  ├─ A2UiActionHandler    a2uiAction → A2UI_ACTION 续跑     │
+│  ├─ ChatThreadStore      会话持久化（threads.json 原子写）  │
+│  └─ ChatThreadsController /chat/threads REST              │
+└──────────────────────┬───────────────────────────────────┘
+                       │ HTTP/SSE（basic 认证）
+┌──────────────────────▼───────────────────────────────────┐
+│ OpenCode2 server :4096（v2 分支源码, bun, cwd=项目根）     │
+│  新方言事件: session.text.*/tool.*/reasoning.*/step.*/    │
+│  execution.succeeded|failed（全局 volatile 流, 按 sessionID│
+│  客户端过滤; 订阅先于 prompt, replay 缓冲）                │
+└──────────────────────┬───────────────────────────────────┘
+                       │ DeepSeek API（deepseek-reasoner）
 ```
 
-## 3. 各层职责
+## 2. 能力矩阵（全部实测，证据在 docs/evidence/ 与 scripts/）
 
-### 3.1 OpenCode2 Server（Agent 引擎）
-- 来源：GitHub 官方仓库 `anomalyco/opencode`（原 sst/opencode）`dev` 分支源码（v2 架构，monorepo：`packages/opencode` 为 CLI+server 主包，`packages/server` 为 HTTP API 层）
-- 编译方式：bun 1.3.14，`bun install` + 从 `packages/opencode` 只构建 server 相关产物（`--skip-embed-web-ui` 跳过前端嵌入）
-- 启动命令：`opencode serve --port 4096 --hostname 127.0.0.1`
-- 模型配置：`kimi-for-coding/k3`，通过 `~/.local/share/opencode/auth.json` 注入 KIMI_API_KEY
-- 工作目录：`/home/ubuntu/opencode-agui-app/workspace`
-- 能力：会话管理、消息流式生成、工具调用（文件读写、bash 等）
+### AG-UI
 
-### 3.2 Spring Boot Agent Gateway（:8090）
-职责：
-- 接收前端的 agent 运行请求（POST `/agent/run`，AG-UI RunAgentInput 格式）
-- 在 OpenCode server 上创建/复用 session，发送用户消息
-- 订阅 OpenCode 的 SSE 事件流，翻译成 **AG-UI 协议事件**（RUN_STARTED / TEXT_MESSAGE_START / TEXT_MESSAGE_CONTENT / TEXT_MESSAGE_END / RUN_FINISHED / RUN_ERROR / TOOL_CALL_* 等）
-- 以 SSE 方式推送给前端
-- 附带：健康检查 `/actuator/health`、会话列表 `/agent/sessions`
+| 能力 | 实现 | 实测 |
+|---|---|---|
+| text streaming | translator TEXT_MESSAGE_START/CONTENT/END，tool_call marker lookahead | 单次 run 46 delta（公网 curl） |
+| reasoning 思考流 | session.reasoning.* → REASONING_* 全生命周期；归并键 assistantMessageID+ordinal，复用去重 | reasoning 102 delta/次 |
+| tool call 渲染 | TOOL_CALL_START/ARGS/END/RESULT；前端通配渲染器可折叠（名称/参数/结果/状态） | glob/shell/read 全链路 |
+| 多轮连续对话 | threadId→sessionId 持久映射，上下文完整 | scripts/test-multi-turn.sh 5 轮 7 断言（记得暗号） |
+| run 超时兜底 | agui.run-idle-timeout(默认120s) 空闲判挂起 → RUN_ERROR + interrupt/abort | 单测 hungRunTimesOutWithRunError + 实测 |
+| context/token 用量 | step.ended tokens → CUSTOM context_usage（input+cacheRead）；顶栏徽章 | 多轮 6089→10613 逐轮增长 |
+| frontend tools | RunAgentInput.tools → <client_tools> prompt 契约 → TOOL_CALL_* 结束 run → 浏览器执行 → role=tool 续跑 | scripts/test-frontend-tool.sh 5 断言 |
+| generative UI | useRenderTool 命名渲染器 render_a2ui（surface 构建卡：shimmer→组件徽标），优先于通配 * | RenderA2uiToolCall.test.ts + bundle grep |
 
-技术栈：Spring Boot 3.x + WebFlux（响应式 SSE）+ Java 17
+### A2UI
 
-### 3.3 AG-UI Frontend
-- 框架：React + Vite + TypeScript
-- 依赖：`@ag-ui/core` + `@ag-ui/client`（或手写 AG-UI SSE 客户端，取决于包可用性）
-- 功能：聊天窗口、流式消息渲染（Markdown）、工具调用过程展示、会话管理
-- 构建产物部署到 Nginx，子路径 `/agui/` 对外访问
+| 能力 | 实现 | 实测 |
+|---|---|---|
+| render_a2ui surface | <server_tools> prompt 契约 → A2UiBridgeService 校验/拍平 → ACTIVITY_SNAPSHOT(a2ui-surface) | docs/evidence/2026-08-15-a2ui-dashboard-flat.sse（7 组件看板） |
+| a2uiAction 回传 | 前端 action → forwardedProps.a2uiAction → A2UI_ACTION prompt → 真实 agent 续跑 + 同名 surfaceId 就地更新 | docs/evidence/2026-08-15-a2ui-action.sse |
+| 组件库 | basic catalog 18 组件 + 业务组件 MetricCard/DataTable/BarChart/LineChart/InsightCard/WarningCard/ActionButton | dataAgentCatalog.test.ts 真实 DOM 渲染 |
+| 表单组件 | TextField/ChoicePicker/CheckBox/Slider/DateTimeInput，输入绑定 data model，提交 action context 引用 {path} 绑定 | scripts/test-a2ui-form.sh 8 断言 |
+| 数据绑定 | {path} 绑定由 GenericBinder 按 schema 解析；chart data / table rows / metric value 均可绑定 | catalog 测试 + 实测 |
 
-## 4. 关键协议
+## 3. API 一览
 
-### AG-UI 事件（网关 → 前端，SSE）
-- `RUN_STARTED` { threadId, runId }
-- `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT`(delta) / `TEXT_MESSAGE_END`
-- `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END`
-- `RUN_FINISHED` / `RUN_ERROR`
+| 端点 | 方法 | 说明 |
+|---|---|---|
+| /agui-api/agent/run | POST | AG-UI RunAgentInput → SSE 事件流（gateway :8090 /agent/run） |
+| /agui-api/chat/threads | GET/POST | 会话列表 / 新建 |
+| /agui-api/chat/threads/{id} | PATCH/DELETE | 重命名 / 删除 |
+| /agui-api/chat/threads/{id}/messages | GET | 历史消息（OpenCode session → AG-UI Message[]） |
+| /actuator/health | GET | 健康检查 |
 
-### OpenCode Server API（网关 → opencode）
-- `POST /session` 创建会话
-- `POST /session/:id/message` 发送消息（流式）
-- `GET /event` 全局事件订阅（SSE）
-- 实际端点以 `opencode serve` 暴露的为准，开发时先探测再适配
+nginx：/agui/ → /var/www/blog/agui/（vite 构建产物）；/agui-api/ → 127.0.0.1:8090（SSE 关 buffering）。
 
-## 5. 端口与部署
+## 4. 关键协议契约
+
+### 4.1 OpenCode v2 事件方言（gateway 唯一消费方言，2026-08-15 起旧方言已删）
+
+- text: session.text.started/delta/ended（assistantMessageID）
+- reasoning: session.reasoning.started/delta/ended（无 id → assistantMessageID+ordinal 合成归并键）
+- tool: session.tool.input.started/delta/ended、session.tool.called/success/failed（调用 id 字段名是 `id`；tool.called 不带名字，从 input.started 注册表取）
+- step: session.step.started/ended/failed（finish=tool-calls 表示 agent loop 继续）
+- run 终止: session.execution.succeeded/failed（终止 step.ended 的兜底）
+- 定序: durable.seq 连续前缀下发；delta 锚定同种类+id 的最近 seq 事件；缺口 3s 超时强 flush（agui.event-reorder-timeout）
+
+### 4.2 <tool_call> prompt 契约（frontend tools + render_a2ui 共用）
+
+OpenCode v2 core runner 只暴露内置工具，自定义工具走 prompt 契约：
+模型输出 `<tool_call>{"name":...,"arguments":{...}}</tool_call>`，translator 在流起始 lookahead +
+流中 holdback 检测，转成标准 TOOL_CALL_* 事件。frontend tool → RUN_FINISHED 等浏览器执行；
+server tool（render_a2ui）→ 立即执行产生 ACTIVITY_SNAPSHOT，run 继续。
+
+### 4.3 A2UI surface 协议（v0.9）
+
+ACTIVITY_SNAPSHOT，activityType="a2ui-surface"，content.a2ui_operations =
+createSurface/updateComponents/updateDataModel。组件扁平列表 + children 为 id 数组 +
+root id="root"。gateway 拍平嵌套 children、剥 null 属性、白名单校验（25 个组件）。
+surface 快照按 thread 持久化（历史回放重放看板）。
+
+### 4.4 a2uiAction 回环
+
+```
+Java ACTIVITY_SNAPSHOT → Vue 渲染 → 用户点击/提交表单
+→ renderer setProperties({a2uiAction}) + runAgent()
+→ RunAgentInput.forwardedProps.a2uiAction {version, action:{name,surfaceId,sourceComponentId,context}}
+→ gateway A2UI_ACTION prompt → agent 续跑 → render_a2ui 同名 surfaceId 就地更新
+```
+
+## 5. 多会话模型
+
+- threadId（AG-UI）↔ sessionId（OpenCode）映射存 ChatThreadStore（data/threads.json 原子写）
+- 复用前 GET /api/session/{id} 存活校验，失效自动重建 rebind
+- 标题 = 首条用户消息截断 30 字；run 结束自动命名
+- 前端 useThreads：API 权威 + localStorage 兜底；切换会话把历史写入 per-thread clone 渲染
+- userId 参数位保留（当前匿名放行，ThreadAccessPolicy 可插拔；TODO: 真实认证）
+
+## 6. UI 设计系统
+
+浅色 B2B SaaS（对齐 adk-dashboard）：#f8fafc 底、白卡、#6366f1 靛蓝 accent、
+chart-1~5 色板（#6366f1/#10b981/#f59e0b/#ef4444/#8b5cf6）。左侧可折叠会话栏
+（窄屏抽屉化）、空会话欢迎页（logo + 建议问题卡）、消息气泡、reasoning 折叠区、
+工具卡可折叠、A2UI 卡片悬停阴影过渡、toast 栈（showNotification）、context 徽章。
+
+## 7. 端口与部署
 
 | 组件 | 端口 | 说明 |
-|------|------|------|
-| OpenCode server | 4096 (127.0.0.1) | 仅本机 |
-| Spring Gateway | 8090 (127.0.0.1) | 仅本机 |
-| Nginx | 80 | `/agui/` → 前端静态文件；`/agui-api/` → gateway 代理（SSE 需关 buffering） |
+|---|---|---|
+| OpenCode server | 4096 (127.0.0.1) | bun 源码运行，basic 认证，cwd=/home/ubuntu/dataagent |
+| gateway | 8090 | java -jar target/opencode-agui-gateway-1.0.0.jar |
+| vite dev | 3001 | 开发（predev 自动构建 fork） |
+| nginx | 80 | /agui/ 静态 + /agui-api/ 代理 |
 
-访问地址：http://101.34.246.179/agui/
+公网验证：http://101.34.246.179/agui/ （200）；SSE 实测见 docs/evidence/。
 
-## 6. 目录结构
+## 8. 已知边界
 
-```
-/home/ubuntu/opencode-agui-app/
-├── docs/                  # 设计/过程/总结文档
-├── gateway/               # Spring Boot agent gateway
-├── frontend/              # AG-UI React 前端
-├── workspace/             # opencode 的工作目录（agent 实验沙箱）
-├── scripts/               # 启动/停止脚本
-└── opencode.json          # opencode 项目配置（model: kimi-for-coding/k3）
-```
-
-## 7. 风险与备选
-
-1. OpenCode server 的事件 API 细节未知 → 开发网关前先 curl 探测实际端点
-2. `@ag-ui/*` npm 包可能拉取失败 → 备选手写极简 AG-UI SSE 客户端
-3. Kimi API 大请求体 400 问题 → 网关侧限制历史长度
+- render_a2ui 依赖 prompt 契约，LLM 有小概率只答文字不调工具（已通过 prompt 硬化 +
+  测试脚本重试缓解；根治需 opencode v2 core runner 支持自定义工具）
+- 旧实例 session 重启后可能 wedge（空闲超时覆盖）；session 失效重建后旧历史不可读
+- generative UI 的 render_a2ui 卡是工具调用的语义化呈现，真实 surface 由 A2UI renderer 渲染

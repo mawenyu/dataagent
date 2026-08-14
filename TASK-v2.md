@@ -139,3 +139,42 @@
 - 随时更新本文件：在对应需求下追加 `[DONE] 日期 + 实测证据`
 - 服务重启：gateway `systemctl --user restart` 或原有启动脚本；opencode server 重启前确认端口释放
 - 遇到问题先诊断根因，禁止无脑重试
+
+## 需求 8（2026-08-15 任务书）：完整演示 A2UI 和 AG-UI 全部能力
+
+### [DONE] 2026-08-15 全部完成（逐能力 curl SSE 实测，禁止 Playwright）
+
+**前置修复（实测抓到的两个真 bug）**：
+1. `ac9eb9c` promptIncludesDataWorkspaceHint 断言跟随可移植性默认值
+2. `b25355d` **最终回答 text 整条丢失**：EventOrderer 锚点只按 assistantMessageID 归并，
+   step.started 与 text.* 共用 id → seq 缺口下 text delta 被提前回放、排在 text.started
+   之前而被静默丢弃。修复：eventIdOf 按事件流种类隔离（text:/reasoning:/tool:/step:）+
+   delta 先于 started 懒建 MsgState。回归测试用真实捕获流（166 事件含 seq 缺口，
+   src/test/resources/real-stream-text-drop.json）
+3. `5300376` 删除旧事件方言兼容层（normalizeDialect + session.next.*），只消费 v2 新方言，
+   字段差异内联（reasoningKey 合成 / tool id 字段 / execution.succeeded 终止兜底）
+
+**AG-UI 八项能力实测**（证据 docs/evidence/）：
+- text streaming / reasoning / tool call(START/ARGS/END/RESULT) / context_usage：
+  单次 run 事件流全生命周期断言通过（公网 nginx 链路同样验证）
+- 多轮：`scripts/test-multi-turn.sh` 5 轮 7 断言（暗号记忆 + context 逐轮增长）
+- run 超时兜底：单测 hungRunTimesOutWithRunError（RUN_ERROR + abort）
+- frontend tools：`scripts/test-frontend-tool.sh` 5 断言（tools schema 注入 →
+  TOOL_CALL_* → role=tool 续跑）
+- generative UI：`eaa00fa` RenderA2uiToolCall（useRenderTool 命名渲染器，
+  surface 构建卡，优先于通配 *）
+
+**A2UI 实测**：
+- render_a2ui 看板：7 组件扁平列表 + data model {path} 绑定（evidence .sse）
+- a2uiAction 回环：表单提交（keyword/region/includeReturns 绑定值）→ agent 查 CSV →
+  同名 surfaceId 就地更新（`scripts/test-a2ui-form.sh` 8 断言）
+- 表单组件：TextField/ChoicePicker/CheckBox + 提交按钮全渲染
+- 鲁棒性（`eaa00fa`，实测驱动）：gateway 拍平嵌套 children + 剥 null 属性
+  （顺带堵住嵌套组件绕白名单的洞）；catalog 兼容 {path} 绑定 chart data/table rows、
+  {key,label}/{key,title} 列、对象记录行
+- prompt 硬化：UI 请求 MUST 调 render_a2ui；action 续跑 MUST 同名 surface 更新
+
+**验收状态**：gateway 69 测试全绿；前端 28 vitest 全绿；vite build 通过；
+http://101.34.246.179/agui/ 200（新 bundle index-DHB_MSen.js）；公网
+/agui-api/agent/run SSE 实测 RUN_FINISHED + 46 text delta；debug 页 200；
+docs/design.md 已重写为现行架构。
