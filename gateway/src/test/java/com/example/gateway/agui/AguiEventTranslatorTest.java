@@ -372,6 +372,43 @@ class AguiEventTranslatorTest {
                 "reused upstream reasoningID must map to distinct AG-UI messageIds");
     }
 
+    /** v2 官方仓库新方言：session.text./session.tool. 等（无 .next 段），reasoning 无
+        reasoningID（用 assistantMessageID+ordinal 合成），execution.succeeded 为 run 终止。 */
+    @Test
+    void newDialectEventsAreNormalized() {
+        List<JsonNode> events = translate(Flux.just(
+                oc("session.step.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.reasoning.started", "{\"assistantMessageID\":\"m1\",\"ordinal\":0}"),
+                oc("session.reasoning.delta", "{\"assistantMessageID\":\"m1\",\"ordinal\":0,\"delta\":\"想\"}"),
+                oc("session.reasoning.ended", "{\"assistantMessageID\":\"m1\",\"ordinal\":0,\"text\":\"想\"}"),
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\",\"ordinal\":0}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"ordinal\":0,\"delta\":\"答\"}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\",\"ordinal\":0,\"text\":\"答\"}"),
+                oc("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"bash\"}"),
+                oc("session.tool.input.delta", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"delta\":\"ls\"}"),
+                oc("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"text\":\"ls\"}"),
+                oc("session.tool.success", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}"),
+                oc("session.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"tool-calls\",\"tokens\":{\"input\":10,\"output\":5,\"reasoning\":3,\"cache\":{\"read\":7,\"write\":0}}}"),
+                oc("session.execution.succeeded", "{\"sessionID\":\"s1\"}")));
+        List<String> types = types(events);
+        assertTrue(types.contains("REASONING_MESSAGE_CONTENT"), "reasoning delta translated");
+        assertTrue(types.contains("TEXT_MESSAGE_CONTENT"));
+        assertTrue(types.contains("TOOL_CALL_START"));
+        assertTrue(types.contains("TOOL_CALL_ARGS"));
+        assertTrue(types.contains("TOOL_CALL_END"));
+        assertTrue(types.contains("TOOL_CALL_RESULT"));
+        assertTrue(types.contains("STEP_STARTED"));
+        assertTrue(types.contains("STEP_FINISHED"));
+        assertTrue(events.stream().anyMatch(e -> "CUSTOM".equals(e.path("type").asText())
+                && "context_usage".equals(e.path("name").asText())), "tokens → context_usage");
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1),
+                "execution.succeeded terminates the run");
+        // reasoning id 由 assistantMessageID+ordinal 合成
+        JsonNode rStart = events.stream()
+                .filter(e -> "REASONING_MESSAGE_START".equals(e.path("type").asText())).findFirst().orElseThrow();
+        assertTrue(rStart.path("messageId").asText().startsWith("m1"), "synthesized reasoning id");
+    }
+
     private static String json(String s) {        try {
             return MAPPER.writeValueAsString(s);
         } catch (Exception e) {

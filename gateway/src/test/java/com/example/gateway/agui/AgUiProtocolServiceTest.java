@@ -44,6 +44,7 @@ class AgUiProtocolServiceTest {
         /** When true, /api/event never responds (simulates a hung agent, e.g. question tool). */
         boolean hangEventStream = false;
         final List<String> aborts = new ArrayList<>();
+        final List<String> requestOrder = new ArrayList<>();
         final List<String> modelSets = new ArrayList<>();
         final List<String> sessionHistory = new ArrayList<>();
 
@@ -54,6 +55,7 @@ class AgUiProtocolServiceTest {
         private Mono<ClientResponse> exchange(ClientRequest req) {
             String path = req.url().getPath();
             String method = req.method().name();
+            synchronized (requestOrder) { requestOrder.add(method + " " + path); }
             if ("/api/session".equals(path) && "POST".equals(method)) {
                 sessionCreates++;
                 return json("{\"data\":{\"id\":\"ses_stub_" + sessionCreates + "\"}}");
@@ -616,6 +618,42 @@ class AgUiProtocolServiceTest {
         assertEquals(1, threadStore.listSurfaces("t-surf").size(),
                 "ACTIVITY_SNAPSHOT persisted so history replay can re-render the surface");
         assertEquals("sales-card", threadStore.listSurfaces("t-surf").get(0).surfaceId());
+    }
+
+    /** 实测：v2 官方分支 /api/event 不回放（volatile）——必须先订阅事件流再发 prompt，
+        否则 prompt 与订阅之间的快事件（如秒回的 tool call）永久丢失。 */
+    @Test
+    void eventStreamSubscribesBeforePromptSent() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        run(userMsg("t-order", "hi"));
+        int eventIdx = -1, promptIdx = -1;
+        for (int i = 0; i < stub.requestOrder.size(); i++) {
+            String r = stub.requestOrder.get(i);
+            if (r.startsWith("GET /api/event") && eventIdx < 0) eventIdx = i;
+            if (r.contains("/prompt") && promptIdx < 0) promptIdx = i;
+        }
+        assertTrue(eventIdx >= 0 && promptIdx >= 0, "both requests happened: " + stub.requestOrder);
+        assertTrue(eventIdx < promptIdx, "event subscription must precede prompt: " + stub.requestOrder);
+    }
+
+    /** 实测：v2 官方分支 /api/event 是全局流（所有 session 混合），且子 agent
+        的 child session 共享流并有自己的 aggregate seq 序列 —— 不过滤会串会话。 */
+    @Test
+    void foreignSessionEventsAreFilteredOut() {
+        String mine = ocEvent("session.next.text.started", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.next.text.delta", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\",\"delta\":\"我的\"}")
+                + ocEvent("session.next.text.ended", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.next.step.ended", "{\"sessionID\":\"ses_stub_1\"}");
+        String foreign = ocEvent("session.next.text.started", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\"}")
+                + ocEvent("session.next.text.delta", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\",\"delta\":\"别人的\"}")
+                + ocEvent("session.next.text.ended", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\"}");
+        // 交错：外部会话事件插在中间
+        String stream = foreign + mine;
+        stub.eventStreams.add(stream);
+        List<JsonNode> events = run(userMsg("t-filter", "hi"));
+        String all = events.toString();
+        assertTrue(all.contains("我的"), "own session text present");
+        assertFalse(all.contains("别人的"), "foreign session text must be filtered");
     }
 
     @Test

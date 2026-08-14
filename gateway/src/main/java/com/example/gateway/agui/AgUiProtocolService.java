@@ -263,10 +263,18 @@ public class AgUiProtocolService {
         final String finalPrompt = promptText;
 
         return resolveOrCreateSession(threadId)
-                .flatMapMany(sessionId ->
-                        ensureModel(sessionId)
+                .flatMapMany(sessionId -> {
+                    // 实测：v2 官方分支 /api/event 是 volatile 的（不回放，订阅前的事件
+                    // 永久丢失）——必须先订阅事件流再发 prompt，否则秒回的 tool call
+                    // 等早期事件全丢。replay() 缓存 + 立即 connect，translate 稍后订阅时
+                    // 仍能拿到 prompt 之前到达的事件。
+                    reactor.core.publisher.Flux<ServerSentEvent<String>> hot =
+                            streamEvents(sessionId).replay();
+                    reactor.core.Disposable conn = ((reactor.core.publisher.ConnectableFlux<ServerSentEvent<String>>) hot).connect();
+                    return ensureModel(sessionId)
                                 .then(sendPrompt(sessionId, finalPrompt))
-                                .thenMany(translator.translate(finalThreadId, finalRunId, frontendToolNames, streamEvents(sessionId)))
+                                .thenMany(translator.translate(finalThreadId, finalRunId, frontendToolNames, hot))
+                                .doFinally(sig -> conn.dispose())
                                 // 需求7-6: never let a run hang silently — idle timeout
                                 // (question/permission waits, provider stalls) terminates
                                 // with a retryable RUN_ERROR, and the lingering OpenCode
@@ -281,18 +289,24 @@ public class AgUiProtocolService {
                                             .thenMany(Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(msg) + "\"}")));
                                 })
                                 .doOnSubscribe(s -> log.info("AG-UI run started thread={} run={} session={} user={}", finalThreadId, finalRunId, sessionId, userId))
-                                .doOnError(e -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage()))
-                )
+                                .doOnError(e -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage()));
+                })
                 .onErrorResume(e -> Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(String.valueOf(e.getMessage())) + "\"}")));
     }
 
     /** Best-effort abort of the OpenCode-side run; failures are logged and swallowed. */
     private Mono<Void> abortSession(String sessionId) {
+        // v2 官方分支是 POST /api/session/{id}/interrupt；旧打包二进制是 /abort
         return webClient.post()
-                .uri("/api/session/{id}/abort", sessionId)
+                .uri("/api/session/{id}/interrupt", sessionId)
                 .retrieve()
                 .toBodilessEntity()
                 .then()
+                .onErrorResume(e -> webClient.post()
+                        .uri("/api/session/{id}/abort", sessionId)
+                        .retrieve()
+                        .toBodilessEntity()
+                        .then())
                 .doOnSuccess(v -> log.info("aborted OpenCode session {}", sessionId))
                 .onErrorResume(e -> {
                     log.warn("failed to abort OpenCode session {}: {}", sessionId, e.getMessage());
@@ -343,13 +357,25 @@ public class AgUiProtocolService {
     }
 
     private Mono<Void> sendPrompt(String sessionId, String message) {
+        // v2 官方分支 payload 是 {text}；旧打包二进制是 {prompt:{text}} —— 400 时回退
         return webClient.post()
                 .uri("/api/session/{id}/prompt", sessionId)
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .bodyValue(Map.of("prompt", Map.of("text", message)))
+                .bodyValue(Map.of("text", message))
                 .retrieve()
                 .toBodilessEntity()
-                .then();
+                .then()
+                .onErrorResume(e -> {
+                    if (!String.valueOf(e.getMessage()).contains("400")) return Mono.error(e);
+                    log.info("session {} rejects {text} payload, retrying legacy {prompt:{text}} shape", sessionId);
+                    return webClient.post()
+                            .uri("/api/session/{id}/prompt", sessionId)
+                            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                            .bodyValue(Map.of("prompt", Map.of("text", message)))
+                            .retrieve()
+                            .toBodilessEntity()
+                            .then();
+                });
     }
 
     private Flux<ServerSentEvent<String>> streamEvents(String sessionId) {
@@ -364,6 +390,20 @@ public class AgUiProtocolService {
                     return response.body(BodyExtractors.toFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {}));
                 })
                 .filter(e -> e.data() != null && !e.data().isBlank())
+                // v2 官方分支方言归一化（session.X → session.next.X），新旧服务端都兼容
+                .map(AguiEventTranslator::normalizeDialect)
+                // 实测：/api/event 是全局流（所有 session 混合，子 agent 的 child
+                // session 也在其中且有独立 aggregate seq）—— 只放行本会话事件，
+                // 否则跨会话串扰 + seq 冲突（不同 aggregate 的 seq 会重复）。
+                .filter(e -> {
+                    try {
+                        String sid = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readTree(e.data()).path("data").path("sessionID").asText("");
+                        return sid.isEmpty() || sessionId.equals(sid);
+                    } catch (Exception ex) {
+                        return false;
+                    }
+                })
                 // Terminate the flux only at a RUN-terminating step settlement.
                 // OpenCode emits step.ended per assistant turn; finish=tool-calls means
                 // the agent loop continues with more steps — cutting the stream there

@@ -103,7 +103,7 @@ public class AguiEventTranslator {
 
         ServerSentEvent<String> runStarted = sse(agEvent("RUN_STARTED", runId, threadId));
 
-        Flux<ServerSentEvent<String>> body = restoreOrder(opencodeEvents)
+        Flux<ServerSentEvent<String>> body = restoreOrder(opencodeEvents.map(AguiEventTranslator::normalizeDialect))
                 .concatMap(event -> {
                     String json = event.data();
                     if (json == null || json.isBlank()) return Flux.empty();
@@ -169,8 +169,10 @@ public class AguiEventTranslator {
                         case "session.next.tool.called": {
                             // fallback for models that don't stream tool input
                             String callId = data.path("callID").asText();
-                            String name = data.path("tool").asText();
+                            String name = data.path("tool").asText("");
                             if (callId.isBlank()) return Flux.empty();
+                            // 新方言 tool.called 不带工具名字段 —— 回退到 input.started 注册的
+                            if (name.isBlank()) name = toolCallNames.getOrDefault(callId, "");
                             toolCallNames.putIfAbsent(callId, name);
                             sawOutput.set(true);
                             List<ServerSentEvent<String>> out = new ArrayList<>();
@@ -357,11 +359,59 @@ public class AguiEventTranslator {
      *   <li>全流无 seq（旧 stub/测试流）→ 完全直通，保持旧行为</li>
      * </ul></p>
      */
+    /**
+     * OpenCode v2 官方仓库（v2 分支）事件方言归一化：session.text.X /
+     * session.tool.X / session.reasoning.X / session.step.X 不再带 ".next" 段；
+     * reasoning 事件没有 reasoningID（用 assistantMessageID+ordinal 合成）；
+     * run 级终止是 session.execution.succeeded/failed（映射为 step 终止事件）。
+     * 打包二进制（旧方言 session.next.*）原样透传 —— 两种方言都可处理。
+     */
+    static ServerSentEvent<String> normalizeDialect(ServerSentEvent<String> e) {
+        String json = e.data();
+        if (json == null || !json.contains("\"session.")) return e;
+        try {
+            JsonNode node = MAPPER.readTree(json);
+            String type = node.path("type").asText("");
+            if (!type.startsWith("session.") || type.startsWith("session.next.")) return e;
+            String mapped = null;
+            if (type.startsWith("session.text.") || type.startsWith("session.tool.")
+                    || type.startsWith("session.reasoning.") || type.startsWith("session.step.")) {
+                mapped = "session.next." + type.substring("session.".length());
+            } else if ("session.execution.succeeded".equals(type)) {
+                mapped = "session.next.step.ended";
+            } else if ("session.execution.failed".equals(type)) {
+                mapped = "session.next.step.failed";
+            }
+            if (mapped == null) return e; // 非核心事件（inbox/renamed 等）不需要翻译
+            ObjectNode out = (ObjectNode) node;
+            out.put("type", mapped);
+            ObjectNode data = (ObjectNode) out.path("data");
+            if (type.startsWith("session.reasoning.")) {
+                // 新方言 reasoning 无 reasoningID —— 用 assistantMessageID+ordinal 合成
+                data.put("reasoningID",
+                        data.path("assistantMessageID").asText() + "-" + data.path("ordinal").asText("0"));
+            }
+            if (type.startsWith("session.tool.")) {
+                // 新方言工具调用 id 字段名是 id（旧方言是 callID）
+                if (!data.path("id").asText("").isEmpty() && data.path("callID").asText("").isEmpty()) {
+                    data.put("callID", data.path("id").asText());
+                }
+            }
+            if ("session.execution.succeeded".equals(type)) {
+                data.put("finish", "stop"); // 映射为终止 step
+            }
+            return ServerSentEvent.<String>builder().data(MAPPER.writeValueAsString(out)).build();
+        } catch (Exception ex) {
+            return e;
+        }
+    }
+
     Flux<ServerSentEvent<String>> restoreOrder(Flux<ServerSentEvent<String>> source) {
         return Flux.create(sink -> {
             EventOrderer orderer = new EventOrderer(sink, reorderTimeout.toMillis());
             reactor.core.Disposable ticker = Flux.interval(java.time.Duration.ofMillis(200))
-                    .subscribe(t -> orderer.flushIfStale());
+                    // 任何异常都不能杀死兜底循环（sink 在取消/完成后的写入会抛）
+                    .subscribe(t -> orderer.flushIfStaleSafely(), e -> {});
             reactor.core.Disposable sub = source.subscribe(
                     orderer::offer,
                     sink::error,
@@ -398,6 +448,7 @@ public class AguiEventTranslator {
         private boolean seqInitialized = false;
         private long nextSeq = 0;
         private long lastProgressMs = System.currentTimeMillis();
+        private long oldestBufferedMs = 0;
 
         EventOrderer(reactor.core.publisher.FluxSink<ServerSentEvent<String>> sink, long timeoutMs) {
             this.sink = sink;
@@ -405,6 +456,13 @@ public class AguiEventTranslator {
         }
 
         synchronized void offer(ServerSentEvent<String> e) {
+            // 兜底（offer 驱动）：最老缓冲事件超过 timeout 即强制 flush，
+            // 不依赖定时器线程
+            if (oldestBufferedMs > 0 && System.currentTimeMillis() - oldestBufferedMs > timeoutMs) {
+                log.warn("event reorder timeout ({}ms, offer-driven): force-flush nextSeq={} bufferedSeq={}",
+                        timeoutMs, nextSeq, bySeq.size());
+                flushAll();
+            }
             String json = e.data();
             if (json == null || json.isBlank()) {
                 emit(e);
@@ -467,6 +525,7 @@ public class AguiEventTranslator {
                 emitHeld(bySeq.pollFirstEntry().getValue(), nextSeq);
                 nextSeq++;
             }
+            if (bySeq.isEmpty()) oldestBufferedMs = 0;
         }
 
         private void emitHeld(ServerSentEvent<String> e, long seq) {
@@ -481,12 +540,16 @@ public class AguiEventTranslator {
             }
         }
 
-        synchronized void flushIfStale() {
-            if (bySeq.isEmpty() && pendingDeltasById.isEmpty()) return;
-            if (System.currentTimeMillis() - lastProgressMs < timeoutMs) return;
-            log.warn("event reorder timeout ({}ms): force-flush nextSeq={} bufferedSeq={} pendingDeltaIds={}",
-                    timeoutMs, nextSeq, bySeq.size(), pendingDeltasById.size());
-            flushAll();
+        synchronized void flushIfStaleSafely() {
+            try {
+                if (bySeq.isEmpty() && pendingDeltasById.isEmpty()) return;
+                if (System.currentTimeMillis() - lastProgressMs < timeoutMs) return;
+                log.warn("event reorder timeout ({}ms): force-flush nextSeq={} bufferedSeq={} pendingDeltaIds={}",
+                        timeoutMs, nextSeq, bySeq.size(), pendingDeltasById.size());
+                flushAll();
+            } catch (Exception ex) {
+                log.warn("orderer flush failed (stream likely disposed): {}", ex.getMessage());
+            }
         }
 
         synchronized void flushAll() {
