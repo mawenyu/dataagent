@@ -19,6 +19,11 @@ export const DATA_AGENT_CATALOG_ID = 'https://opencode-agui-app.local/a2ui/data-
 const bindable = (t: z.ZodTypeAny) => z.union([t, z.object({ path: z.string() })])
 const boundString = bindable(z.string())
 const rowData = z.array(z.record(z.string(), z.any()))
+/** 列定义：纯文本或 {key,label?/title?}（模型实测几种都会产出，2026-08-15） */
+const columnDef = z.union([
+  z.string(),
+  z.object({ key: z.string(), label: z.string().optional(), title: z.string().optional() }),
+])
 
 // chart-1~5 色板（对齐 ref/adk-dashboard 设计系统）
 export const CHART_PALETTE = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
@@ -65,19 +70,26 @@ const DataTable = createVueComponent(
     name: 'DataTable',
     schema: z.object({
       title: boundString.optional(),
-      columns: z.array(z.string()),
-      rows: z.array(z.array(z.union([z.string(), z.number()]))),
+      columns: z.array(columnDef),
+      // rows 常来自 data model —— 允许 {path} 绑定；行可以是数组或对象记录
+      // （{region:"华北",sales:388082} 按列 key 取值，2026-08-15 实测模型行为）
+      rows: bindable(z.array(z.union([
+        z.array(z.union([z.string(), z.number()])),
+        z.record(z.string(), z.any()),
+      ]))),
     }),
   } as any,
   ({ props }: any) => {
-    const columns: string[] = props.columns ?? []
-    const rows: any[][] = props.rows ?? []
+    const cols: { key: string; label: string }[] = (props.columns ?? []).map((c: any) =>
+      typeof c === 'string' ? { key: c, label: c } : { key: String(c?.key ?? ''), label: String(c?.label ?? c?.title ?? c?.key ?? '') })
+    const rows: any[] = (props.rows ?? []).map((r: any) =>
+      Array.isArray(r) ? r : cols.map((c) => r?.[c.key] ?? ''))
     const th = { textAlign: 'left' as const, fontSize: '12px', color: '#6b7280', padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }
     const td = { fontSize: '13px', color: '#374151', padding: '6px 10px', borderBottom: '1px solid #f1f5f9' }
     return h('div', { class: 'da-card', style: { ...cardStyle, overflowX: 'auto' } }, [
       props.title ? h('p', { style: titleStyle }, String(props.title)) : null,
       h('table', { style: { width: '100%', borderCollapse: 'collapse' } }, [
-        h('thead', [h('tr', columns.map((c) => h('th', { style: th, key: c }, c)))]),
+        h('thead', [h('tr', cols.map((c) => h('th', { style: th, key: c.key }, c.label)))]),
         h(
           'tbody',
           rows.map((r, i) =>
@@ -158,7 +170,8 @@ const chartSchema = z.object({
   title: boundString.optional(),
   xField: z.string(),
   yField: z.string(),
-  data: rowData,
+  // data 常来自 data model —— 允许 {path} 绑定（2026-08-15 实测模型行为）
+  data: bindable(rowData),
 })
 
 const BarChart = createVueComponent({ name: 'BarChart', schema: chartSchema } as any, ({ props }: any) =>

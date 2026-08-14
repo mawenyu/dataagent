@@ -110,4 +110,57 @@ describe('DataAgent custom catalog (TASK §15)', () => {
     expect(wrapper.text()).toContain('987,654')
     expect(wrapper.text()).toContain('-3%')
   })
+
+  it('resolves bound chart/table data and {key,label} columns (实测模型输出形态)', async () => {
+    // 2026-08-15 实测：模型把 chart data / table rows 放 data model（{path} 绑定），
+    // 列定义给 {key,label} 对象 —— catalog 必须兼容，否则渲染为空。
+    const wrapper = mountSurface(
+      [
+        { component: 'Column', id: 'root', children: ['bar', 'table'] },
+        { component: 'BarChart', id: 'bar', title: '区域销售', xField: 'region', yField: 'sales', data: { path: 'barData' } },
+        {
+          component: 'DataTable', id: 'table', title: '明细',
+          columns: [{ key: 'region', label: '区域' }, { key: 'sales', label: '销售额' }],
+          rows: { path: 'tableRows' },
+        },
+      ],
+      {
+        barData: salesData,
+        tableRows: [['华东', 86400], ['华北', 72150]],
+      },
+    )
+    await nextTick()
+    await nextTick()
+    // BarChart: bound data resolved → one rect per datum
+    expect(wrapper.findAll('rect').length).toBe(3)
+    // DataTable: {key,label} columns → labels rendered; bound rows resolved
+    expect(wrapper.text()).toContain('销售额')
+    expect(wrapper.findAll('td').length).toBe(4)
+    expect(wrapper.text()).toContain('86400')
+  })
+
+  it('renders object rows keyed by {key,title} columns (2026-08-15 真实 render_a2ui 输出)', async () => {
+    // 真实模型输出：columns 用 {key,title}（不是 label），rows 是对象记录数组
+    const wrapper = mountSurface(
+      [
+        {
+          component: 'DataTable', id: 'root', title: '区域销售明细',
+          columns: [{ key: 'region', title: '区域' }, { key: 'sales', title: '销售额（元）' }],
+          rows: { path: 'regions' },
+        },
+      ],
+      {
+        regions: [
+          { region: '华北', sales: 388082 },
+          { region: '华东', sales: 366096 },
+        ],
+      },
+    )
+    await nextTick()
+    await nextTick()
+    expect(wrapper.text()).toContain('销售额（元）')
+    expect(wrapper.text()).toContain('华北')
+    expect(wrapper.text()).toContain('388082')
+    expect(wrapper.findAll('tr').length).toBe(3) // header + 2 rows
+  })
 })

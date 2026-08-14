@@ -83,6 +83,63 @@ public class A2UiBridgeService {
         return RENDER_TOOL_NAME.equals(name);
     }
 
+    /**
+     * 把嵌套的组件树拍平成 v0.9 扁平列表：每个组件对象成为顶层条目，
+     * children/child 里的组件对象被提出为独立条目、原位置换成其 id。
+     * 同时剥掉值为 null 的属性（模型常输出 "delta": null，zod optional 不接受）。
+     * 返回 null 表示结构非法（组件对象缺 id）。
+     */
+    static ArrayNode flattenComponents(ArrayNode components) {
+        ArrayNode out = MAPPER.createArrayNode();
+        for (JsonNode c : components) {
+            if (!flattenOne(c, out)) return null;
+        }
+        return out;
+    }
+
+    private static boolean flattenOne(JsonNode node, ArrayNode out) {
+        if (!node.isObject()) return false;
+        ObjectNode c = ((ObjectNode) node).deepCopy();
+        String id = c.path("id").asText("");
+        if (id.isBlank()) return false;
+        // 剥掉显式 null 属性
+        List<String> nullFields = new ArrayList<>();
+        c.fields().forEachRemaining(f -> {
+            if (f.getValue().isNull()) nullFields.add(f.getKey());
+        });
+        nullFields.forEach(c::remove);
+        // 先收集子组件引用（父条目先入库，保持 root 在前的自然顺序），再递归拍平
+        List<JsonNode> nested = new ArrayList<>();
+        JsonNode children = c.get("children");
+        if (children != null && children.isArray()) {
+            ArrayNode ids = MAPPER.createArrayNode();
+            for (JsonNode childEl : children) {
+                if (childEl.isTextual()) {
+                    ids.add(childEl.asText());
+                } else if (childEl.isObject()) {
+                    String childId = childEl.path("id").asText("");
+                    if (childId.isBlank()) return false;
+                    nested.add(childEl);
+                    ids.add(childId);
+                }
+            }
+            c.set("children", ids);
+        }
+        // child: 单个子组件（Card/Button 等），同样可能是对象
+        JsonNode child = c.get("child");
+        if (child != null && child.isObject()) {
+            String childId = child.path("id").asText("");
+            if (childId.isBlank()) return false;
+            nested.add(child);
+            c.put("child", childId);
+        }
+        out.add(c);
+        for (JsonNode n : nested) {
+            if (!flattenOne(n, out)) return false;
+        }
+        return true;
+    }
+
     /** Whether the client advertised A2UI capability for this run. */
     public boolean hasA2uiContext(List<Map<String, Object>> context) {
         if (context == null) return false;
@@ -150,6 +207,15 @@ public class A2UiBridgeService {
             log.warn("render_a2ui: components missing/empty");
             return Optional.empty();
         }
+        // 2026-08-15 实测：模型常把子组件对象嵌进 children 数组（v0.9 约定是
+        // 扁平列表 + children 为 id 数组），还带显式 null 属性。先拍平 + 剥 null，
+        // 再校验白名单 —— 嵌套组件因此同样过白名单，不能绕过。
+        ArrayNode flat = flattenComponents((ArrayNode) comps);
+        if (flat == null) {
+            log.warn("render_a2ui: components malformed (child without id)");
+            return Optional.empty();
+        }
+        comps = flat;
         if (comps.size() > MAX_COMPONENTS || comps.toString().length() > MAX_PAYLOAD_CHARS) {
             log.warn("render_a2ui: payload too large ({} components, {} chars)",
                     comps.size(), comps.toString().length());

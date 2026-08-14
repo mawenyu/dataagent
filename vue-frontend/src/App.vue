@@ -7,6 +7,7 @@ import { dataAgentCatalog } from './a2ui/dataAgentCatalog'
 import { useContextUsage } from './composables/useContextUsage'
 import { useThreads } from './composables/useThreads'
 import DefaultToolRender from './components/DefaultToolRender.vue'
+import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
 import ThreadSidebar from './components/ThreadSidebar.vue'
 
 // Registered via the fork's `directAgents` prop (see packages/copilotkit-vue/FORK.md).
@@ -116,6 +117,7 @@ function handleChatError({ error }: { error: Error }) {
           :a2ui="{ catalog: dataAgentCatalog, includeSchema: true }"
         >
           <DefaultToolRender />
+          <RenderA2uiToolCall />
           <div class="chat-layout">
             <Transition name="drawer">
               <ThreadSidebar
