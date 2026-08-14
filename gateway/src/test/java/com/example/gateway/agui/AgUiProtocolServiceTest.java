@@ -160,10 +160,10 @@ class AgUiProtocolServiceTest {
     }
 
     private static String textStep(String msgId, String text) {
-        return ocEvent("session.next.text.started", "{\"assistantMessageID\":\"" + msgId + "\"}")
-                + ocEvent("session.next.text.delta", "{\"assistantMessageID\":\"" + msgId + "\",\"delta\":" + jsonStr(text) + "}")
-                + ocEvent("session.next.text.ended", "{\"assistantMessageID\":\"" + msgId + "\"}")
-                + ocEvent("session.next.step.ended", "{}");
+        return ocEvent("session.text.started", "{\"assistantMessageID\":\"" + msgId + "\"}")
+                + ocEvent("session.text.delta", "{\"assistantMessageID\":\"" + msgId + "\",\"delta\":" + jsonStr(text) + "}")
+                + ocEvent("session.text.ended", "{\"assistantMessageID\":\"" + msgId + "\"}")
+                + ocEvent("session.step.ended", "{}");
     }
 
     private static String jsonStr(String s) {
@@ -285,14 +285,17 @@ class AgUiProtocolServiceTest {
     @Test
     void dynamicRenderA2uiNativeToolCallProducesSnapshot() {
         String stream =
-                ocEvent("session.next.text.started", "{\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"分析如下\"}")
-                + ocEvent("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.tool.called",
-                        "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"tool\":\"render_a2ui\",\"input\":{"
+                ocEvent("session.text.started", "{\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"分析如下\"}")
+                + ocEvent("session.text.ended", "{\"assistantMessageID\":\"m1\"}")
+                // 真实新方言: 工具名由 tool.input.started 注册, tool.called 只带 id+input
+                + ocEvent("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"render_a2ui\"}")
+                + ocEvent("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\"}")
+                + ocEvent("session.tool.called",
+                        "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"input\":{"
                                 + "\"surfaceId\":\"sales-card\",\"components\":["
                                 + "{\"component\":\"MetricCard\",\"id\":\"root\",\"title\":\"本月销售额\",\"value\":\"1,234,567\"}]}}")
-                + ocEvent("session.next.step.ended", "{}");
+                + ocEvent("session.step.ended", "{}");
         stub.eventStreams.add(stream);
         RunAgentInput input = new RunAgentInput("t-dyn", "run-1", null,
                 List.of(Map.of("role", "user", "content", "render a card")), null,
@@ -365,7 +368,7 @@ class AgUiProtocolServiceTest {
 
     @Test
     void stepFailureBecomesRunError() {
-        stub.eventStreams.add(ocEvent("session.next.step.failed", "{\"error\":{\"message\":\"boom\"}}"));
+        stub.eventStreams.add(ocEvent("session.step.failed", "{\"error\":{\"message\":\"boom\"}}"));
         List<JsonNode> events = run(userMsg("t-err", "hi"));
         assertTrue(types(events).contains("RUN_ERROR"));
         JsonNode err = events.stream().filter(e -> "RUN_ERROR".equals(e.path("type").asText())).findFirst().orElseThrow();
@@ -376,11 +379,11 @@ class AgUiProtocolServiceTest {
     void malformedSseDataIsSkipped() {
         stub.eventStreams.add(
                 "data: {not json at all}\n\n"
-                        + ocEvent("session.next.text.started", "{\"assistantMessageID\":\"m1\"}")
-                        + "data: {\"type\":\"session.next.text.delta\",\"data\":{\"assistantMessageID\":\"m1\",\"delta\":\"ok\"}}\n\n"
+                        + ocEvent("session.text.started", "{\"assistantMessageID\":\"m1\"}")
+                        + "data: {\"type\":\"session.text.delta\",\"data\":{\"assistantMessageID\":\"m1\",\"delta\":\"ok\"}}\n\n"
                         + "data: \n\n"
-                        + ocEvent("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}")
-                        + ocEvent("session.next.step.ended", "{}"));
+                        + ocEvent("session.text.ended", "{\"assistantMessageID\":\"m1\"}")
+                        + ocEvent("session.step.ended", "{}"));
         List<JsonNode> events = run(userMsg("t-mal", "hi"));
         List<String> types = types(events);
         assertTrue(types.contains("TEXT_MESSAGE_CONTENT"));
@@ -424,21 +427,21 @@ class AgUiProtocolServiceTest {
     void multiStepToolLoopRunsToCompletion() {
         String stream =
                 // step 1: text + builtin bash tool, finish=tool-calls (run continues)
-                ocEvent("session.next.step.started", "{\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.text.started", "{\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"先看下数据\"}")
-                + ocEvent("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.tool.input.started", "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"name\":\"bash\"}")
-                + ocEvent("session.next.tool.input.delta", "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"delta\":\"ls\"}")
-                + ocEvent("session.next.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"text\":\"ls\"}")
-                + ocEvent("session.next.tool.success", "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"structured\":{},\"content\":[{\"type\":\"text\",\"text\":\"sales.csv\"}]}")
-                + ocEvent("session.next.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"tool-calls\",\"cost\":0,\"tokens\":{\"input\":10,\"output\":20,\"reasoning\":0,\"cache\":{\"read\":100,\"write\":0}}}")
+                ocEvent("session.step.started", "{\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.text.started", "{\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"先看下数据\"}")
+                + ocEvent("session.text.ended", "{\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"bash\"}")
+                + ocEvent("session.tool.input.delta", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"delta\":\"ls\"}")
+                + ocEvent("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"text\":\"ls\"}")
+                + ocEvent("session.tool.success", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"structured\":{},\"content\":[{\"type\":\"text\",\"text\":\"sales.csv\"}]}")
+                + ocEvent("session.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"tool-calls\",\"cost\":0,\"tokens\":{\"input\":10,\"output\":20,\"reasoning\":0,\"cache\":{\"read\":100,\"write\":0}}}")
                 // step 2: final answer, finish=stop (run ends)
-                + ocEvent("session.next.step.started", "{\"assistantMessageID\":\"m2\"}")
-                + ocEvent("session.next.text.started", "{\"assistantMessageID\":\"m2\"}")
-                + ocEvent("session.next.text.delta", "{\"assistantMessageID\":\"m2\",\"delta\":\"最终答案\"}")
-                + ocEvent("session.next.text.ended", "{\"assistantMessageID\":\"m2\"}")
-                + ocEvent("session.next.step.ended", "{\"assistantMessageID\":\"m2\",\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":50,\"output\":60,\"reasoning\":0,\"cache\":{\"read\":200,\"write\":0}}}");
+                + ocEvent("session.step.started", "{\"assistantMessageID\":\"m2\"}")
+                + ocEvent("session.text.started", "{\"assistantMessageID\":\"m2\"}")
+                + ocEvent("session.text.delta", "{\"assistantMessageID\":\"m2\",\"delta\":\"最终答案\"}")
+                + ocEvent("session.text.ended", "{\"assistantMessageID\":\"m2\"}")
+                + ocEvent("session.step.ended", "{\"assistantMessageID\":\"m2\",\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":50,\"output\":60,\"reasoning\":0,\"cache\":{\"read\":200,\"write\":0}}}");
         stub.eventStreams.add(stream);
         List<JsonNode> events = run(userMsg("t-steps", "分析本月销售情况"));
         List<String> types = types(events);
@@ -498,14 +501,14 @@ class AgUiProtocolServiceTest {
     @Test
     void reasoningStreamIsTranslated() {
         String stream =
-                ocEvent("session.next.reasoning.started", "{\"assistantMessageID\":\"m1\",\"reasoningID\":\"r1\"}")
-                + ocEvent("session.next.reasoning.delta", "{\"assistantMessageID\":\"m1\",\"reasoningID\":\"r1\",\"delta\":\"用户在问销售\"}")
-                + ocEvent("session.next.reasoning.delta", "{\"assistantMessageID\":\"m1\",\"reasoningID\":\"r1\",\"delta\":\"，先查数据\"}")
-                + ocEvent("session.next.reasoning.ended", "{\"assistantMessageID\":\"m1\",\"reasoningID\":\"r1\",\"text\":\"用户在问销售，先查数据\"}")
-                + ocEvent("session.next.text.started", "{\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"结论\"}")
-                + ocEvent("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":1,\"output\":2,\"reasoning\":30,\"cache\":{\"read\":0,\"write\":0}}}");
+                ocEvent("session.reasoning.started", "{\"assistantMessageID\":\"m1\",\"ordinal\":0}")
+                + ocEvent("session.reasoning.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"用户在问销售\"}")
+                + ocEvent("session.reasoning.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"，先查数据\"}")
+                + ocEvent("session.reasoning.ended", "{\"assistantMessageID\":\"m1\",\"text\":\"用户在问销售，先查数据\"}")
+                + ocEvent("session.text.started", "{\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"结论\"}")
+                + ocEvent("session.text.ended", "{\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":1,\"output\":2,\"reasoning\":30,\"cache\":{\"read\":0,\"write\":0}}}");
         stub.eventStreams.add(stream);
         List<JsonNode> events = run(userMsg("t-reason", "想想"));
         List<String> types = types(events);
@@ -516,7 +519,8 @@ class AgUiProtocolServiceTest {
         assertTrue(types.contains("REASONING_END"));
         JsonNode start = events.stream()
                 .filter(e -> "REASONING_MESSAGE_START".equals(e.path("type").asText())).findFirst().orElseThrow();
-        assertEquals("r1#1", start.path("messageId").asText(), "reasoning id 加出现次序后缀（上游会复用同一 id）");
+        assertEquals("m1-0#1", start.path("messageId").asText(),
+                "归并键 assistantMessageID+ordinal 加出现次序后缀（上游会复用同一 key）");
         assertEquals("reasoning", start.path("role").asText());
         String deltas = events.stream()
                 .filter(e -> "REASONING_MESSAGE_CONTENT".equals(e.path("type").asText()))
@@ -530,10 +534,10 @@ class AgUiProtocolServiceTest {
     @Test
     void toolFailureEmitsToolCallResult() {
         String stream =
-                ocEvent("session.next.tool.input.started", "{\"assistantMessageID\":\"m1\",\"callID\":\"c9\",\"name\":\"bash\"}")
-                + ocEvent("session.next.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"callID\":\"c9\",\"text\":\"rm -rf /\"}")
-                + ocEvent("session.next.tool.failed", "{\"assistantMessageID\":\"m1\",\"callID\":\"c9\",\"error\":{\"message\":\"permission denied\"}}")
-                + ocEvent("session.next.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":1,\"output\":2,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}");
+                ocEvent("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c9\",\"name\":\"bash\"}")
+                + ocEvent("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c9\",\"text\":\"rm -rf /\"}")
+                + ocEvent("session.tool.failed", "{\"assistantMessageID\":\"m1\",\"id\":\"c9\",\"error\":{\"message\":\"permission denied\"}}")
+                + ocEvent("session.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":1,\"output\":2,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}");
         stub.eventStreams.add(stream);
         List<JsonNode> events = run(userMsg("t-toolfail", "clean"));
         JsonNode result = events.stream()
@@ -610,11 +614,13 @@ class AgUiProtocolServiceTest {
     @Test
     void surfaceSnapshotPersistedForReplay() {
         String stream =
-                ocEvent("session.next.tool.called",
-                        "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"tool\":\"render_a2ui\",\"input\":{"
+                ocEvent("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"render_a2ui\"}")
+                + ocEvent("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\"}")
+                + ocEvent("session.tool.called",
+                        "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"input\":{"
                                 + "\"surfaceId\":\"sales-card\",\"components\":["
                                 + "{\"component\":\"MetricCard\",\"id\":\"root\",\"title\":\"本月销售额\",\"value\":\"1,234\"}]}}")
-                + ocEvent("session.next.step.ended", "{}");
+                + ocEvent("session.step.ended", "{}");
         stub.eventStreams.add(stream);
         run(userMsg("t-surf", "render"));
         assertEquals(1, threadStore.listSurfaces("t-surf").size(),
@@ -642,13 +648,13 @@ class AgUiProtocolServiceTest {
         的 child session 共享流并有自己的 aggregate seq 序列 —— 不过滤会串会话。 */
     @Test
     void foreignSessionEventsAreFilteredOut() {
-        String mine = ocEvent("session.next.text.started", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.text.delta", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\",\"delta\":\"我的\"}")
-                + ocEvent("session.next.text.ended", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\"}")
-                + ocEvent("session.next.step.ended", "{\"sessionID\":\"ses_stub_1\"}");
-        String foreign = ocEvent("session.next.text.started", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\"}")
-                + ocEvent("session.next.text.delta", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\",\"delta\":\"别人的\"}")
-                + ocEvent("session.next.text.ended", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\"}");
+        String mine = ocEvent("session.text.started", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.text.delta", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\",\"delta\":\"我的\"}")
+                + ocEvent("session.text.ended", "{\"sessionID\":\"ses_stub_1\",\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.step.ended", "{\"sessionID\":\"ses_stub_1\"}");
+        String foreign = ocEvent("session.text.started", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\"}")
+                + ocEvent("session.text.delta", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\",\"delta\":\"别人的\"}")
+                + ocEvent("session.text.ended", "{\"sessionID\":\"ses_other\",\"assistantMessageID\":\"x9\"}");
         // 交错：外部会话事件插在中间
         String stream = foreign + mine;
         stub.eventStreams.add(stream);

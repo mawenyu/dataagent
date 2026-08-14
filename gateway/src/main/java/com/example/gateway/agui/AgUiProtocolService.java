@@ -390,8 +390,6 @@ public class AgUiProtocolService {
                     return response.body(BodyExtractors.toFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {}));
                 })
                 .filter(e -> e.data() != null && !e.data().isBlank())
-                // v2 官方分支方言归一化（session.X → session.next.X），新旧服务端都兼容
-                .map(AguiEventTranslator::normalizeDialect)
                 // 实测：/api/event 是全局流（所有 session 混合，子 agent 的 child
                 // session 也在其中且有独立 aggregate seq）—— 只放行本会话事件，
                 // 否则跨会话串扰 + seq 冲突（不同 aggregate 的 seq 会重复）。
@@ -413,8 +411,10 @@ public class AgUiProtocolService {
                         com.fasterxml.jackson.databind.JsonNode n =
                                 new com.fasterxml.jackson.databind.ObjectMapper().readTree(e.data());
                         String t = n.path("type").asText();
-                        if ("session.next.step.failed".equals(t)) return true;
-                        if ("session.next.step.ended".equals(t)) {
+                        if ("session.step.failed".equals(t)) return true;
+                        if ("session.execution.succeeded".equals(t)) return true;
+                        if ("session.execution.failed".equals(t)) return true;
+                        if ("session.step.ended".equals(t)) {
                             String finish = n.path("data").path("finish").asText("stop");
                             return !"tool-calls".equals(finish);
                         }

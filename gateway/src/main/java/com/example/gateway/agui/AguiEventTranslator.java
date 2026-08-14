@@ -20,10 +20,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Translates OpenCode v2 native SSE events into standard AG-UI events.
  *
- * <p>OpenCode emits: session.next.text.started / .delta / .ended,
- * session.next.tool.input.started / .delta / .ended, session.next.tool.called,
- * session.next.step.started / .ended / .failed, etc.
- * AG-UI expects: RUN_STARTED, TEXT_MESSAGE_START/CONTENT/END,
+ * <p>OpenCode（v2 分支源码，opencode-fork dataagent-v2）只发新方言：
+ * session.text.started / .delta / .ended，session.tool.input.started /
+ * .delta / .ended，session.tool.called / .success / .failed，
+ * session.step.started / .ended / .failed，session.reasoning.started /
+ * .delta / .ended，run 级终止是 session.execution.succeeded / .failed。
+ * （2026-08-15 起不再兼容 npm 打包旧二进制的 session.next.* 方言。）
+ *
+ * <p>新方言字段差异在此直接处理：
+ * <ul>
+ *   <li>reasoning 事件没有 reasoningID —— 用 assistantMessageID+ordinal 合成；</li>
+ *   <li>tool 事件的调用 id 字段名是 {@code id}（不是 callID），tool.called
+ *       不带工具名（回退 input.started 注册名）；</li>
+ *   <li>session.execution.succeeded 映射为 finish=stop 的终止 step。</li>
+ * </ul>
+ *
+ * <p>AG-UI expects: RUN_STARTED, TEXT_MESSAGE_START/CONTENT/END,
  * TOOL_CALL_START/ARGS/END, RUN_FINISHED / RUN_ERROR, and optionally
  * ACTIVITY_SNAPSHOT for A2UI surfaces.
  *
@@ -92,8 +104,9 @@ public class AguiEventTranslator {
         // （started 后无 ended），因此跟踪"活跃集合"：ended 只关自己，终止事件前关掉所有残余。
         Set<String> activeSteps = new java.util.LinkedHashSet<>();
         Set<String> openReasoning = new java.util.LinkedHashSet<>();
-        // 实测：DeepSeek 每个 step 的 reasoning 块复用同一 reasoningID（reasoning-0）。
-        // AG-UI 消息按 id 归并，重复 id 会互相污染 —— 每次 started 生成唯一 id。
+        // 新方言 reasoning 事件无独立 id（assistantMessageID+ordinal 合成，见
+        // reasoningKey）。AG-UI 消息按 id 归并，同一块重复出现会互相污染 ——
+        // 每次 started 生成唯一 id。
         Map<String, Integer> reasoningSeen = new ConcurrentHashMap<>();
         Map<String, String> reasoningCurrent = new ConcurrentHashMap<>();
         Map<String, MsgState> msgStates = new ConcurrentHashMap<>();
@@ -103,7 +116,7 @@ public class AguiEventTranslator {
 
         ServerSentEvent<String> runStarted = sse(agEvent("RUN_STARTED", runId, threadId));
 
-        Flux<ServerSentEvent<String>> body = restoreOrder(opencodeEvents.map(AguiEventTranslator::normalizeDialect))
+        Flux<ServerSentEvent<String>> body = restoreOrder(opencodeEvents)
                 .concatMap(event -> {
                     String json = event.data();
                     if (json == null || json.isBlank()) return Flux.empty();
@@ -117,13 +130,13 @@ public class AguiEventTranslator {
                     JsonNode data = node.path("data");
 
                     switch (type) {
-                        case "session.next.text.started": {
+                        case "session.text.started": {
                             String aMsgId = data.path("assistantMessageID").asText();
                             // 不覆盖可能已由迟到 delta 懒建的状态（否则会丢掉已缓冲内容）
                             msgStates.putIfAbsent(aMsgId, new MsgState());
                             return Flux.empty(); // decide later: text vs tool_call
                         }
-                        case "session.next.text.delta": {
+                        case "session.text.delta": {
                             String aMsgId = data.path("assistantMessageID").asText();
                             // 防御：delta 先于 started 到达（残余乱序）时懒建状态，
                             // 不再静默丢弃（emitTextStart 会先补 TEXT_MESSAGE_START）。
@@ -135,16 +148,16 @@ public class AguiEventTranslator {
                             return Flux.fromIterable(
                                     processDelta(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, delta));
                         }
-                        case "session.next.text.ended": {
+                        case "session.text.ended": {
                             String aMsgId = data.path("assistantMessageID").asText();
                             MsgState st = msgStates.remove(aMsgId);
                             if (st == null) return Flux.empty();
                             return Flux.fromIterable(
                                     processTextEnd(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st));
                         }
-                        case "session.next.tool.input.started": {
+                        case "session.tool.input.started": {
                             // builtin opencode tools — mirror for progress rendering only
-                            String callId = data.path("callID").asText();
+                            String callId = data.path("id").asText();
                             String name = data.path("name").asText();
                             if (callId.isBlank()) return Flux.empty();
                             toolCallNames.put(callId, name);
@@ -155,29 +168,28 @@ public class AguiEventTranslator {
                             payload.put("toolCallName", name);
                             return Flux.just(sse(payload));
                         }
-                        case "session.next.tool.input.delta": {
-                            String callId = data.path("callID").asText();
+                        case "session.tool.input.delta": {
+                            String callId = data.path("id").asText();
                             if (!toolCallStarted.contains(callId)) return Flux.empty();
                             ObjectNode payload = base("TOOL_CALL_ARGS", runId, threadId);
                             payload.put("toolCallId", callId);
                             payload.put("delta", data.path("delta").asText(""));
                             return Flux.just(sse(payload));
                         }
-                        case "session.next.tool.input.ended": {
-                            String callId = data.path("callID").asText();
+                        case "session.tool.input.ended": {
+                            String callId = data.path("id").asText();
                             if (!toolCallStarted.contains(callId) || !toolCallEnded.add(callId))
                                 return Flux.empty();
                             ObjectNode payload = base("TOOL_CALL_END", runId, threadId);
                             payload.put("toolCallId", callId);
                             return Flux.just(sse(payload));
                         }
-                        case "session.next.tool.called": {
+                        case "session.tool.called": {
                             // fallback for models that don't stream tool input
-                            String callId = data.path("callID").asText();
-                            String name = data.path("tool").asText("");
+                            String callId = data.path("id").asText();
                             if (callId.isBlank()) return Flux.empty();
-                            // 新方言 tool.called 不带工具名字段 —— 回退到 input.started 注册的
-                            if (name.isBlank()) name = toolCallNames.getOrDefault(callId, "");
+                            // 新方言 tool.called 不带工具名字段 —— 用 input.started 注册的
+                            String name = toolCallNames.getOrDefault(callId, "");
                             toolCallNames.putIfAbsent(callId, name);
                             sawOutput.set(true);
                             List<ServerSentEvent<String>> out = new ArrayList<>();
@@ -210,7 +222,7 @@ public class AguiEventTranslator {
                             }
                             return Flux.fromIterable(out);
                         }
-                        case "session.next.step.failed": {
+                        case "session.step.failed": {
                             if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
                             List<ServerSentEvent<String>> out = new ArrayList<>();
                             closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
@@ -221,7 +233,7 @@ public class AguiEventTranslator {
                             out.add(sse(payload));
                             return Flux.fromIterable(out);
                         }
-                        case "session.next.step.started": {
+                        case "session.step.started": {
                             String stepId = data.path("assistantMessageID").asText("");
                             String stepName = stepId.isBlank() ? "opencode-step" : "step-" + stepId;
                             activeSteps.add(stepName);
@@ -229,7 +241,7 @@ public class AguiEventTranslator {
                             payload.put("stepName", stepName);
                             return Flux.just(sse(payload));
                         }
-                        case "session.next.step.ended": {
+                        case "session.step.ended": {
                             // OpenCode emits one step PER ASSISTANT TURN; finish=tool-calls
                             // means the agent loop continues (more steps coming). Only a
                             // terminal finish (stop/length/error/...) ends the AG-UI run.
@@ -264,8 +276,9 @@ public class AguiEventTranslator {
                             }
                             return Flux.fromIterable(out);
                         }
-                        case "session.next.reasoning.started": {
-                            String rId = data.path("reasoningID").asText();
+                        case "session.reasoning.started": {
+                            // 新方言 reasoning 事件无 reasoningID —— assistantMessageID+ordinal 合成
+                            String rId = reasoningKey(data);
                             if (rId.isBlank()) return Flux.empty();
                             sawOutput.set(true);
                             String unique = rId + "#" + reasoningSeen.merge(rId, 1, Integer::sum);
@@ -278,17 +291,16 @@ public class AguiEventTranslator {
                             msgStart.put("role", "reasoning");
                             return Flux.just(sse(start), sse(msgStart));
                         }
-                        case "session.next.reasoning.delta": {
-                            String rId = reasoningCurrent.get(data.path("reasoningID").asText());
+                        case "session.reasoning.delta": {
+                            String rId = reasoningCurrent.get(reasoningKey(data));
                             if (rId == null) return Flux.empty();
                             ObjectNode payload = base("REASONING_MESSAGE_CONTENT", runId, threadId);
                             payload.put("messageId", rId);
                             payload.put("delta", data.path("delta").asText(""));
                             return Flux.just(sse(payload));
                         }
-                        case "session.next.reasoning.ended": {
-                            String raw = data.path("reasoningID").asText();
-                            String rId = reasoningCurrent.remove(raw);
+                        case "session.reasoning.ended": {
+                            String rId = reasoningCurrent.remove(reasoningKey(data));
                             if (rId == null) return Flux.empty();
                             openReasoning.remove(rId);
                             ObjectNode msgEnd = base("REASONING_MESSAGE_END", runId, threadId);
@@ -297,8 +309,8 @@ public class AguiEventTranslator {
                             end.put("messageId", rId);
                             return Flux.just(sse(msgEnd), sse(end));
                         }
-                        case "session.next.tool.success": {
-                            String callId = data.path("callID").asText();
+                        case "session.tool.success": {
+                            String callId = data.path("id").asText();
                             if (callId.isBlank()) return Flux.empty();
                             ObjectNode payload = base("TOOL_CALL_RESULT", runId, threadId);
                             payload.put("toolCallId", callId);
@@ -306,8 +318,8 @@ public class AguiEventTranslator {
                             payload.put("content", summarizeToolResult(data));
                             return Flux.just(sse(payload));
                         }
-                        case "session.next.tool.failed": {
-                            String callId = data.path("callID").asText();
+                        case "session.tool.failed": {
+                            String callId = data.path("id").asText();
                             if (callId.isBlank()) return Flux.empty();
                             ObjectNode payload = base("TOOL_CALL_RESULT", runId, threadId);
                             payload.put("toolCallId", callId);
@@ -315,6 +327,27 @@ public class AguiEventTranslator {
                             String msg = data.path("error").path("message").asText("unknown error");
                             payload.put("content", "工具执行失败: " + msg);
                             return Flux.just(sse(payload));
+                        }
+                        case "session.execution.succeeded": {
+                            // run 级终止（最后一个 step.ended(finish=stop) 之后的兜底终止信号；
+                            // volatile 流下 step.ended 丢失时由它保证 RUN_FINISHED 必达）
+                            if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
+                            List<ServerSentEvent<String>> out = new ArrayList<>();
+                            closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
+                            closeAllActiveSteps(runId, threadId, activeSteps, out);
+                            out.add(sse(base("RUN_FINISHED", runId, threadId)));
+                            return Flux.fromIterable(out);
+                        }
+                        case "session.execution.failed": {
+                            if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
+                            List<ServerSentEvent<String>> out = new ArrayList<>();
+                            closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
+                            closeAllActiveSteps(runId, threadId, activeSteps, out);
+                            ObjectNode payload = base("RUN_ERROR", runId, threadId);
+                            String msg = data.path("error").path("message").asText("unknown error");
+                            payload.put("message", msg);
+                            out.add(sse(payload));
+                            return Flux.fromIterable(out);
                         }
                         default:
                             return Flux.empty();
@@ -350,8 +383,8 @@ public class AguiEventTranslator {
      * （core/session/runner/publish-llm-event.ts:75-81）。
      *
      * <p>ordinal = durable.seq（每会话单调连续整数，非 delta 事件都带）；
-     * delta 事件无 seq，锚定其所属 id（assistantMessageID / callID /
-     * reasoningID）最近一个有 seq 的事件。</p>
+     * delta 事件无 seq，锚定其所属流（text/reasoning/tool，按种类+id 隔离，
+     * 见 {@link #eventIdOf}）最近一个有 seq 的事件。</p>
      *
      * <p>规则：
      * <ul>
@@ -364,51 +397,11 @@ public class AguiEventTranslator {
      *   <li>全流无 seq（旧 stub/测试流）→ 完全直通，保持旧行为</li>
      * </ul></p>
      */
-    /**
-     * OpenCode v2 官方仓库（v2 分支）事件方言归一化：session.text.X /
-     * session.tool.X / session.reasoning.X / session.step.X 不再带 ".next" 段；
-     * reasoning 事件没有 reasoningID（用 assistantMessageID+ordinal 合成）；
-     * run 级终止是 session.execution.succeeded/failed（映射为 step 终止事件）。
-     * 打包二进制（旧方言 session.next.*）原样透传 —— 两种方言都可处理。
-     */
-    static ServerSentEvent<String> normalizeDialect(ServerSentEvent<String> e) {
-        String json = e.data();
-        if (json == null || !json.contains("\"session.")) return e;
-        try {
-            JsonNode node = MAPPER.readTree(json);
-            String type = node.path("type").asText("");
-            if (!type.startsWith("session.") || type.startsWith("session.next.")) return e;
-            String mapped = null;
-            if (type.startsWith("session.text.") || type.startsWith("session.tool.")
-                    || type.startsWith("session.reasoning.") || type.startsWith("session.step.")) {
-                mapped = "session.next." + type.substring("session.".length());
-            } else if ("session.execution.succeeded".equals(type)) {
-                mapped = "session.next.step.ended";
-            } else if ("session.execution.failed".equals(type)) {
-                mapped = "session.next.step.failed";
-            }
-            if (mapped == null) return e; // 非核心事件（inbox/renamed 等）不需要翻译
-            ObjectNode out = (ObjectNode) node;
-            out.put("type", mapped);
-            ObjectNode data = (ObjectNode) out.path("data");
-            if (type.startsWith("session.reasoning.")) {
-                // 新方言 reasoning 无 reasoningID —— 用 assistantMessageID+ordinal 合成
-                data.put("reasoningID",
-                        data.path("assistantMessageID").asText() + "-" + data.path("ordinal").asText("0"));
-            }
-            if (type.startsWith("session.tool.")) {
-                // 新方言工具调用 id 字段名是 id（旧方言是 callID）
-                if (!data.path("id").asText("").isEmpty() && data.path("callID").asText("").isEmpty()) {
-                    data.put("callID", data.path("id").asText());
-                }
-            }
-            if ("session.execution.succeeded".equals(type)) {
-                data.put("finish", "stop"); // 映射为终止 step
-            }
-            return ServerSentEvent.<String>builder().data(MAPPER.writeValueAsString(out)).build();
-        } catch (Exception ex) {
-            return e;
-        }
+    /** 新方言 reasoning 事件的归并键：assistantMessageID + "-" + ordinal。 */
+    private static String reasoningKey(JsonNode data) {
+        String aMsgId = data.path("assistantMessageID").asText("");
+        if (aMsgId.isBlank()) return "";
+        return aMsgId + "-" + data.path("ordinal").asText("0");
     }
 
     Flux<ServerSentEvent<String>> restoreOrder(Flux<ServerSentEvent<String>> source) {
@@ -438,21 +431,21 @@ public class AguiEventTranslator {
      * 丢弃 —— 最终回答整条丢失。按种类隔离后，step 事件不再是任何 delta 的锚点。
      */
     private static String eventIdOf(String type, JsonNode data) {
-        if (type.startsWith("session.next.reasoning."))
-            return "reasoning:" + data.path("reasoningID").asText("");
-        if (type.startsWith("session.next.tool."))
-            return "tool:" + data.path("callID").asText("");
-        if (type.startsWith("session.next.step."))
+        if (type.startsWith("session.reasoning."))
+            return "reasoning:" + reasoningKey(data);
+        if (type.startsWith("session.tool."))
+            return "tool:" + data.path("id").asText("");
+        if (type.startsWith("session.step."))
             return "step:" + data.path("assistantMessageID").asText("");
-        if (type.startsWith("session.next.text."))
+        if (type.startsWith("session.text."))
             return "text:" + data.path("assistantMessageID").asText("");
         return data.path("assistantMessageID").asText("");
     }
 
     private static boolean isEndEvent(String type) {
-        return "session.next.text.ended".equals(type)
-                || "session.next.reasoning.ended".equals(type)
-                || "session.next.tool.input.ended".equals(type);
+        return "session.text.ended".equals(type)
+                || "session.reasoning.ended".equals(type)
+                || "session.tool.input.ended".equals(type);
     }
 
     private static final class EventOrderer {

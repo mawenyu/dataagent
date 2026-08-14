@@ -77,11 +77,11 @@ class AguiEventTranslatorTest {
         String part1 = "本月销售良好，详见卡片 <tool";
         String part2 = "_call>{\"name\":\"render_a2ui\",\"arguments\":{\"surfaceId\":\"s1\",\"components\":[{\"component\":\"Text\",\"id\":\"root\",\"text\":\"hi\"}]}}</tool_call>";
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.text.started", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(part1) + "}"),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(part2) + "}"),
-                oc("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.step.ended", "{}")));
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(part1) + "}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(part2) + "}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.ended", "{}")));
 
         List<String> types = types(events);
         assertTrue(types.contains("TEXT_MESSAGE_CONTENT"), "leading text preserved");
@@ -99,10 +99,10 @@ class AguiEventTranslatorTest {
     void fencedToolCallBlockIsParsed() {
         String fenced = "```json\n<tool_call>{\"name\":\"showNotification\",\"arguments\":{\"title\":\"t\"}}</tool_call>\n```";
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.text.started", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(fenced) + "}"),
-                oc("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.step.ended", "{}")));
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(fenced) + "}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.ended", "{}")));
         List<String> types = types(events);
         assertTrue(types.contains("TOOL_CALL_START"));
         assertEquals("RUN_FINISHED", types.get(types.size() - 1));
@@ -112,10 +112,10 @@ class AguiEventTranslatorTest {
     void unparseableToolCallBlockFallsBackToText() {
         String broken = "<tool_call>{not valid json}</tool_call>";
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.text.started", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(broken) + "}"),
-                oc("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.step.ended", "{}")));
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(broken) + "}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.ended", "{}")));
         List<String> types = types(events);
         assertFalse(types.contains("TOOL_CALL_START"));
         String allText = events.stream()
@@ -127,13 +127,13 @@ class AguiEventTranslatorTest {
     @Test
     void multipleTextMessagesInOneRun() {
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.text.started", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"one\"}"),
-                oc("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.text.started", "{\"assistantMessageID\":\"m2\"}"),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m2\",\"delta\":\"two\"}"),
-                oc("session.next.text.ended", "{\"assistantMessageID\":\"m2\"}"),
-                oc("session.next.step.ended", "{}")));
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"one\"}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.started", "{\"assistantMessageID\":\"m2\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m2\",\"delta\":\"two\"}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m2\"}"),
+                oc("session.step.ended", "{}")));
         List<String> types = types(events);
         assertEquals(2, types.stream().filter("TEXT_MESSAGE_START"::equals).count());
         assertEquals(2, types.stream().filter("TEXT_MESSAGE_END"::equals).count());
@@ -145,7 +145,7 @@ class AguiEventTranslatorTest {
         List<JsonNode> events = translate(Flux.just(
                 ServerSentEvent.<String>builder().data("garbage").build(),
                 ServerSentEvent.<String>builder().data("").build(),
-                oc("session.next.step.ended", "{}")));
+                oc("session.step.ended", "{}")));
         List<String> types = types(events);
         // 需求7: 孤立的 step.ended（无配对 step.started）不再产生 STEP_FINISHED
         assertEquals(List.of("RUN_STARTED", "RUN_FINISHED"), types);
@@ -155,10 +155,10 @@ class AguiEventTranslatorTest {
     void renderA2uiWhitelistingRejectsUnknownComponents() {
         String evil = "<tool_call>{\"name\":\"render_a2ui\",\"arguments\":{\"surfaceId\":\"s1\",\"components\":[{\"component\":\"Script\",\"id\":\"root\",\"text\":\"x\"}]}}</tool_call>";
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.text.started", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(evil) + "}"),
-                oc("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.step.ended", "{}")));
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(evil) + "}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.ended", "{}")));
         List<String> types = types(events);
         assertTrue(types.contains("TOOL_CALL_START"), "tool call still mirrored for progress UI");
         assertFalse(types.contains("ACTIVITY_SNAPSHOT"), "non-whitelisted component must not render");
@@ -168,12 +168,15 @@ class AguiEventTranslatorTest {
     @Test
     void nativeServerToolCallClosesActiveStepBeforeRunFinished() {
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.step.started", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.text.started", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"看板如下\"}"),
+                oc("session.step.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"看板如下\"}"),
                 // 注意：text.ended 缺席 —— render_a2ui 截断 run 时文本消息仍开着
-                oc("session.next.tool.called",
-                        "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"tool\":\"render_a2ui\",\"input\":{"
+                // 真实新方言: 工具名由 tool.input.started 注册, tool.called 只带 id+input
+                oc("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"render_a2ui\"}"),
+                oc("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\"}"),
+                oc("session.tool.called",
+                        "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"input\":{"
                                 + "\"surfaceId\":\"s1\",\"components\":[{\"component\":\"MetricCard\",\"id\":\"root\",\"title\":\"t\",\"value\":\"v\"}]}}")));
         List<String> types = types(events);
         assertTrue(types.contains("ACTIVITY_SNAPSHOT"));
@@ -195,7 +198,7 @@ class AguiEventTranslatorTest {
         // replay/late-join: an orphan step.ended must not emit STEP_FINISHED
         // (client rejects "STEP_FINISHED for step that was not started")
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.step.ended", "{\"assistantMessageID\":\"ghost\",\"finish\":\"stop\",\"tokens\":{\"input\":1,\"output\":1,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}")));
+                oc("session.step.ended", "{\"assistantMessageID\":\"ghost\",\"finish\":\"stop\",\"tokens\":{\"input\":1,\"output\":1,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}")));
         List<String> types = types(events);
         assertFalse(types.contains("STEP_FINISHED"), "orphan step.ended must not emit STEP_FINISHED");
         assertTrue(types.contains("RUN_FINISHED"), "terminal finish still ends the run");
@@ -204,8 +207,8 @@ class AguiEventTranslatorTest {
     @Test
     void stepFailureClosesActiveStepBeforeRunError() {
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.step.started", "{\"assistantMessageID\":\"m1\"}"),
-                oc("session.next.step.failed", "{\"assistantMessageID\":\"m1\",\"error\":{\"message\":\"boom\"}}")));
+                oc("session.step.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.failed", "{\"assistantMessageID\":\"m1\",\"error\":{\"message\":\"boom\"}}")));
         List<String> types = types(events);
         int sf = types.indexOf("STEP_FINISHED");
         int re = types.indexOf("RUN_ERROR");
@@ -216,12 +219,12 @@ class AguiEventTranslatorTest {
     @Test
     void overlappingAndOrphanStepsAreAllClosedBeforeRunFinished() {
         List<JsonNode> events = translate(Flux.just(
-                oc("session.next.step.started", "{\"assistantMessageID\":\"a\"}"),
-                oc("session.next.step.started", "{\"assistantMessageID\":\"b\"}"),
-                oc("session.next.step.ended", "{\"assistantMessageID\":\"b\",\"finish\":\"tool-calls\",\"tokens\":{\"input\":1,\"output\":1,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}"),
-                oc("session.next.step.started", "{\"assistantMessageID\":\"c\"}"),
+                oc("session.step.started", "{\"assistantMessageID\":\"a\"}"),
+                oc("session.step.started", "{\"assistantMessageID\":\"b\"}"),
+                oc("session.step.ended", "{\"assistantMessageID\":\"b\",\"finish\":\"tool-calls\",\"tokens\":{\"input\":1,\"output\":1,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}"),
+                oc("session.step.started", "{\"assistantMessageID\":\"c\"}"),
                 // "a" 和 "c" 永远没有 ended —— 孤儿 step
-                oc("session.next.step.ended", "{\"assistantMessageID\":\"ghost\",\"finish\":\"stop\",\"tokens\":{\"input\":1,\"output\":1,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}")));
+                oc("session.step.ended", "{\"assistantMessageID\":\"ghost\",\"finish\":\"stop\",\"tokens\":{\"input\":1,\"output\":1,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}")));
         List<String> types = types(events);
         assertEquals("RUN_FINISHED", types.get(types.size() - 1));
         long started = types.stream().filter("STEP_STARTED"::equals).count();
@@ -246,10 +249,10 @@ class AguiEventTranslatorTest {
     @Test
     void orderedStreamUnchanged() {
         List<JsonNode> events = translate(Flux.just(
-                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"hello\"}"),
-                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 2),
-                ocSeq("session.next.step.ended", "{}", 3)));
+                ocSeq("session.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"hello\"}"),
+                ocSeq("session.text.ended", "{\"assistantMessageID\":\"m1\"}", 2),
+                ocSeq("session.step.ended", "{}", 3)));
         List<String> types = types(events);
         assertTrue(types.indexOf("TEXT_MESSAGE_START") < types.indexOf("TEXT_MESSAGE_CONTENT"));
         assertTrue(types.indexOf("TEXT_MESSAGE_CONTENT") < types.indexOf("TEXT_MESSAGE_END"));
@@ -262,12 +265,12 @@ class AguiEventTranslatorTest {
         // seq 分配与"同源有序"一致（tool.input.started 2 < ended 3），
         // 但跨来源乱序到达：text.ended(4) 先于 tool.input.ended(3) 到达
         List<JsonNode> events = translate(Flux.just(
-                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
-                ocSeq("session.next.tool.input.started", "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"name\":\"bash\"}", 2),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
-                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 4),   // 先到（seq 更大）
-                ocSeq("session.next.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"callID\":\"c1\",\"text\":\"ls\"}", 3), // 后到（seq 更小）
-                ocSeq("session.next.step.ended", "{\"finish\":\"stop\"}", 5)));
+                ocSeq("session.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                ocSeq("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"bash\"}", 2),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
+                ocSeq("session.text.ended", "{\"assistantMessageID\":\"m1\"}", 4),   // 先到（seq 更大）
+                ocSeq("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"text\":\"ls\"}", 3), // 后到（seq 更小）
+                ocSeq("session.step.ended", "{\"finish\":\"stop\"}", 5)));
         List<String> types = types(events);
         int textEnd = types.indexOf("TEXT_MESSAGE_END");
         int toolEnd = types.indexOf("TOOL_CALL_END");
@@ -279,12 +282,12 @@ class AguiEventTranslatorTest {
     @Test
     void endBeforeSomeDeltasStillOrdered() {
         List<JsonNode> events = translate(Flux.just(
-                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"前\"}"),
-                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 3), // seq 2 缺席 → end 缓存
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"后\"}"), // end 已到达未下发
-                ocSeq("session.next.step.ended", "{\"finish\":\"tool-calls\"}", 2),  // 补上缺口 → end 才下发（非终止，run 继续）
-                ocSeq("session.next.step.ended", "{\"finish\":\"stop\"}", 4)));
+                ocSeq("session.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"前\"}"),
+                ocSeq("session.text.ended", "{\"assistantMessageID\":\"m1\"}", 3), // seq 2 缺席 → end 缓存
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"后\"}"), // end 已到达未下发
+                ocSeq("session.step.ended", "{\"finish\":\"tool-calls\"}", 2),  // 补上缺口 → end 才下发（非终止，run 继续）
+                ocSeq("session.step.ended", "{\"finish\":\"stop\"}", 4)));
         List<String> types = types(events);
         String allText = events.stream()
                 .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
@@ -297,13 +300,13 @@ class AguiEventTranslatorTest {
     @Test
     void deltaBeforeStartIsReplayed() {
         List<JsonNode> events = translate(Flux.just(
-                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"other\"}", 1), // 建立 seq 基线
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"早到的\"}"), // m1 的 start 还没到
-                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"other\"}", 2),
-                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 3),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
-                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 4),
-                ocSeq("session.next.step.ended", "{}", 5)));
+                ocSeq("session.text.started", "{\"assistantMessageID\":\"other\"}", 1), // 建立 seq 基线
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"早到的\"}"), // m1 的 start 还没到
+                ocSeq("session.text.ended", "{\"assistantMessageID\":\"other\"}", 2),
+                ocSeq("session.text.started", "{\"assistantMessageID\":\"m1\"}", 3),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
+                ocSeq("session.text.ended", "{\"assistantMessageID\":\"m1\"}", 4),
+                ocSeq("session.step.ended", "{}", 5)));
         List<String> types = types(events);
         String allText = events.stream()
                 .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
@@ -316,11 +319,11 @@ class AguiEventTranslatorTest {
     @Test
     void lateDeltaAfterEndIsDropped() {
         List<JsonNode> events = translate(Flux.just(
-                ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
-                ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 2),
-                ocSeq("session.next.step.ended", "{\"finish\":\"stop\"}", 3),
-                oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"幽灵\"}")));
+                ocSeq("session.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"正文\"}"),
+                ocSeq("session.text.ended", "{\"assistantMessageID\":\"m1\"}", 2),
+                ocSeq("session.step.ended", "{\"finish\":\"stop\"}", 3),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"幽灵\"}")));
         String allText = events.stream()
                 .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
                 .map(e -> e.path("delta").asText()).reduce("", String::concat);
@@ -335,9 +338,9 @@ class AguiEventTranslatorTest {
                 new A2UiBridgeService(a2UiService, new A2UiSurfaceRegistry()), java.time.Duration.ofMillis(300));
         // 上游永不 complete（Flux.never）→ 只有超时 flush 能放出 TEXT_MESSAGE_END
         List<JsonNode> events = t.translate("thread", "run", Set.of(), Flux.just(
-                        ocSeq("session.next.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
-                        oc("session.next.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"hi\"}"),
-                        ocSeq("session.next.text.ended", "{\"assistantMessageID\":\"m1\"}", 3)) // seq 2 永远不来
+                        ocSeq("session.text.started", "{\"assistantMessageID\":\"m1\"}", 1),
+                        oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"hi\"}"),
+                        ocSeq("session.text.ended", "{\"assistantMessageID\":\"m1\"}", 3)) // seq 2 永远不来
                         .concatWith(Flux.never()))
                 .takeUntil(e -> e.data() != null && e.data().contains("TEXT_MESSAGE_END"))
                 .map(ServerSentEvent::data)
@@ -353,29 +356,31 @@ class AguiEventTranslatorTest {
                 "timed-out gap must force-flush the buffered end");
     }
 
-    /** 实测：DeepSeek 每个 step 的 reasoning 块复用同一 reasoningID（reasoning-0），
-        直接透传会让 AG-UI 消息列表出现重复 id —— translator 按出现次序去重。 */
+    /** 新方言 reasoning 事件没有独立 id，归并键是 assistantMessageID+ordinal；
+        同一 key 的块在一个 run 里重复出现（实测 DeepSeek 每个 step 一块、ordinal 复用 0）
+        会让 AG-UI 消息列表出现重复 id —— translator 按出现次序去重。 */
     @Test
     void reusedReasoningIdGetsUniqueMessageIds() {
-        String one = "{\"type\":\"session.next.reasoning.started\",\"data\":{\"assistantMessageID\":\"m1\",\"reasoningID\":\"reasoning-0\"}}"
-                + "\n\n{\"type\":\"session.next.reasoning.delta\",\"data\":{\"assistantMessageID\":\"m1\",\"reasoningID\":\"reasoning-0\",\"delta\":\"想\"}}"
-                + "\n\n{\"type\":\"session.next.reasoning.ended\",\"data\":{\"assistantMessageID\":\"m1\",\"reasoningID\":\"reasoning-0\",\"text\":\"想\"}}";
+        String one = "{\"type\":\"session.reasoning.started\",\"data\":{\"assistantMessageID\":\"m1\",\"ordinal\":0}}"
+                + "\n\n{\"type\":\"session.reasoning.delta\",\"data\":{\"assistantMessageID\":\"m1\",\"ordinal\":0,\"delta\":\"想\"}}"
+                + "\n\n{\"type\":\"session.reasoning.ended\",\"data\":{\"assistantMessageID\":\"m1\",\"ordinal\":0,\"text\":\"想\"}}";
         List<JsonNode> events = translate(Flux.just(
                 ServerSentEvent.<String>builder().data(one).build(),
                 ServerSentEvent.<String>builder().data(one).build(),
-                oc("session.next.step.ended", "{}")));
+                oc("session.step.ended", "{}")));
         List<String> reasoningStartIds = events.stream()
                 .filter(e -> "REASONING_MESSAGE_START".equals(e.path("type").asText()))
                 .map(e -> e.path("messageId").asText()).toList();
         assertEquals(2, reasoningStartIds.size());
         assertNotEquals(reasoningStartIds.get(0), reasoningStartIds.get(1),
-                "reused upstream reasoningID must map to distinct AG-UI messageIds");
+                "reused upstream reasoning key must map to distinct AG-UI messageIds");
     }
 
-    /** v2 官方仓库新方言：session.text./session.tool. 等（无 .next 段），reasoning 无
-        reasoningID（用 assistantMessageID+ordinal 合成），execution.succeeded 为 run 终止。 */
+    /** v2 新方言直通（无归一化层）：session.text./tool./reasoning./step. 原生事件名，
+        reasoning 无 reasoningID（assistantMessageID+ordinal 合成归并键），
+        execution.succeeded 为 run 级终止兜底。 */
     @Test
-    void newDialectEventsAreNormalized() {
+    void newDialectEventsConsumedDirectly() {
         List<JsonNode> events = translate(Flux.just(
                 oc("session.step.started", "{\"assistantMessageID\":\"m1\"}"),
                 oc("session.reasoning.started", "{\"assistantMessageID\":\"m1\",\"ordinal\":0}"),
@@ -423,8 +428,7 @@ class AguiEventTranslatorTest {
         for (JsonNode e : arr) {
             raw.add(ServerSentEvent.<String>builder().data(MAPPER.writeValueAsString(e)).build());
         }
-        List<JsonNode> events = translate(Flux.fromIterable(raw)
-                .map(AguiEventTranslator::normalizeDialect));
+        List<JsonNode> events = translate(Flux.fromIterable(raw));
         List<String> types = types(events);
         assertTrue(types.contains("TEXT_MESSAGE_START"), "final-step text must stream: " + types);
         assertTrue(types.contains("TEXT_MESSAGE_CONTENT"), "final-step text deltas must stream");

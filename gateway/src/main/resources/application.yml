@@ -10,7 +10,7 @@ opencode:
     password: "6EUNdhPwmwXP2HBalxmNKAjmUzW8WzdRHrH8iEhSFT0"
 
 agui:
-  # deepseek-reasoner streams thinking (session.next.reasoning.*) so the UI can
+  # deepseek-reasoner streams thinking (session.reasoning.*) so the UI can
   # show the agent's thought process (需求7-4); deepseek-chat is the fast fallback.
   model:
     id: deepseek-reasoner
