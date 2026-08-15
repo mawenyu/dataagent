@@ -232,7 +232,7 @@ public class AgUiProtocolService {
         String d = e.data();
         if (d == null || !d.contains("ACTIVITY_SNAPSHOT") || !d.contains("a2ui-surface")) return;
         try {
-            JsonNode n = new com.fasterxml.jackson.databind.ObjectMapper().readTree(d);
+            JsonNode n = MAPPER.readTree(d);
             String surfaceId = null;
             for (JsonNode op : n.path("content").path("a2ui_operations")) {
                 JsonNode cs = op.path("createSurface");
@@ -617,7 +617,7 @@ public class AgUiProtocolService {
                 // 否则跨会话串扰 + seq 冲突（不同 aggregate 的 seq 会重复）。
                 .filter(e -> {
                     try {
-                        String sid = new com.fasterxml.jackson.databind.ObjectMapper()
+                        String sid = MAPPER
                                 .readTree(e.data()).path("data").path("sessionID").asText("");
                         return sid.isEmpty() || sessionId.equals(sid);
                     } catch (Exception ex) {
@@ -631,7 +631,7 @@ public class AgUiProtocolService {
                 .takeUntil(e -> {
                     try {
                         com.fasterxml.jackson.databind.JsonNode n =
-                                new com.fasterxml.jackson.databind.ObjectMapper().readTree(e.data());
+                                MAPPER.readTree(e.data());
                         String t = n.path("type").asText();
                         if ("session.step.failed".equals(t)) return true;
                         if ("session.execution.succeeded".equals(t)) return true;
