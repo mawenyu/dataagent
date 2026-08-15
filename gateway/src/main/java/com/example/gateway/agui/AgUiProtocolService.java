@@ -188,7 +188,7 @@ public class AgUiProtocolService {
         String validationError = validate(input, runId);
         if (validationError != null) {
             log.warn("AG-UI request rejected: {}", validationError);
-            return Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(validationError) + "\"}"));
+            return Flux.just(sseRaw(runErrorJson(validationError)));
         }
 
         // Pluggable thread authorization (currently allow-all, TASK §16)
@@ -402,7 +402,7 @@ public class AgUiProtocolService {
                                             : String.valueOf(e.getMessage());
                                     log.warn("AG-UI run aborted thread={} session={}: {}", finalThreadId, sessionId, msg);
                                     return abortSession(sessionId)
-                                            .thenMany(Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(msg) + "\"}")));
+                                            .thenMany(Flux.just(sseRaw(runErrorJson(msg))));
                                 })
                                 .doOnSubscribe(s -> log.info("AG-UI run started thread={} run={} session={} user={}", finalThreadId, finalRunId, sessionId, userId))
                                 .doOnError(e -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage()))
@@ -413,7 +413,7 @@ public class AgUiProtocolService {
                                     abortSession(sessionId).subscribe();
                                 });
                 })
-                .onErrorResume(e -> Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(String.valueOf(e.getMessage())) + "\"}")));
+                .onErrorResume(e -> Flux.just(sseRaw(runErrorJson(String.valueOf(e.getMessage())))));
     }
 
     /** P8: 事件流插桩 —— RUN_FINISHED/RUN_ERROR 收尾；TOOL_CALL_START/END 计时。 */
@@ -504,7 +504,11 @@ public class AgUiProtocolService {
         try {
             embedded = MAPPER.readTree(data == null ? "{}" : data).toString();
         } catch (Exception e) {
-            embedded = "\"" + escape(String.valueOf(data)) + "\"";
+            try {
+                embedded = MAPPER.writeValueAsString(String.valueOf(data));
+            } catch (Exception inner) {
+                embedded = "\"(unserializable)\"";
+            }
         }
         return sseRaw("{\"type\":\"RAW\",\"source\":\"opencode\",\"event\":" + embedded + "}");
     }
@@ -716,7 +720,16 @@ public class AgUiProtocolService {
         return ServerSentEvent.<String>builder().data(json).build();
     }
 
-    private String escape(String s) {
-        return s == null ? "" : s.replace("\"", "'").replace("\n", " ");
+    /**
+     * P0 修复: RUN_ERROR 帧统一走 Jackson 序列化 —— 此前手写 escape 只替换
+     * 引号(变异为单引号)与换行、不转义反斜杠,消息以 \\ 结尾时产出非法
+     * JSON 帧打断客户端解析;且引号变异破坏内容逐字性(P-I parseRunError
+     * 直接消费 message)。
+     */
+    static String runErrorJson(String message) {
+        com.fasterxml.jackson.databind.node.ObjectNode n = MAPPER.createObjectNode();
+        n.put("type", "RUN_ERROR");
+        n.put("message", message == null ? "" : message);
+        return n.toString();
     }
 }

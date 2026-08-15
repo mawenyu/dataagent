@@ -396,6 +396,17 @@ class AgUiProtocolServiceTest {
     }
 
     @Test
+    void runErrorJsonEscapesBackslashQuoteNewline() throws Exception {
+        // P0: 手写 escape 不转义反斜杠且把引号变异为单引号 —— 改 Jackson 序列化后
+        // 内容必须逐字符往返(含 \ " 换行)
+        String nasty = "path C:\\temp\\ 结尾反斜杠\\ 引号\" 换行\n结束";
+        String json = AgUiProtocolService.runErrorJson(nasty);
+        JsonNode n = new ObjectMapper().readTree(json);
+        assertEquals("RUN_ERROR", n.path("type").asText());
+        assertEquals(nasty, n.path("message").asText(), "内容逐字符保留,无变异");
+    }
+
+    @Test
     void malformedSseDataIsSkipped() {
         stub.eventStreams.add(
                 "data: {not json at all}\n\n"
