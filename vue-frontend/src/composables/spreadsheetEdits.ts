@@ -60,13 +60,13 @@ export interface ApplyEditsDeps {
   saveFile: (name: string, content: string, baseModified?: number) => Promise<void>
   /** P15: 读取时文件 mtime（毫秒）；提供则落盘携带 baseModified 防并发丢改。 */
   modifiedAtOf?: (name: string) => Promise<number | null>
-  /** HITL 确认（浏览器 confirm 对话框）；返回 false = 用户取消。 */
-  confirm: (message: string) => boolean
+  /** HITL 确认；返回 false = 用户取消。P1: 支持异步(自绘 modal 替代原生 confirm)。 */
+  confirm: (message: string) => boolean | Promise<boolean>
 }
 
 /**
  * frontend tool `applySpreadsheetEdits` 的 handler：
- * 读当前内容 → 应用变更 → 用户确认（HITL）→ 落盘。任一环失败都不改文件。
+ * 读当前内容 → 应用变更 → 用户确认（HITL，自绘 modal）→ 落盘。任一环失败都不改文件。
  */
 export async function applySpreadsheetEdits(args: ApplyEditsArgs, deps: ApplyEditsDeps): Promise<string> {
   if (!args.cells || args.cells.length === 0) return '没有任何变更需要应用'
@@ -80,7 +80,7 @@ export async function applySpreadsheetEdits(args: ApplyEditsArgs, deps: ApplyEdi
   } catch (e: any) {
     return `变更无效：${e?.message ?? e}，未做任何修改`
   }
-  const ok = deps.confirm(
+  const ok = await deps.confirm(
     `agent 要修改 ${args.file}：${args.cells.length} 处变更。${args.summary ? args.summary + ' ' : ''}确认应用？`,
   )
   if (!ok) return '用户取消了变更'

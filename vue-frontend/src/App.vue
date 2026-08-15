@@ -17,6 +17,7 @@ import { useNetworkStatus } from './composables/networkStatus'
 import { useGlobalShortcuts } from './composables/useGlobalShortcuts'
 import RunErrorCard from './components/RunErrorCard.vue'
 import BranchDialog from './components/BranchDialog.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
 import FilesPanel from './components/FilesPanel.vue'
@@ -127,11 +128,11 @@ const frontendTools = [
       return `Notification displayed to the user (title="${args.title}").`
     },
   },
-  // task5-B4: agent 编辑 workspace CSV 表格（HITL：浏览器 confirm 确认后才落盘）
+  // task5-B4: agent 编辑 workspace CSV 表格（HITL：自绘确认 modal 确认后才落盘，P1 弃原生 confirm）
   {
     name: 'applySpreadsheetEdits',
     description:
-      "Edit cells of a CSV spreadsheet file in the user's workspace. row/col are 0-based (row 0 is the header row); out-of-range rows/cols extend the sheet. The user sees a browser confirmation dialog with the change count before anything is written — if they cancel, the file is left untouched. Use this to update or append spreadsheet data.",
+      "Edit cells of a CSV spreadsheet file in the user's workspace. row/col are 0-based (row 0 is the header row); out-of-range rows/cols extend the sheet. The user sees a confirmation dialog (in-app modal) with the change count before anything is written — if they cancel, the file is left untouched. Use this to update or append spreadsheet data.",
     parameters: z.object({
       file: z.string().describe('CSV file name in the workspace (e.g. sales-2026-08.csv)'),
       cells: z.array(z.object({
@@ -153,7 +154,7 @@ const frontendTools = [
           await workspaceFilesApi.refresh()
           return workspaceFilesApi.statOf(name)
         },
-        confirm: (msg) => window.confirm(msg),
+        confirm: (msg) => askConfirm(msg),
       })
     },
   },
@@ -265,6 +266,18 @@ function clearWelcome(onUpdate: (v: string) => void) {
       el.focus()
     }
   })
+}
+
+// P1: Promise 化自绘确认(替代 window.confirm —— applySpreadsheetEdits HITL)
+const confirmState = ref<{ message: string; resolve: (ok: boolean) => void } | null>(null)
+function askConfirm(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    confirmState.value = { message, resolve }
+  })
+}
+function resolveConfirm(ok: boolean) {
+  confirmState.value?.resolve(ok)
+  confirmState.value = null
 }
 
 // P-Q: 会话分叉 —— 顶栏入口,弹窗选分叉点,gateway 建档后切到新会话
@@ -615,6 +628,15 @@ async function exportThread(id: string, format: 'md' | 'json') {
         </CopilotKitProvider>
       </div>
     </main>
+    <!-- P1: HITL 确认弹窗(spreadsheet 编辑等) -->
+    <ConfirmDialog
+      v-if="confirmState"
+      title="确认变更"
+      :message="confirmState.message"
+      confirm-label="应用"
+      @confirm="resolveConfirm(true)"
+      @cancel="resolveConfirm(false)"
+    />
     <!-- P-Q: 分叉弹窗 -->
     <BranchDialog
       v-if="branchDialogOpen"

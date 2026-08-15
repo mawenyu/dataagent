@@ -117,3 +117,27 @@ describe('P15 边界：坐标上限与并发冲突', () => {
     expect(out).toMatch(/冲突|已被.*修改|409/)
   })
 })
+
+describe('P1: 异步确认(自绘 modal 替代原生 confirm)', () => {
+  it('confirm 返回 Promise<true> → 落盘;Promise<false> → 不落盘', async () => {
+    const saved: string[] = []
+    const depsAsync = (ok: boolean) => ({
+      readFile: async () => 'a,b\n1,2\n',
+      saveFile: async (_n: string, c: string) => { saved.push(c) },
+      confirm: async () => ok,
+    })
+    const r1 = await applySpreadsheetEdits(
+      { file: 'x.csv', cells: [{ row: 1, col: 1, value: '9' }] },
+      depsAsync(true),
+    )
+    expect(r1).toContain('已应用')
+    expect(saved).toHaveLength(1)
+
+    const r2 = await applySpreadsheetEdits(
+      { file: 'x.csv', cells: [{ row: 1, col: 1, value: '9' }] },
+      depsAsync(false),
+    )
+    expect(r2).toContain('取消')
+    expect(saved).toHaveLength(1)
+  })
+})
