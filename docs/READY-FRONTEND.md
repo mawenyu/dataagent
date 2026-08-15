@@ -51,5 +51,6 @@ F1 主链路 / F2 功能项 / F4 全部在 task6 及之前已完成；本次补�
 | `97c2e77` | **P-N 目录树导航**：gateway 真支持子目录（resolvePath 逐段白名单/深度≤8/前导斜杠归一，list ?path= + dirs，{*name} 嵌套下载/改/删，upload ?path=，共享根隐藏 threads/）；FilesPanel 点目录进入 + 面包屑返回 + ▸/▾ 就地折叠展开（懒加载打平渲染），上传落当前目录；大文件(>1MB)预览改为下载提示 modal（不拉内容）。8091 冒烟 200/404/200/204 证据 docs/evidence/pn-dirtree-smoke.txt；gateway 164 绿 |
 | `80e35a6`* | **P-O 键盘可达性**：Ctrl/Cmd+K 聚焦会话搜索（自动展开侧边栏+会话 Tab，输入框内可用）、Ctrl/Cmd+N 新建会话（编辑控件内不劫持；Chrome 桌面保留 Ctrl+N 属浏览器限制）；modal 焦点圈定（trapTabKey 循环、跳过禁用、越界拉回）+ role/aria-modal 归位卡片 + aria-label 补全，Esc 恒可达。（*10 文件被 vision P15 提交一并带走，内容已核验完整并在 origin/main） |
 | `8f623f3` | **P-Q 会话分支**：顶栏"⑂ 分支"入口 → 弹窗选任意历史消息 → gateway 截断分叉点之前的 user/assistant 上下文快照为新会话前缀（分叉链支持），首个 run 一次性注入 <forked_context>（agent 上下文不丢），messages API 前缀并入；侧边栏 ⑂ 来源标记（悬停源会话 id）。gateway JUnit 2 类 14 绿；唯一已知失败为并行会话在途 abort-dedup 测试（HEAD 基线缺实现，与本改动无关） |
+| `967ed81`*+`9f58178` | **P-R 空态与骨架**：切换会话 shimmer 骨架（switchThread 标志位 + 三行消息形占位，同 id 不触发）；FilesPanel 空目录友好态（📂 + 上传引导按钮直唤起文件选择）；工具卡完成态无输出显示"（无输出）"斜体提示（运行中不误显）。（*app 侧 4 文件被 vision P19 提交带走，内容核验完整，双 commit 均在 origin/main） |
 
-**验证**：vue-frontend vitest 33 文件 233 绿 + gateway 164 绿（另有并行会话在途测试 1 失败，非本线）;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
+**验证**：vue-frontend vitest 33 文件 236 绿 + gateway 164 绿（另有并行会话在途测试 1 失败，非本线）;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
