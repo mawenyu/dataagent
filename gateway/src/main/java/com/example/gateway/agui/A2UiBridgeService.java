@@ -176,6 +176,13 @@ public class A2UiBridgeService {
         sb.append("- components (array, required): A2UI v0.9 component instances, each {\"component\":<name>,\"id\":<unique id>,...props}. Exactly one root component with id \"root\". Use ONLY components from the catalog context below, with props matching its schema. Never output HTML/JS/Vue templates.\n");
         sb.append("- data (object, optional): the surface data model. Reference data from props with {\"path\":\"fieldName\"} instead of inline literals when the value comes from data.\n");
         sb.append("- catalogId (string, optional): defaults to the basic catalog.\n");
+        // task5-B: 确定性展开工具（banking 模式）——模型只产小选择集，数字由服务端真实计算
+        sb.append("\nAdditional server tools (same <tool_call> contract, run continues after the surface):\n");
+        sb.append("- render_report: render a data report computed server-side from a workspace CSV. arguments: ")
+                .append("{title, dataFile, kpis:[totalSales|orderCount|avgOrderValue|totalQuantity|topRegion|topCategory], ")
+                .append("charts:[{type:bar|line|pie, groupBy:region|category|date|channel, title?}], ")
+                .append("table:{groupBy, title?}?, actions:[{label, event, context?}]?, surfaceId?}. ")
+                .append("Prefer this over render_a2ui for numeric sales/data reports — never hand-write numbers or component JSON.\n");
         if (context != null) {
             sb.append("\nThe client provided these A2UI capabilities (catalog, component schemas, guidelines):\n");
             for (Map<String, Object> entry : context) {

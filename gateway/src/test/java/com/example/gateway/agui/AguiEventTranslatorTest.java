@@ -517,6 +517,37 @@ class AguiEventTranslatorTest {
         assertEquals(123, patch.path("value").asInt(), "input+cacheRead");
     }
 
+
+    /** task5-B1: render_report 经 <tool_call> 派发为确定性 ACTIVITY_SNAPSHOT，run 继续。 */
+    @Test
+    void renderReportToolCallDispatchesToDeterministicRenderer() throws Exception {
+        java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("rr");
+        java.nio.file.Files.writeString(dir.resolve("sales.csv"),
+                "日期,区域,品类,数量,单价,销售额\n2026-08-01,华北,笔记本,2,7000,14000\n");
+        ReportRenderer rr = new ReportRenderer(new WorkspaceFileService(dir, 1 << 20),
+                new A2UiService(), new A2UiSurfaceRegistry());
+        AguiEventTranslator t = new AguiEventTranslator(new FrontendToolBridge(),
+                new A2UiBridgeService(new A2UiService(), new A2UiSurfaceRegistry()), List.of(rr));
+        String block = "<tool_call>{\"name\":\"render_report\",\"arguments\":{\"title\":\"报告\",\"dataFile\":\"sales.csv\",\"kpis\":[\"totalSales\"],\"charts\":[{\"type\":\"bar\",\"groupBy\":\"region\"}]}}</tool_call>";
+        List<JsonNode> events = t.translate("thread", "run", Set.of(), Flux.just(
+                        oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                        oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(block) + "}"),
+                        oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                        oc("session.step.ended", "{}")))
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        List<String> types = types(events);
+        assertTrue(types.contains("TOOL_CALL_START"));
+        JsonNode tc = events.stream().filter(e -> "TOOL_CALL_START".equals(e.path("type").asText())).findFirst().orElseThrow();
+        assertEquals("render_report", tc.path("toolCallName").asText());
+        JsonNode snap = events.stream().filter(e -> "ACTIVITY_SNAPSHOT".equals(e.path("type").asText())).findFirst().orElseThrow();
+        String snapStr = snap.path("content").toString();
+        assertTrue(snapStr.contains("MetricCard"), "KPI card rendered");
+        assertTrue(snapStr.contains("14,000"), "real computed value, not model-written");
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1), "run continues and finishes normally");
+    }
+
     private static String json(String s) {        try {
             return MAPPER.writeValueAsString(s);
         } catch (Exception e) {

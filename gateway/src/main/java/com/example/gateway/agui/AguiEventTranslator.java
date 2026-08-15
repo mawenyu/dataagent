@@ -12,6 +12,7 @@ import reactor.core.publisher.Flux;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,19 +67,52 @@ public class AguiEventTranslator {
     private final FrontendToolBridge toolBridge;
     private final A2UiBridgeService a2UiBridge;
     private final java.time.Duration reorderTimeout;
+    /** 额外服务端工具（render_report/render_slides/update_canvas 等确定性展开器）。 */
+    private final List<ServerToolHandler> extraServerTools;
+
+    /**
+     * 服务端工具扩展点（spec: docs/spec/copilotkit-capabilities.md）：
+     * 模型只产小选择集，handler 在 Java 侧确定性展开为 ACTIVITY_SNAPSHOT。
+     */
+    public interface ServerToolHandler {
+        boolean supports(String toolName);
+        Optional<ServerSentEvent<String>> execute(String runId, String threadId, JsonNode args);
+    }
 
     /** 测试用：默认乱序兜底超时。 */
     public AguiEventTranslator(FrontendToolBridge toolBridge, A2UiBridgeService a2UiBridge) {
-        this(toolBridge, a2UiBridge, DEFAULT_REORDER_TIMEOUT);
+        this(toolBridge, a2UiBridge, DEFAULT_REORDER_TIMEOUT, List.of());
+    }
+
+    /** 测试用：自定义乱序兜底超时。 */
+    public AguiEventTranslator(FrontendToolBridge toolBridge, A2UiBridgeService a2UiBridge,
+                               java.time.Duration reorderTimeout) {
+        this(toolBridge, a2UiBridge, reorderTimeout, List.of());
+    }
+
+    /** 测试用：带额外服务端工具。 */
+    public AguiEventTranslator(FrontendToolBridge toolBridge, A2UiBridgeService a2UiBridge,
+                               List<ServerToolHandler> extraServerTools) {
+        this(toolBridge, a2UiBridge, DEFAULT_REORDER_TIMEOUT, extraServerTools);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public AguiEventTranslator(FrontendToolBridge toolBridge, A2UiBridgeService a2UiBridge,
                                @org.springframework.beans.factory.annotation.Value("${agui.event-reorder-timeout:PT3S}")
-                               java.time.Duration reorderTimeout) {
+                               java.time.Duration reorderTimeout,
+                               List<ServerToolHandler> extraServerTools) {
         this.toolBridge = toolBridge;
         this.a2UiBridge = a2UiBridge;
         this.reorderTimeout = reorderTimeout;
+        this.extraServerTools = extraServerTools != null ? extraServerTools : List.of();
+    }
+
+    private Optional<ServerToolHandler> extraTool(String name) {
+        return extraServerTools.stream().filter(t -> t.supports(name)).findFirst();
+    }
+
+    private boolean isServerTool(String name) {
+        return a2UiBridge.isServerTool(name) || extraTool(name).isPresent();
     }
 
     /** 乱序缓存的兜底超时（agui.event-reorder-timeout 可配，默认 3s）。 */
@@ -229,11 +263,11 @@ public class AguiEventTranslator {
                             // genuine tool_call even though OpenCode can't execute it):
                             // execute server-side and finish the run with the surface —
                             // OpenCode's own "unknown tool" follow-up is dropped.
-                            if (a2UiBridge.isServerTool(name)) {
+                            if (isServerTool(name)) {
                                 log.info("server tool call (native): {} id={}", name, callId);
                                 closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
                                 closeAllActiveSteps(runId, threadId, activeSteps, out);
-                                a2UiBridge.execute(runId, threadId, data.path("input")).ifPresent(out::add);
+                                executeServerTool(name, runId, threadId, data.path("input")).ifPresent(out::add);
                                 if (terminalEmitted.compareAndSet(false, true)) {
                                     out.add(sse(base("RUN_FINISHED", runId, threadId)));
                                 }
@@ -753,7 +787,7 @@ public class AguiEventTranslator {
         var call = parsed.get();
         sawOutput.set(true);
         if (!frontendTools.isEmpty() && !frontendTools.contains(call.name())
-                && !a2UiBridge.isServerTool(call.name())) {
+                && !isServerTool(call.name())) {
             log.warn("model called undeclared tool '{}' (declared: {})", call.name(), frontendTools);
         }
         String toolCallId = "call_" + UUID.randomUUID().toString().replace("-", "");
@@ -774,10 +808,10 @@ public class AguiEventTranslator {
         end.put("toolCallId", toolCallId);
         out.add(sse(end));
 
-        if (a2UiBridge.isServerTool(call.name())) {
+        if (isServerTool(call.name())) {
             // server-side tool: execute now, run continues
             log.info("server tool call: {} id={}", call.name(), toolCallId);
-            a2UiBridge.execute(runId, threadId, call.arguments()).ifPresent(out::add);
+            executeServerTool(call.name(), runId, threadId, call.arguments()).ifPresent(out::add);
             return;
         }
         // frontend tool: end the run so the browser executes it
@@ -786,6 +820,13 @@ public class AguiEventTranslator {
             closeAllActiveSteps(runId, threadId, activeSteps, out);
             out.add(sse(base("RUN_FINISHED", runId, threadId)));
         }
+    }
+
+    /** 服务端工具路由：render_a2ui 走 A2UiBridge，其余走确定性展开器。 */
+    private Optional<ServerSentEvent<String>> executeServerTool(String name, String runId,
+                                                                String threadId, JsonNode args) {
+        if (a2UiBridge.isServerTool(name)) return a2UiBridge.execute(runId, threadId, args);
+        return extraTool(name).flatMap(t -> t.execute(runId, threadId, args));
     }
 
     // ------------------------------------------------------------------
