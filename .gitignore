@@ -15,6 +15,8 @@ ref/
 .DS_Store
 vendor/copilotkit-src/
 gateway/data/
+/data/
+workspace/report/
 
 # 运行时密钥/本地环境
 .env.opencode
