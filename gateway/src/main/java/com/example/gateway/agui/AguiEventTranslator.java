@@ -155,22 +155,7 @@ public class AguiEventTranslator {
                                                    Flux<ServerSentEvent<String>> opencodeEvents,
                                                    Map<String, Object> initialState,
                                                    Runnable onEarlyTerminate) {
-        AtomicBoolean sawOutput = new AtomicBoolean(false);
-        AtomicBoolean terminalEmitted = new AtomicBoolean(false);
-        // 需求7: AG-UI 客户端状态机要求 STEP_FINISHED/RUN_FINISHED 与 STEP_STARTED 严格配对。
-        // OpenCode 的 step 会重叠（多个 step.started 先于 step.ended）且存在孤儿 step
-        // （started 后无 ended），因此跟踪"活跃集合"：ended 只关自己，终止事件前关掉所有残余。
-        Set<String> activeSteps = new java.util.LinkedHashSet<>();
-        Set<String> openReasoning = new java.util.LinkedHashSet<>();
-        // 新方言 reasoning 事件无独立 id（assistantMessageID+ordinal 合成，见
-        // reasoningKey）。AG-UI 消息按 id 归并，同一块重复出现会互相污染 ——
-        // 每次 started 生成唯一 id。
-        Map<String, Integer> reasoningSeen = new ConcurrentHashMap<>();
-        Map<String, String> reasoningCurrent = new ConcurrentHashMap<>();
-        Map<String, MsgState> msgStates = new ConcurrentHashMap<>();
-        Map<String, String> toolCallNames = new ConcurrentHashMap<>();
-        Set<String> toolCallStarted = ConcurrentHashMap.newKeySet();
-        Set<String> toolCallEnded = ConcurrentHashMap.newKeySet();
+        RunState rs = new RunState(threadId, runId, frontendTools, onEarlyTerminate);
 
         ServerSentEvent<String> runStarted = sse(agEvent("RUN_STARTED", runId, threadId));
 
@@ -182,276 +167,9 @@ public class AguiEventTranslator {
         }
 
         Flux<ServerSentEvent<String>> body = restoreOrder(opencodeEvents)
-                .concatMap(event -> {
-                    String json = event.data();
-                    if (json == null || json.isBlank()) return Flux.empty();
-                    JsonNode node;
-                    try {
-                        node = MAPPER.readTree(json);
-                    } catch (Exception e) {
-                        return Flux.empty();
-                    }
-                    String type = node.path("type").asText("");
-                    JsonNode data = node.path("data");
-
-                    switch (type) {
-                        case "session.text.started": {
-                            String aMsgId = data.path("assistantMessageID").asText();
-                            // 不覆盖可能已由迟到 delta 懒建的状态（否则会丢掉已缓冲内容）
-                            msgStates.putIfAbsent(aMsgId, new MsgState());
-                            return Flux.empty(); // decide later: text vs tool_call
-                        }
-                        case "session.text.delta": {
-                            String aMsgId = data.path("assistantMessageID").asText();
-                            // 防御：delta 先于 started 到达（残余乱序）时懒建状态，
-                            // 不再静默丢弃（emitTextStart 会先补 TEXT_MESSAGE_START）。
-                            MsgState st = msgStates.computeIfAbsent(aMsgId, k -> {
-                                log.warn("text.delta before text.started for {}; synthesizing state", k);
-                                return new MsgState();
-                            });
-                            String delta = data.path("delta").asText("");
-                            return Flux.fromIterable(
-                                    processDelta(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, delta, onEarlyTerminate));
-                        }
-                        case "session.text.ended": {
-                            String aMsgId = data.path("assistantMessageID").asText();
-                            MsgState st = msgStates.remove(aMsgId);
-                            if (st == null) return Flux.empty();
-                            return Flux.fromIterable(
-                                    processTextEnd(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, onEarlyTerminate));
-                        }
-                        case "session.tool.input.started": {
-                            // builtin opencode tools — mirror for progress rendering only
-                            String callId = data.path("id").asText();
-                            String name = data.path("name").asText();
-                            if (callId.isBlank()) return Flux.empty();
-                            toolCallNames.put(callId, name);
-                            toolCallStarted.add(callId);
-                            sawOutput.set(true);
-                            ObjectNode payload = base("TOOL_CALL_START", runId, threadId);
-                            payload.put("toolCallId", callId);
-                            payload.put("toolCallName", name);
-                            return Flux.just(sse(payload));
-                        }
-                        case "session.tool.input.delta": {
-                            String callId = data.path("id").asText();
-                            if (!toolCallStarted.contains(callId)) return Flux.empty();
-                            ObjectNode payload = base("TOOL_CALL_ARGS", runId, threadId);
-                            payload.put("toolCallId", callId);
-                            payload.put("delta", data.path("delta").asText(""));
-                            return Flux.just(sse(payload));
-                        }
-                        case "session.tool.input.ended": {
-                            String callId = data.path("id").asText();
-                            if (!toolCallStarted.contains(callId) || !toolCallEnded.add(callId))
-                                return Flux.empty();
-                            ObjectNode payload = base("TOOL_CALL_END", runId, threadId);
-                            payload.put("toolCallId", callId);
-                            return Flux.just(sse(payload));
-                        }
-                        case "session.tool.called": {
-                            // fallback for models that don't stream tool input
-                            String callId = data.path("id").asText();
-                            if (callId.isBlank()) return Flux.empty();
-                            // 新方言 tool.called 不带工具名字段 —— 用 input.started 注册的
-                            String name = toolCallNames.getOrDefault(callId, "");
-                            toolCallNames.putIfAbsent(callId, name);
-                            sawOutput.set(true);
-                            List<ServerSentEvent<String>> out = new ArrayList<>();
-                            if (toolCallStarted.add(callId)) {
-                                ObjectNode start = base("TOOL_CALL_START", runId, threadId);
-                                start.put("toolCallId", callId);
-                                start.put("toolCallName", name);
-                                ObjectNode args = base("TOOL_CALL_ARGS", runId, threadId);
-                                args.put("toolCallId", callId);
-                                args.put("delta", data.path("input").isMissingNode() ? "{}" : data.path("input").toString());
-                                ObjectNode end = base("TOOL_CALL_END", runId, threadId);
-                                end.put("toolCallId", callId);
-                                toolCallEnded.add(callId);
-                                out.add(sse(start));
-                                out.add(sse(args));
-                                out.add(sse(end));
-                            }
-                            // 2026-08-15 实测：工具原生注册后模型会把 frontend tool 当
-                            // 原生工具调（opencode 回 Unknown tool 并重试 N 次）。这里
-                            // 直接转成前端执行流：补齐 TOOL_CALL_END，关 step，RUN_FINISHED
-                            // —— 浏览器执行工具并回发 tool result 续跑，opencode 侧的
-                            // Unknown-tool 失败事件被 takeUntil 截断，永远到不了客户端。
-                            if (frontendTools.contains(name)) {
-                                log.info("frontend tool called natively: {} id={} — handing to browser", name, callId);
-                                if (toolCallEnded.add(callId)) {
-                                    ObjectNode end = base("TOOL_CALL_END", runId, threadId);
-                                    end.put("toolCallId", callId);
-                                    out.add(sse(end));
-                                }
-                                closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
-                                closeAllActiveSteps(runId, threadId, activeSteps, out);
-                                if (terminalEmitted.compareAndSet(false, true)) {
-                                    out.add(sse(base("RUN_FINISHED", runId, threadId)));
-                                    fireEarlyTerminate(onEarlyTerminate);
-                                }
-                                return Flux.fromIterable(out);
-                            }
-                            // 原生 server tool（render_a2ui/render_report/...）：
-                            // 2026-08-15 起工具已在 opencode 注册（agents/plugins/a2ui-tools.ts），
-                            // 原生调用会真实执行并回执 —— 不再截断 run：立即产出 surface，
-                            // run 继续到自然终止（模型收到回执后做收尾叙述，文本照常流出）。
-                            // （截断时代的"unknown tool 跟进丢弃"已随注册消失；截断还会把
-                            // 收尾叙述丢进下一个 run —— 实测回归。）
-                            if (isServerTool(name)) {
-                                log.info("server tool call (native): {} id={}", name, callId);
-                                executeServerTool(name, runId, threadId, data.path("input")).ifPresent(out::add);
-                            }
-                            return Flux.fromIterable(out);
-                        }
-                        case "session.step.failed": {
-                            if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
-                            List<ServerSentEvent<String>> out = new ArrayList<>();
-                            closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
-                            closeAllActiveSteps(runId, threadId, activeSteps, out);
-                            ObjectNode payload = base("RUN_ERROR", runId, threadId);
-                            String msg = data.path("error").path("message").asText("unknown error");
-                            payload.put("message", msg);
-                            out.add(sse(payload));
-                            return Flux.fromIterable(out);
-                        }
-                        case "session.step.started": {
-                            String stepId = data.path("assistantMessageID").asText("");
-                            String stepName = stepId.isBlank() ? "opencode-step" : "step-" + stepId;
-                            activeSteps.add(stepName);
-                            ObjectNode payload = base("STEP_STARTED", runId, threadId);
-                            payload.put("stepName", stepName);
-                            return Flux.just(sse(payload));
-                        }
-                        case "session.step.ended": {
-                            // OpenCode emits one step PER ASSISTANT TURN; finish=tool-calls
-                            // means the agent loop continues (more steps coming). Only a
-                            // terminal finish (stop/length/error/...) ends the AG-UI run.
-                            String finish = data.path("finish").asText("stop");
-                            List<ServerSentEvent<String>> out = new ArrayList<>();
-                            String endedId = data.path("assistantMessageID").asText("");
-                            String endedName = endedId.isBlank() ? "opencode-step" : "step-" + endedId;
-                            if (activeSteps.remove(endedName)) {
-                                out.add(stepFinished(runId, threadId, endedName));
-                            }
-                            JsonNode tokens = data.path("tokens");
-                            if (tokens.isObject()) {
-                                long input = tokens.path("input").asLong(0);
-                                long cacheRead = tokens.path("cache").path("read").asLong(0);
-                                ObjectNode usage = base("CUSTOM", runId, threadId);
-                                usage.put("name", "context_usage");
-                                ObjectNode v = usage.putObject("value");
-                                v.put("input", input);
-                                v.put("output", tokens.path("output").asLong(0));
-                                v.put("reasoning", tokens.path("reasoning").asLong(0));
-                                v.put("cacheRead", cacheRead);
-                                v.put("cacheWrite", tokens.path("cache").path("write").asLong(0));
-                                v.put("contextSize", input + cacheRead);
-                                v.put("finish", finish);
-                                out.add(sse(usage));
-                                // AG-UI shared state: JSON Patch 增量更新 contextSize
-                                ObjectNode deltaEv = base("STATE_DELTA", runId, threadId);
-                                var patch = deltaEv.putArray("delta");
-                                ObjectNode op = patch.addObject();
-                                op.put("op", "replace");
-                                op.put("path", "/contextSize");
-                                op.put("value", input + cacheRead);
-                                out.add(sse(deltaEv));
-                            }
-                            if ("tool-calls".equals(finish)) return Flux.fromIterable(out);
-                            if (terminalEmitted.compareAndSet(false, true)) {
-                                closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
-                                closeAllActiveSteps(runId, threadId, activeSteps, out);
-                                out.add(sse(base("RUN_FINISHED", runId, threadId)));
-                            }
-                            return Flux.fromIterable(out);
-                        }
-                        case "session.reasoning.started": {
-                            // 新方言 reasoning 事件无 reasoningID —— assistantMessageID+ordinal 合成
-                            String rId = reasoningKey(data);
-                            if (rId.isBlank()) return Flux.empty();
-                            sawOutput.set(true);
-                            String unique = rId + "#" + reasoningSeen.merge(rId, 1, Integer::sum);
-                            reasoningCurrent.put(rId, unique);
-                            openReasoning.add(unique);
-                            ObjectNode start = base("REASONING_START", runId, threadId);
-                            start.put("messageId", unique);
-                            ObjectNode msgStart = base("REASONING_MESSAGE_START", runId, threadId);
-                            msgStart.put("messageId", unique);
-                            msgStart.put("role", "reasoning");
-                            return Flux.just(sse(start), sse(msgStart));
-                        }
-                        case "session.reasoning.delta": {
-                            String rId = reasoningCurrent.get(reasoningKey(data));
-                            if (rId == null) return Flux.empty();
-                            ObjectNode payload = base("REASONING_MESSAGE_CONTENT", runId, threadId);
-                            payload.put("messageId", rId);
-                            payload.put("delta", data.path("delta").asText(""));
-                            return Flux.just(sse(payload));
-                        }
-                        case "session.reasoning.ended": {
-                            String rId = reasoningCurrent.remove(reasoningKey(data));
-                            if (rId == null) return Flux.empty();
-                            openReasoning.remove(rId);
-                            ObjectNode msgEnd = base("REASONING_MESSAGE_END", runId, threadId);
-                            msgEnd.put("messageId", rId);
-                            ObjectNode end = base("REASONING_END", runId, threadId);
-                            end.put("messageId", rId);
-                            return Flux.just(sse(msgEnd), sse(end));
-                        }
-                        case "session.tool.success": {
-                            String callId = data.path("id").asText();
-                            if (callId.isBlank()) return Flux.empty();
-                            ObjectNode payload = base("TOOL_CALL_RESULT", runId, threadId);
-                            payload.put("toolCallId", callId);
-                            payload.put("messageId", "toolres-" + callId);
-                            payload.put("content", summarizeToolResult(data));
-                            return Flux.just(sse(payload));
-                        }
-                        case "session.tool.failed": {
-                            String callId = data.path("id").asText();
-                            if (callId.isBlank()) return Flux.empty();
-                            ObjectNode payload = base("TOOL_CALL_RESULT", runId, threadId);
-                            payload.put("toolCallId", callId);
-                            payload.put("messageId", "toolres-" + callId);
-                            String msg = data.path("error").path("message").asText("unknown error");
-                            payload.put("content", "工具执行失败: " + msg);
-                            return Flux.just(sse(payload));
-                        }
-                        case "session.execution.succeeded": {
-                            // run 级终止（最后一个 step.ended(finish=stop) 之后的兜底终止信号；
-                            // volatile 流下 step.ended 丢失时由它保证 RUN_FINISHED 必达）
-                            if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
-                            List<ServerSentEvent<String>> out = new ArrayList<>();
-                            closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
-                            closeAllActiveSteps(runId, threadId, activeSteps, out);
-                            out.add(sse(base("RUN_FINISHED", runId, threadId)));
-                            return Flux.fromIterable(out);
-                        }
-                        case "session.execution.failed": {
-                            if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
-                            List<ServerSentEvent<String>> out = new ArrayList<>();
-                            closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
-                            closeAllActiveSteps(runId, threadId, activeSteps, out);
-                            ObjectNode payload = base("RUN_ERROR", runId, threadId);
-                            String msg = data.path("error").path("message").asText("unknown error");
-                            payload.put("message", msg);
-                            out.add(sse(payload));
-                            return Flux.fromIterable(out);
-                        }
-                        default:
-                            return Flux.empty();
-                    }
-                })
+                .concatMap(event -> translateEvent(rs, event))
                 // ensure RUN_FINISHED is always emitted even if opencode ends silently
-                .concatWith(Flux.defer(() -> {
-                    if (!terminalEmitted.compareAndSet(false, true)) return Flux.empty();
-                    List<ServerSentEvent<String>> tail = new ArrayList<>();
-                    closeOpenMessages(runId, threadId, msgStates, openReasoning, tail);
-                    closeAllActiveSteps(runId, threadId, activeSteps, tail);
-                    tail.add(sse(base("RUN_FINISHED", runId, threadId)));
-                    return Flux.fromIterable(tail);
-                }))
+                .concatWith(Flux.defer(() -> Flux.fromIterable(terminalFinish(rs))))
                 // close the run (and cancel the upstream opencode stream) at the first terminal event
                 .takeUntil(e -> {
                     String d = e.data();
@@ -459,6 +177,346 @@ public class AguiEventTranslator {
                 });
 
         return Flux.concat(head, body);
+    }
+
+    // ------------------------------------------------------------------
+    // per-event dispatch（按事件族路由到私有方法；可变状态承载在 RunState）
+    // ------------------------------------------------------------------
+
+    /**
+     * Per-run 可变状态 holder（替代事件族方法间的一长串参数）。
+     *
+     * <p>需求7: AG-UI 客户端状态机要求 STEP_FINISHED/RUN_FINISHED 与 STEP_STARTED
+     * 严格配对。OpenCode 的 step 会重叠（多个 step.started 先于 step.ended）且存在
+     * 孤儿 step（started 后无 ended），因此跟踪"活跃集合"（activeSteps）：ended 只关
+     * 自己，终止事件前关掉所有残余。</p>
+     *
+     * <p>新方言 reasoning 事件无独立 id（assistantMessageID+ordinal 合成，见
+     * reasoningKey）。AG-UI 消息按 id 归并，同一块重复出现会互相污染 —— 每次
+     * started 生成唯一 id（reasoningSeen/reasoningCurrent）。</p>
+     */
+    private static final class RunState {
+        final String threadId;
+        final String runId;
+        final Set<String> frontendTools;
+        final Runnable onEarlyTerminate;
+        final AtomicBoolean sawOutput = new AtomicBoolean(false);
+        final AtomicBoolean terminalEmitted = new AtomicBoolean(false);
+        final Set<String> activeSteps = new java.util.LinkedHashSet<>();
+        final Set<String> openReasoning = new java.util.LinkedHashSet<>();
+        final Map<String, Integer> reasoningSeen = new ConcurrentHashMap<>();
+        final Map<String, String> reasoningCurrent = new ConcurrentHashMap<>();
+        final Map<String, MsgState> msgStates = new ConcurrentHashMap<>();
+        final Map<String, String> toolCallNames = new ConcurrentHashMap<>();
+        final Set<String> toolCallStarted = ConcurrentHashMap.newKeySet();
+        final Set<String> toolCallEnded = ConcurrentHashMap.newKeySet();
+
+        RunState(String threadId, String runId, Set<String> frontendTools, Runnable onEarlyTerminate) {
+            this.threadId = threadId;
+            this.runId = runId;
+            this.frontendTools = frontendTools;
+            this.onEarlyTerminate = onEarlyTerminate;
+        }
+    }
+
+    /** 单事件分发：解析 JSON 后按事件族路由（未知/不可解析类型丢弃）。 */
+    private Flux<ServerSentEvent<String>> translateEvent(RunState rs, ServerSentEvent<String> event) {
+        String json = event.data();
+        if (json == null || json.isBlank()) return Flux.empty();
+        JsonNode node;
+        try {
+            node = MAPPER.readTree(json);
+        } catch (Exception e) {
+            return Flux.empty();
+        }
+        String type = node.path("type").asText("");
+        JsonNode data = node.path("data");
+        return switch (type) {
+            case "session.text.started", "session.text.delta", "session.text.ended" -> textEvents(rs, type, data);
+            case "session.reasoning.started", "session.reasoning.delta", "session.reasoning.ended" -> reasoningEvents(rs, type, data);
+            case "session.tool.input.started", "session.tool.input.delta", "session.tool.input.ended" -> toolInputEvents(rs, type, data);
+            case "session.tool.called" -> toolCalledEvent(rs, data);
+            case "session.tool.success", "session.tool.failed" -> toolResultEvents(rs, type, data);
+            case "session.step.started", "session.step.ended", "session.step.failed" -> stepEvents(rs, type, data);
+            case "session.execution.succeeded", "session.execution.failed" -> executionEvents(rs, type, data);
+            default -> Flux.empty();
+        };
+    }
+
+    /** session.text.* —— 文本流 + tool_call 标记检测（每条 assistant 消息的流状态在 MsgState）。 */
+    private Flux<ServerSentEvent<String>> textEvents(RunState rs, String type, JsonNode data) {
+        String aMsgId = data.path("assistantMessageID").asText();
+        switch (type) {
+            case "session.text.started" -> {
+                // 不覆盖可能已由迟到 delta 懒建的状态（否则会丢掉已缓冲内容）
+                rs.msgStates.putIfAbsent(aMsgId, new MsgState());
+                return Flux.empty(); // decide later: text vs tool_call
+            }
+            case "session.text.delta" -> {
+                // 防御：delta 先于 started 到达（残余乱序）时懒建状态，
+                // 不再静默丢弃（emitTextStart 会先补 TEXT_MESSAGE_START）。
+                MsgState st = rs.msgStates.computeIfAbsent(aMsgId, k -> {
+                    log.warn("text.delta before text.started for {}; synthesizing state", k);
+                    return new MsgState();
+                });
+                String delta = data.path("delta").asText("");
+                return Flux.fromIterable(processDelta(rs.threadId, rs.runId, rs.frontendTools,
+                        rs.terminalEmitted, rs.sawOutput, rs.activeSteps, st, delta, rs.onEarlyTerminate));
+            }
+            case "session.text.ended" -> {
+                MsgState st = rs.msgStates.remove(aMsgId);
+                if (st == null) return Flux.empty();
+                return Flux.fromIterable(processTextEnd(rs.threadId, rs.runId, rs.frontendTools,
+                        rs.terminalEmitted, rs.sawOutput, rs.activeSteps, st, rs.onEarlyTerminate));
+            }
+            default -> {
+                return Flux.empty();
+            }
+        }
+    }
+
+    /** session.reasoning.* —— REASONING_START/MESSAGE_START/CONTENT/MESSAGE_END/END。 */
+    private Flux<ServerSentEvent<String>> reasoningEvents(RunState rs, String type, JsonNode data) {
+        switch (type) {
+            case "session.reasoning.started" -> {
+                // 新方言 reasoning 事件无 reasoningID —— assistantMessageID+ordinal 合成
+                String rId = reasoningKey(data);
+                if (rId.isBlank()) return Flux.empty();
+                rs.sawOutput.set(true);
+                String unique = rId + "#" + rs.reasoningSeen.merge(rId, 1, Integer::sum);
+                rs.reasoningCurrent.put(rId, unique);
+                rs.openReasoning.add(unique);
+                ObjectNode start = base("REASONING_START", rs.runId, rs.threadId);
+                start.put("messageId", unique);
+                ObjectNode msgStart = base("REASONING_MESSAGE_START", rs.runId, rs.threadId);
+                msgStart.put("messageId", unique);
+                msgStart.put("role", "reasoning");
+                return Flux.just(sse(start), sse(msgStart));
+            }
+            case "session.reasoning.delta" -> {
+                String rId = rs.reasoningCurrent.get(reasoningKey(data));
+                if (rId == null) return Flux.empty();
+                ObjectNode payload = base("REASONING_MESSAGE_CONTENT", rs.runId, rs.threadId);
+                payload.put("messageId", rId);
+                payload.put("delta", data.path("delta").asText(""));
+                return Flux.just(sse(payload));
+            }
+            case "session.reasoning.ended" -> {
+                String rId = rs.reasoningCurrent.remove(reasoningKey(data));
+                if (rId == null) return Flux.empty();
+                rs.openReasoning.remove(rId);
+                ObjectNode msgEnd = base("REASONING_MESSAGE_END", rs.runId, rs.threadId);
+                msgEnd.put("messageId", rId);
+                ObjectNode end = base("REASONING_END", rs.runId, rs.threadId);
+                end.put("messageId", rId);
+                return Flux.just(sse(msgEnd), sse(end));
+            }
+            default -> {
+                return Flux.empty();
+            }
+        }
+    }
+
+    /** session.tool.input.* —— builtin 工具调用进度镜像（TOOL_CALL_START/ARGS/END）。 */
+    private Flux<ServerSentEvent<String>> toolInputEvents(RunState rs, String type, JsonNode data) {
+        String callId = data.path("id").asText();
+        switch (type) {
+            case "session.tool.input.started" -> {
+                // builtin opencode tools — mirror for progress rendering only
+                String name = data.path("name").asText();
+                if (callId.isBlank()) return Flux.empty();
+                rs.toolCallNames.put(callId, name);
+                rs.toolCallStarted.add(callId);
+                rs.sawOutput.set(true);
+                ObjectNode payload = base("TOOL_CALL_START", rs.runId, rs.threadId);
+                payload.put("toolCallId", callId);
+                payload.put("toolCallName", name);
+                return Flux.just(sse(payload));
+            }
+            case "session.tool.input.delta" -> {
+                if (!rs.toolCallStarted.contains(callId)) return Flux.empty();
+                ObjectNode payload = base("TOOL_CALL_ARGS", rs.runId, rs.threadId);
+                payload.put("toolCallId", callId);
+                payload.put("delta", data.path("delta").asText(""));
+                return Flux.just(sse(payload));
+            }
+            case "session.tool.input.ended" -> {
+                if (!rs.toolCallStarted.contains(callId) || !rs.toolCallEnded.add(callId))
+                    return Flux.empty();
+                ObjectNode payload = base("TOOL_CALL_END", rs.runId, rs.threadId);
+                payload.put("toolCallId", callId);
+                return Flux.just(sse(payload));
+            }
+            default -> {
+                return Flux.empty();
+            }
+        }
+    }
+
+    /** session.tool.called —— 不流式工具输入的兜底；frontend/server 工具在此分流。 */
+    private Flux<ServerSentEvent<String>> toolCalledEvent(RunState rs, JsonNode data) {
+        // fallback for models that don't stream tool input
+        String callId = data.path("id").asText();
+        if (callId.isBlank()) return Flux.empty();
+        // 新方言 tool.called 不带工具名字段 —— 用 input.started 注册的
+        String name = rs.toolCallNames.getOrDefault(callId, "");
+        rs.toolCallNames.putIfAbsent(callId, name);
+        rs.sawOutput.set(true);
+        List<ServerSentEvent<String>> out = new ArrayList<>();
+        if (rs.toolCallStarted.add(callId)) {
+            ObjectNode start = base("TOOL_CALL_START", rs.runId, rs.threadId);
+            start.put("toolCallId", callId);
+            start.put("toolCallName", name);
+            ObjectNode args = base("TOOL_CALL_ARGS", rs.runId, rs.threadId);
+            args.put("toolCallId", callId);
+            args.put("delta", data.path("input").isMissingNode() ? "{}" : data.path("input").toString());
+            ObjectNode end = base("TOOL_CALL_END", rs.runId, rs.threadId);
+            end.put("toolCallId", callId);
+            rs.toolCallEnded.add(callId);
+            out.add(sse(start));
+            out.add(sse(args));
+            out.add(sse(end));
+        }
+        // 2026-08-15 实测：工具原生注册后模型会把 frontend tool 当
+        // 原生工具调（opencode 回 Unknown tool 并重试 N 次）。这里
+        // 直接转成前端执行流：补齐 TOOL_CALL_END，关 step，RUN_FINISHED
+        // —— 浏览器执行工具并回发 tool result 续跑，opencode 侧的
+        // Unknown-tool 失败事件被 takeUntil 截断，永远到不了客户端。
+        if (rs.frontendTools.contains(name)) {
+            log.info("frontend tool called natively: {} id={} — handing to browser", name, callId);
+            if (rs.toolCallEnded.add(callId)) {
+                ObjectNode end = base("TOOL_CALL_END", rs.runId, rs.threadId);
+                end.put("toolCallId", callId);
+                out.add(sse(end));
+            }
+            closeOpenMessages(rs.runId, rs.threadId, rs.msgStates, rs.openReasoning, out);
+            closeAllActiveSteps(rs.runId, rs.threadId, rs.activeSteps, out);
+            if (rs.terminalEmitted.compareAndSet(false, true)) {
+                out.add(sse(base("RUN_FINISHED", rs.runId, rs.threadId)));
+                fireEarlyTerminate(rs.onEarlyTerminate);
+            }
+            return Flux.fromIterable(out);
+        }
+        // 原生 server tool（render_a2ui/render_report/...）：
+        // 2026-08-15 起工具已在 opencode 注册（agents/plugins/a2ui-tools.ts），
+        // 原生调用会真实执行并回执 —— 不再截断 run：立即产出 surface，
+        // run 继续到自然终止（模型收到回执后做收尾叙述，文本照常流出）。
+        // （截断时代的"unknown tool 跟进丢弃"已随注册消失；截断还会把
+        // 收尾叙述丢进下一个 run —— 实测回归。）
+        if (isServerTool(name)) {
+            log.info("server tool call (native): {} id={}", name, callId);
+            executeServerTool(name, rs.runId, rs.threadId, data.path("input")).ifPresent(out::add);
+        }
+        return Flux.fromIterable(out);
+    }
+
+    /** session.tool.success/.failed —— TOOL_CALL_RESULT 结果镜像。 */
+    private Flux<ServerSentEvent<String>> toolResultEvents(RunState rs, String type, JsonNode data) {
+        String callId = data.path("id").asText();
+        if (callId.isBlank()) return Flux.empty();
+        ObjectNode payload = base("TOOL_CALL_RESULT", rs.runId, rs.threadId);
+        payload.put("toolCallId", callId);
+        payload.put("messageId", "toolres-" + callId);
+        if ("session.tool.failed".equals(type)) {
+            String msg = data.path("error").path("message").asText("unknown error");
+            payload.put("content", "工具执行失败: " + msg);
+        } else {
+            payload.put("content", summarizeToolResult(data));
+        }
+        return Flux.just(sse(payload));
+    }
+
+    /** session.step.* —— STEP_STARTED/FINISHED 配对、token 用量结算、step 级失败终止。 */
+    private Flux<ServerSentEvent<String>> stepEvents(RunState rs, String type, JsonNode data) {
+        switch (type) {
+            case "session.step.started" -> {
+                String stepId = data.path("assistantMessageID").asText("");
+                String stepName = stepId.isBlank() ? "opencode-step" : "step-" + stepId;
+                rs.activeSteps.add(stepName);
+                ObjectNode payload = base("STEP_STARTED", rs.runId, rs.threadId);
+                payload.put("stepName", stepName);
+                return Flux.just(sse(payload));
+            }
+            case "session.step.ended" -> {
+                // OpenCode emits one step PER ASSISTANT TURN; finish=tool-calls
+                // means the agent loop continues (more steps coming). Only a
+                // terminal finish (stop/length/error/...) ends the AG-UI run.
+                String finish = data.path("finish").asText("stop");
+                List<ServerSentEvent<String>> out = new ArrayList<>();
+                String endedId = data.path("assistantMessageID").asText("");
+                String endedName = endedId.isBlank() ? "opencode-step" : "step-" + endedId;
+                if (rs.activeSteps.remove(endedName)) {
+                    out.add(stepFinished(rs.runId, rs.threadId, endedName));
+                }
+                JsonNode tokens = data.path("tokens");
+                if (tokens.isObject()) {
+                    long input = tokens.path("input").asLong(0);
+                    long cacheRead = tokens.path("cache").path("read").asLong(0);
+                    ObjectNode usage = base("CUSTOM", rs.runId, rs.threadId);
+                    usage.put("name", "context_usage");
+                    ObjectNode v = usage.putObject("value");
+                    v.put("input", input);
+                    v.put("output", tokens.path("output").asLong(0));
+                    v.put("reasoning", tokens.path("reasoning").asLong(0));
+                    v.put("cacheRead", cacheRead);
+                    v.put("cacheWrite", tokens.path("cache").path("write").asLong(0));
+                    v.put("contextSize", input + cacheRead);
+                    v.put("finish", finish);
+                    out.add(sse(usage));
+                    // AG-UI shared state: JSON Patch 增量更新 contextSize
+                    ObjectNode deltaEv = base("STATE_DELTA", rs.runId, rs.threadId);
+                    var patch = deltaEv.putArray("delta");
+                    ObjectNode op = patch.addObject();
+                    op.put("op", "replace");
+                    op.put("path", "/contextSize");
+                    op.put("value", input + cacheRead);
+                    out.add(sse(deltaEv));
+                }
+                if ("tool-calls".equals(finish)) return Flux.fromIterable(out);
+                out.addAll(terminalFinish(rs));
+                return Flux.fromIterable(out);
+            }
+            case "session.step.failed" -> {
+                return Flux.fromIterable(terminalError(rs, data));
+            }
+            default -> {
+                return Flux.empty();
+            }
+        }
+    }
+
+    /**
+     * session.execution.* —— run 级终止（最后一个 step.ended(finish=stop) 之后的
+     * 兜底终止信号；volatile 流下 step.ended 丢失时由它保证 RUN_FINISHED 必达）。
+     */
+    private Flux<ServerSentEvent<String>> executionEvents(RunState rs, String type, JsonNode data) {
+        if ("session.execution.failed".equals(type)) {
+            return Flux.fromIterable(terminalError(rs, data));
+        }
+        return Flux.fromIterable(terminalFinish(rs));
+    }
+
+    /** CAS 占终止位后关残余消息/step 并发 RUN_FINISHED；已终止则空。 */
+    private List<ServerSentEvent<String>> terminalFinish(RunState rs) {
+        if (!rs.terminalEmitted.compareAndSet(false, true)) return List.of();
+        List<ServerSentEvent<String>> out = new ArrayList<>();
+        closeOpenMessages(rs.runId, rs.threadId, rs.msgStates, rs.openReasoning, out);
+        closeAllActiveSteps(rs.runId, rs.threadId, rs.activeSteps, out);
+        out.add(sse(base("RUN_FINISHED", rs.runId, rs.threadId)));
+        return out;
+    }
+
+    /** 同 {@link #terminalFinish}，但终止事件为 RUN_ERROR（message 取自 error.message）。 */
+    private List<ServerSentEvent<String>> terminalError(RunState rs, JsonNode data) {
+        if (!rs.terminalEmitted.compareAndSet(false, true)) return List.of();
+        List<ServerSentEvent<String>> out = new ArrayList<>();
+        closeOpenMessages(rs.runId, rs.threadId, rs.msgStates, rs.openReasoning, out);
+        closeAllActiveSteps(rs.runId, rs.threadId, rs.activeSteps, out);
+        ObjectNode payload = base("RUN_ERROR", rs.runId, rs.threadId);
+        String msg = data.path("error").path("message").asText("unknown error");
+        payload.put("message", msg);
+        out.add(sse(payload));
+        return out;
     }
 
     // ------------------------------------------------------------------
