@@ -78,7 +78,10 @@ const props = withDefaults(
     positioning: "static",
     keyboardHeight: 0,
     showDisclaimer: undefined,
-    maxRows: 5,
+    // FORK-PATCH(P-F): default maxRows 5 → 3 —— 与产品输入规范一致(自适应
+    // 增高,超 3 行出滚动条,同欢迎页输入框)。upstream default 为 5;
+    // 升级 re-apply 见 FORK.md 条目 11。
+    maxRows: 3,
     bottomAnchored: false,
   },
 );

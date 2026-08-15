@@ -43,17 +43,28 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
    `@copilotkit/vue`, version `1.67.1-fork.1`, `workspace:*` deps rewritten to
    pinned published versions, devDeps trimmed; `tsconfig.json` inlined
    (`@copilotkit/typescript-config` removed).
+10. `src/v2/hooks/use-default-render-tool.ts` (F3, mainline) — default
+    tool-call renderer gains duration tracking, status icons (spinner/✓/✗)
+    and failure/interrupt marking via agent run-lifecycle subscription.
+    UI-only; no protocol change.
+11. `src/v2/components/chat/CopilotChatInput.vue` (P-F, mainline) —
+    `maxRows` default 5 → 3 (marked `FORK-PATCH(P-F)` inline), matching the
+    product input spec (auto-grow, scroll past 3 rows). Enter-to-send /
+    Shift+Enter-newline / IME guard are upstream behavior, unchanged.
 
-No other source file is modified. Because `hasLocalAgents` derives from
-`mergedAgents`, a provider with only `directAgents` (no `runtimeUrl`, no
-publicApiKey) does not trigger the missing-config error.
+(A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
+maintained by the vision line — see their own notes.)
+
+Because `hasLocalAgents` derives from `mergedAgents`, a provider with only
+`directAgents` (no `runtimeUrl`, no publicApiKey) does not trigger the
+missing-config error.
 
 ## Upgrade procedure
 
 1. Sparse-checkout the new upstream tag's `packages/vue` over `src/`
    (discard local changes).
-2. Re-apply the 4 changes above (or `git diff` this dir against the tag and
-   re-apply the patch).
+2. Re-apply the numbered changes above (or `git diff` this dir against the
+   tag and re-apply the patch).
 3. Bump dependency pins to the versions published with that tag.
 4. `npm install && npm run build && npm test -- directAgents`.
 

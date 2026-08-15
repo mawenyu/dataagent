@@ -1048,4 +1048,56 @@ describe("CopilotChatInput", () => {
       expect(input.value).toBe("部分");
     });
   });
+
+  // P-F: 主输入框自适应高度 —— 钉住 fork 的 auto-grow + FORK-PATCH 的
+  // maxRows 默认 3 行封顶(超出出滚动条),防止升级回退。
+  describe("P-F: auto-grow height with 3-row cap", () => {
+    function mockScrollHeightByLines(ta: HTMLTextAreaElement, lineHeight = 20) {
+      Object.defineProperty(ta, "scrollHeight", {
+        configurable: true,
+        get(this: HTMLTextAreaElement) {
+          // jsdom 无布局:空值=单行高,否则按 \n 行数计
+          return this.value === "" ? lineHeight : lineHeight * this.value.split("\n").length;
+        },
+      });
+    }
+
+    it("grows with content up to 3 rows, then caps (maxRows default = 3)", async () => {
+      renderWithProvider({ listeners: { "onUpdate:modelValue": vi.fn() } });
+      const ta = screen.getByTestId(
+        "copilot-chat-input-textarea",
+      ) as HTMLTextAreaElement;
+      mockScrollHeightByLines(ta);
+
+      // 2 行:跟随内容(40px)
+      ta.value = "a\nb";
+      await fireEvent.input(ta);
+      await waitFor(() => expect(ta.style.height).toBe("40px"));
+      // maxHeight ≈ 3 行 + 上下 padding(样式表 padding 在 jsdom 亦生效,不断言死值)
+      const cap = parseInt(ta.style.maxHeight, 10);
+      expect(cap).toBeGreaterThanOrEqual(60);
+      expect(cap).toBeLessThan(100); // 严格小于 5 行 —— 默认 maxRows=3(FORK-PATCH P-F)
+
+      // 5 行:封顶,不超过 maxHeight
+      ta.value = "a\nb\nc\nd\ne";
+      await fireEvent.input(ta);
+      await waitFor(() => expect(ta.style.height).toBe(ta.style.maxHeight));
+    });
+
+    it("shrinks back when content is cleared", async () => {
+      renderWithProvider({ listeners: { "onUpdate:modelValue": vi.fn() } });
+      const ta = screen.getByTestId(
+        "copilot-chat-input-textarea",
+      ) as HTMLTextAreaElement;
+      mockScrollHeightByLines(ta);
+
+      ta.value = "a\nb\nc";
+      await fireEvent.input(ta);
+      await waitFor(() => expect(ta.style.height).toBe("60px"));
+
+      ta.value = "a";
+      await fireEvent.input(ta);
+      await waitFor(() => expect(ta.style.height).toBe("20px"));
+    });
+  });
 });
