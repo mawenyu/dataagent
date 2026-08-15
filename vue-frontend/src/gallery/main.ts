@@ -8,6 +8,7 @@ import { createApp, h, nextTick } from 'vue'
 import { CopilotKitProvider, A2UISurfaceActivityRenderer, CopilotChatMessageView } from '@copilotkit/vue'
 import { dataAgentCatalog } from '../a2ui/dataAgentCatalog'
 import { GALLERY_BATCHES } from './surfaces'
+import RunErrorCard from '../components/RunErrorCard.vue'
 import '@copilotkit/vue/styles.css'
 
 const params = new URLSearchParams(location.search)
@@ -59,7 +60,49 @@ const t0 = performance.now()
   }
   const app = createApp({
     render() {
-      if (isLongChat) {
+      if (batchKey === 'uistates') {
+      // P23: 错误恢复 UI 取证页 —— 真实 RunErrorCard 组件 + 与 App.vue 同款
+      // 离线徽章/恢复 toast（样式镜像，注释见下）
+      return h('div', { style: { maxWidth: '820px', margin: '0 auto', padding: '16px', background: '#f8fafc', minHeight: '100vh' } }, [
+        h('p', { style: { fontSize: '12px', color: '#6b7280', margin: '0 0 12px' } },
+          '错误恢复 UI 取证（P-B/P-I）· RunErrorCard 为生产组件直挂；徽章/toast 与 App.vue 同款样式镜像'),
+        // 顶栏镜像 + 离线徽章（样式与 App.vue .badge/.offline-badge 一致）
+        h('div', { style: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' } }, [
+          h('strong', { style: { fontSize: '14px', color: '#111827', flex: 1 } }, 'DataAgent 顶栏（镜像）'),
+          h('span', {
+            class: 'badge offline-badge',
+            title: '网络连接已断开,恢复后自动续跑中断的运行',
+            style: {
+              fontSize: '12px', padding: '4px 12px', borderRadius: '999px', whiteSpace: 'nowrap',
+              color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a',
+              animation: 'offline-pulse 1.6s ease-in-out infinite',
+            },
+          }, '● 离线'),
+        ]),
+        h('p', { style: { fontSize: '12px', color: '#6b7280', margin: '0 0 6px' } }, '① 运行中断错误卡（含结构化错误码徽章 + 重试按钮）'),
+        h(RunErrorCard as any, {
+          message: '网关 502 Bad Gateway —— 可点重试，将重发最后一条消息',
+          code: '502',
+          onRetry: () => {}, onDismiss: () => {},
+        }),
+        h('div', { style: { height: '12px' } }),
+        h('p', { style: { fontSize: '12px', color: '#6b7280', margin: '0 0 6px' } }, '② 重试中（busy 态，按钮禁用）'),
+        h(RunErrorCard as any, {
+          message: '运行超时（120s 无响应）', code: 'RUN_TIMEOUT', busy: true,
+          onRetry: () => {}, onDismiss: () => {},
+        }),
+        h('div', { style: { height: '12px' } }),
+        h('p', { style: { fontSize: '12px', color: '#6b7280', margin: '0 0 6px' } }, '③ 网络恢复 → 自动续跑 toast（App.vue toast 样式镜像）'),
+        h('div', { style: {
+          width: '320px', background: '#fff', border: '1px solid #e5e7eb', borderLeft: '4px solid #6366f1',
+          borderRadius: '10px', boxShadow: '0 4px 16px rgba(15,23,42,0.12)', padding: '12px 14px',
+        } }, [
+          h('strong', { style: { display: 'block', fontSize: '13px', color: '#111827', marginBottom: '2px' } }, '网络已恢复'),
+          h('p', { style: { margin: 0, fontSize: '12.5px', color: '#4b5563', lineHeight: 1.45 } }, '正在自动重试中断的运行…'),
+        ]),
+      ])
+    }
+    if (isLongChat) {
         return h(CopilotKitProvider, { runtimeUrl: '/unused' }, () =>
           h('div', { style: { maxWidth: '760px', margin: '0 auto', padding: '16px', background: '#f8fafc' } }, [
             h(CopilotChatMessageView as any, { messages: longChatMessages, isRunning: false }),

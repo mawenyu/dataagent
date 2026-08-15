@@ -1,0 +1,17 @@
+== P23 错误恢复 UI 全链路截图证据（2026-08-16）==
+
+截图: /tmp/screenshots/READY-VISION-p23-error-recovery.png
+取证页: /agui/a2ui-gallery.html?batch=uistates（已部署公网）
+
+包含三态（一页同框）:
+1. 顶栏离线徽章（P-I）—— "● 离线" 琥珀色脉冲（网络断开时出现，
+   title 说明恢复后自动续跑）；顶栏为镜像复刻（样式与 App.vue 一致）
+2. 运行中断错误卡（P-B）—— 生产组件 RunErrorCard 直挂：
+   ① 含结构化错误码徽章（502）+ 重试按钮 ② busy 态（重试中…禁用）
+   重试语义：截尾重发最后一条用户消息（P18 已验证服务端历史去重）
+3. 恢复自动续跑 toast（P-I）—— "网络已恢复 / 正在自动重试中断的运行…"
+   （App.vue toast 样式镜像）
+
+说明: RunErrorCard 为生产组件直挂（非复刻）；徽章/toast 因挂在 App.vue
+顶层模板，取证页用同款样式镜像（避免与并行会话在 App.vue 的活跃改动冲突）。
+端到端行为证据另见: P18 断网恢复实测（docs/evidence/2026-08-16-p18-reconnect.txt）。

@@ -1,6 +1,6 @@
 # DataAgent 项目状态总览（P12 回归巡检 · 2026-08-16）
 
-> 本文每次回归巡检时更新。当前巡检：`a008417`（P11）之后、并行会话 P-J 已入库。
+> 本文每次回归巡检时更新。最近更新：P23（2026-08-16，错误恢复 UI 取证）。
 
 ## 架构一句话
 
@@ -42,6 +42,9 @@ fork 10 个既有失败（与 P 系列改动零交集，P11 已用"失败集 dif
 | vision-P8 | gateway 可观测性：run-metrics.log + 成功率 gauge | docs/evidence/2026-08-15-p8-observability.txt |
 | vision-P10 | surface 生命周期（更新/替换/关闭 + 逐 op 容错） | 2026-08-16-p10-surface-lifecycle.sse |
 | vision-P11 | 长会话 v-memo：流式 tick 313→8.3ms（38×） | docs/perf/frontend-long-chat.md |
+| vision-P12~P17 | 全链路回归巡检（STATUS.md）/ 恶意 payload 防护 / HITL 并发裁决 / 表格回写链（冲突检测+坐标上限）/ 事件流压测 / 叙事一致性审计 | docs/perf/event-stream-stress.md、docs/evidence/p13~p17 系列 |
+| vision-P18~P22 | 断网恢复深挖（历史去重修复）/ dashboard 真实化（opsUrl 回放）/ 多会话并发隔离 / HITL 审批 UI（附言+结果徽章）/ 图表三边界 | docs/perf/concurrent-threads.md、docs/evidence/p18~p22 系列 |
+| vision-P23 | 错误恢复 UI 取证页（错误卡/离线徽章/恢复 toast 三态同框） | docs/evidence/2026-08-16-p23-error-recovery-ui.txt + READY-VISION-p23-error-recovery.png |
 
 ### READY-FRONTEND（前端 UX 线）
 
