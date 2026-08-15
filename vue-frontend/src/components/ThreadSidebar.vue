@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { nextTick, ref } from 'vue'
 import type { ThreadMeta } from '../composables/useThreads'
 
 /**
- * 需求1: 会话侧边栏 —— 列表（标题取首条用户消息截断，gateway 侧生成）、
+ * 需求1/F2: 会话侧边栏 —— 列表（标题取首条用户消息截断，gateway 侧生成）、
  * 新建、切换、删除、重命名（双击标题）。
+ * F2: 删除确认 / 重命名均为自绘 modal（Teleported 到 body），ESC/遮罩关闭，
+ * 不再使用原生 confirm/prompt。
  */
 defineProps<{
   threads: ThreadMeta[]
@@ -17,18 +20,50 @@ const emit = defineEmits<{
   (e: 'rename', id: string, title: string): void
 }>()
 
+type DialogState =
+  | { kind: 'remove'; thread: ThreadMeta }
+  | { kind: 'rename'; thread: ThreadMeta }
+  | null
+
+const dialog = ref<DialogState>(null)
+const renameDraft = ref('')
+const renameInput = ref<HTMLInputElement | null>(null)
+const overlayEl = ref<HTMLElement | null>(null)
+
 function startRename(t: ThreadMeta) {
-  const title = window.prompt('重命名会话', t.title)
-  if (title && title.trim() && title.trim() !== t.title) {
-    emit('rename', t.id, title.trim())
-  }
+  renameDraft.value = t.title
+  dialog.value = { kind: 'rename', thread: t }
+  void nextTick(() => {
+    renameInput.value?.focus()
+    renameInput.value?.select()
+  })
 }
 
 function confirmRemove(t: ThreadMeta) {
-  if (window.confirm(`删除会话「${t.title}」？此操作不可撤销。`)) {
-    emit('remove', t.id)
-  }
+  dialog.value = { kind: 'remove', thread: t }
+  // 焦点移到遮罩,ESC 才能冒泡到关闭处理器(删除按钮在 body 外,焦点不会自动进来)
+  void nextTick(() => overlayEl.value?.focus())
 }
+
+function closeDialog() {
+  dialog.value = null
+}
+
+function submitDialog() {
+  const d = dialog.value
+  if (!d) return
+  if (d.kind === 'remove') {
+    emit('remove', d.thread.id)
+  } else {
+    const title = renameDraft.value.trim()
+    if (title && title !== d.thread.title) {
+      emit('rename', d.thread.id, title)
+    }
+  }
+  closeDialog()
+}
+
+const renameInvalid = () => !renameDraft.value.trim()
 </script>
 
 <template>
@@ -57,6 +92,53 @@ function confirmRemove(t: ThreadMeta) {
       </div>
       <div v-if="threads.length === 0" class="empty">暂无会话</div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="dialog"
+        ref="overlayEl"
+        class="dlg-overlay"
+        data-testid="dialog-overlay"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+        @click.self="closeDialog"
+        @keydown.esc="closeDialog"
+      >
+        <div class="dlg-card" data-testid="thread-dialog">
+          <template v-if="dialog.kind === 'remove'">
+            <h3 class="dlg-title">删除会话</h3>
+            <p class="dlg-body">
+              删除会话「{{ dialog.thread.title }}」？该会话的消息记录与工作目录将一并删除，此操作不可撤销。
+            </p>
+            <div class="dlg-actions">
+              <button class="dlg-btn" data-testid="dialog-cancel" @click="closeDialog">取消</button>
+              <button class="dlg-btn danger" data-testid="dialog-confirm" @click="submitDialog">删除</button>
+            </div>
+          </template>
+          <template v-else>
+            <h3 class="dlg-title">重命名会话</h3>
+            <input
+              ref="renameInput"
+              v-model="renameDraft"
+              class="dlg-input"
+              maxlength="60"
+              placeholder="输入新标题"
+              @keydown.enter.prevent="!renameInvalid() && submitDialog()"
+            />
+            <div class="dlg-actions">
+              <button class="dlg-btn" data-testid="dialog-cancel" @click="closeDialog">取消</button>
+              <button
+                class="dlg-btn primary"
+                data-testid="dialog-confirm"
+                :disabled="renameInvalid()"
+                @click="submitDialog"
+              >确定</button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
   </aside>
 </template>
 
@@ -122,4 +204,64 @@ function confirmRemove(t: ThreadMeta) {
 .thread-item:hover .del-btn { opacity: 1; }
 .del-btn:hover { color: #ef4444; background: #fef2f2; }
 .empty { padding: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; }
+
+/* ---- F2: 自绘 modal(scoped 样式经 :deep 不适用 Teleport,故用全局类名但加 dlg- 前缀避免冲突) ---- */
+</style>
+
+<!-- Teleport 到 body 后 scoped 样式依然生效(vue 会把 data-v 属性带到 teleported 节点) -->
+<style scoped>
+.dlg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dlg-fade 140ms ease-out;
+}
+.dlg-card {
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+  padding: 20px;
+  animation: dlg-pop 160ms ease-out;
+}
+.dlg-title { margin: 0 0 10px; font-size: 15px; font-weight: 700; color: #111827; }
+.dlg-body { margin: 0; font-size: 13px; line-height: 1.6; color: #4b5563; }
+.dlg-input {
+  width: 100%;
+  font-size: 13.5px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  outline: none;
+  color: #374151;
+}
+.dlg-input:focus { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18); }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.dlg-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.dlg-btn:hover { background: #f1f5f9; }
+.dlg-btn.primary { background: #6366f1; border-color: #6366f1; color: #ffffff; }
+.dlg-btn.primary:hover:not(:disabled) { background: #4f46e5; }
+.dlg-btn.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.dlg-btn.danger { background: #ef4444; border-color: #ef4444; color: #ffffff; }
+.dlg-btn.danger:hover { background: #dc2626; }
+@keyframes dlg-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dlg-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 </style>

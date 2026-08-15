@@ -58,7 +58,7 @@ describe('ThreadSidebar (需求1/F2)', () => {
     expect(dialog()).toBeNull()
 
     await w.find('[data-testid="del-b"]').trigger('click')
-    ;(dialog()!.querySelector('[data-testid="dialog-overlay"]') as HTMLElement).click()
+    ;(document.body.querySelector('[data-testid="dialog-overlay"]') as HTMLElement).click()
     await nextTick()
     expect(w.emitted('remove')).toBeUndefined()
     expect(dialog()).toBeNull()
