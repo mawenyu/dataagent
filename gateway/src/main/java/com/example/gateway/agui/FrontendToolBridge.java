@@ -113,6 +113,9 @@ public class FrontendToolBridge {
         StringBuilder sb = new StringBuilder();
         sb.append("<client_tools>\n");
         sb.append("You can call the following client-side tools. They are executed by the user's browser, not by you.\n");
+        // 2026-08-15 实测：工具原生注册后模型会把 client tool 当原生工具/CodeMode
+        // 调（Unknown tool 重试循环）—— 显式禁止
+        sb.append("They are NOT registered on the server: NEVER invoke them as native tool calls or via CodeMode/execute. The ONLY way to call them is the text block below.\n");
         sb.append("To call a client tool, your ENTIRE response MUST be exactly one block in this form, with no other text before or after it, and no markdown fences:\n");
         sb.append(MARKER).append("{\"name\": \"<tool name>\", \"arguments\": { ... }}").append(END_MARKER).append('\n');
         sb.append("The arguments object must conform to the tool's JSON schema. If no client tool is needed, answer normally and do not output the marker.\n");

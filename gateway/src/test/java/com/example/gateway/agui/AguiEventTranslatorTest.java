@@ -548,6 +548,35 @@ class AguiEventTranslatorTest {
         assertEquals("RUN_FINISHED", types.get(types.size() - 1), "run continues and finishes normally");
     }
 
+
+    /** 2026-08-15 实测：工具原生注册后，模型会把 frontend tool 当原生工具调
+        （opencode 回 Unknown tool 并反复重试）。translator 必须在 tool.called
+        发现名字属于声明的 frontend tools 时，直接转成前端执行流（TOOL_CALL_END
+        + RUN_FINISHED，截断 opencode 的 Unknown-tool 重试循环）。 */
+    @Test
+    void nativeCallToFrontendToolBecomesClientExecution() {
+        String args = "{\"file\":\"sales.csv\",\"cells\":[{\"row\":1,\"col\":5,\"value\":\"999999\"}]}";
+        List<JsonNode> events = translator.translate("thread", "run", Set.of("applySpreadsheetEdits"), Flux.just(
+                        oc("session.step.started", "{\"assistantMessageID\":\"m1\"}"),
+                        oc("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"applySpreadsheetEdits\"}"),
+                        oc("session.tool.input.delta", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"delta\":" + json(args) + "}"),
+                        oc("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\"}"),
+                        oc("session.tool.called", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"input\":" + args.replace("\\", "\\\\") + "}"),
+                        // opencode 随后会发 tool.failed(Unknown tool) 并重试 —— 必须已被截断
+                        oc("session.tool.failed", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"error\":{\"message\":\"Unknown tool\"}}"),
+                        oc("session.text.started", "{\"assistantMessageID\":\"m2\"}")))
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        List<String> types = types(events);
+        assertTrue(types.contains("TOOL_CALL_START"), "mirrored for the browser");
+        assertTrue(types.contains("TOOL_CALL_END"));
+        int end = types.lastIndexOf("TOOL_CALL_END");
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1));
+        assertTrue(types.indexOf("RUN_FINISHED") > end, "run ends right after the tool call");
+        assertFalse(types.contains("TOOL_CALL_RESULT"), "Unknown-tool failure must NOT reach the client");
+    }
+
     private static String json(String s) {        try {
             return MAPPER.writeValueAsString(s);
         } catch (Exception e) {

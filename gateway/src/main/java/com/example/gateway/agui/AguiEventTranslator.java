@@ -259,6 +259,25 @@ public class AguiEventTranslator {
                                 out.add(sse(args));
                                 out.add(sse(end));
                             }
+                            // 2026-08-15 实测：工具原生注册后模型会把 frontend tool 当
+                            // 原生工具调（opencode 回 Unknown tool 并重试 N 次）。这里
+                            // 直接转成前端执行流：补齐 TOOL_CALL_END，关 step，RUN_FINISHED
+                            // —— 浏览器执行工具并回发 tool result 续跑，opencode 侧的
+                            // Unknown-tool 失败事件被 takeUntil 截断，永远到不了客户端。
+                            if (frontendTools.contains(name)) {
+                                log.info("frontend tool called natively: {} id={} — handing to browser", name, callId);
+                                if (toolCallEnded.add(callId)) {
+                                    ObjectNode end = base("TOOL_CALL_END", runId, threadId);
+                                    end.put("toolCallId", callId);
+                                    out.add(sse(end));
+                                }
+                                closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
+                                closeAllActiveSteps(runId, threadId, activeSteps, out);
+                                if (terminalEmitted.compareAndSet(false, true)) {
+                                    out.add(sse(base("RUN_FINISHED", runId, threadId)));
+                                }
+                                return Flux.fromIterable(out);
+                            }
                             // A "real" tool call to render_a2ui (the model emits it as a
                             // genuine tool_call even though OpenCode can't execute it):
                             // execute server-side and finish the run with the surface —
