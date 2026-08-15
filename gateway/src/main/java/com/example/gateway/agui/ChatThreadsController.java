@@ -46,12 +46,14 @@ public class ChatThreadsController {
     private final ChatThreadStore store;
     private final ThreadMessagesService messagesService;
     private final WebClient webClient;
+    private final WorkspaceFileService workspaceFiles;
 
     public ChatThreadsController(ChatThreadStore store, ThreadMessagesService messagesService,
-                                 WebClient opencodeWebClient) {
+                                 WebClient opencodeWebClient, WorkspaceFileService workspaceFiles) {
         this.store = store;
         this.messagesService = messagesService;
         this.webClient = opencodeWebClient;
+        this.workspaceFiles = workspaceFiles;
     }
 
     @GetMapping
@@ -84,6 +86,8 @@ public class ChatThreadsController {
     public ResponseEntity<JsonNode> delete(@PathVariable String id) {
         if (store.getThread(id).isEmpty()) return ResponseEntity.notFound().build();
         store.deleteThread(id);
+        // task6: 级联删除会话工作目录（workspace/threads/{id}）
+        workspaceFiles.deleteThreadDir(id);
         ObjectNode res = MAPPER.createObjectNode();
         res.put("data", true);
         return ResponseEntity.ok(res);

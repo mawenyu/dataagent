@@ -1,0 +1,57 @@
+== task6 实测: workspace 会话隔离 ==
+date: 2026-08-15T11:13:46+08:00
+
+== 1. 建两个会话 ==
+{"data":{"id":"task6-iso-A","title":"隔离A","sessionId":null,"createdAt":"2026-08-15T03:13:46.964617361Z","updatedAt":"2026-08-15T03:13:46.964617361Z"}}
+{"data":{"id":"task6-iso-B","title":"隔离B","sessionId":null,"createdAt":"2026-08-15T03:13:46.994662305Z","updatedAt":"2026-08-15T03:13:46.994662305Z"}}
+== 2. 各上传不同文件 ==
+{"name":"t6-a.csv","size":25}
+{"name":"t6-b.csv","size":24}
+== 3. 各自列表互相隔离 ==
+-- A files:
+{"files":[{"name":"dashboard-sales-2026-08.a2ui.json","size":4982,"modifiedAt":"2026-08-15T03:13:47.054782506Z"},{"name":"region-sales-2026-08-result.csv","size":87,"modifiedAt":"2026-08-15T03:13:47.053782505Z"},{"name":"sales-2026-08.csv","size":5528,"modifiedAt":"2026-08-15T03:13:47.052782503Z"},{"name":"t6-a.csv","size":25,"modifiedAt":"2026-08-15T03:13:47.056782510Z"}]}
+-- B files:
+{"files":[{"name":"dashboard-sales-2026-08.a2ui.json","size":4982,"modifiedAt":"2026-08-15T03:13:47.073782538Z"},{"name":"region-sales-2026-08-result.csv","size":87,"modifiedAt":"2026-08-15T03:13:47.073782538Z"},{"name":"sales-2026-08.csv","size":5528,"modifiedAt":"2026-08-15T03:13:47.073782538Z"},{"name":"t6-b.csv","size":24,"modifiedAt":"2026-08-15T03:13:47.074782539Z"}]}
+== 4. 物理目录 ==
+/home/ubuntu/dataagent/workspace/threads/task6-iso-A:
+dashboard-sales-2026-08.a2ui.json
+region-sales-2026-08-result.csv
+sales-2026-08.csv
+t6-a.csv
+
+/home/ubuntu/dataagent/workspace/threads/task6-iso-B:
+dashboard-sales-2026-08.a2ui.json
+region-sales-2026-08-result.csv
+sales-2026-08.csv
+t6-b.csv
+== 5. 共享根 /files 不受影响 ==
+{"files":[{"name":"dashboard-sales-2026-08.a2ui.json","size":4982,"modifiedAt":"2026-08-14T22:38:41.823717780Z"},{"name":"region-sales-2026-08-result.csv","size":87,"modifiedAt":"2026-08-14T22:38:41.823717780Z"},{"name":"sales-2026-08.csv","size":5528,"modifiedAt":"2026-08-14T22:38:41.823717780Z"}]}
+== 6. 非法 threadId / 路径穿越 ==
+PUT bad id: 415
+GET A 拿 B 的文件: 404
+== 6b. 非法 threadId（正确 content-type）==
+{"error":"invalid threadId"}
+PUT a..b: 400
+DELETE 中文id: 400
+
+== 7. 真实 agent SSE 实测（task6-iso-A，附件多模态消息）==
+answer: 4 个文件（dashboard-sales-2026-08.a2ui.json / region-sales-2026-08-result.csv / sales-2026-08.csv / t6-a.csv）；t6-a.csv 华东销量=100 —— agent 读的是 workspace/threads/task6-iso-A（播种 3 文件 + A 上传 1 文件），RUN_FINISHED
+
+== 8. 会话标题取 text part（非 List.toString）==
+task6-iso-A -> 隔离A
+task6-iso-B -> 隔离B
+
+== 9. 删除会话级联删目录 ==
+{"data":true}
+task6-iso-A
+task6-iso-B 目录已删除 ✓
+task6-iso-A 目录保留 ✓
+
+== 10. 部署与公网验证 ==
+gateway mvn test: 108 tests, 0 failures（含 task6 新增 12 个）
+前端 vitest: 63 passed（14 files，含 useWorkspaceFiles/chatAttachments/FilesPanel 新用例）
+vite build: 通过（28s）
+public /agui/: 200
+public bundle: assets/index-B45UxQ5z.js 
+public /agui-api/chat/threads/task6-iso-A/files: 200
+bundle 静态校验: threads/${encodeURIComponent(p)}/files 在 index-B45UxQ5z.js ✓ attachments 处理在 fork bundle ✓

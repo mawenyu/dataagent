@@ -8,6 +8,7 @@ import { useContextUsage } from './composables/useContextUsage'
 import { useAgentState } from './composables/useAgentState'
 import { useThreads } from './composables/useThreads'
 import { useWorkspaceFiles } from './composables/useWorkspaceFiles'
+import { buildAttachmentsConfig } from './composables/chatAttachments'
 import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
@@ -45,7 +46,16 @@ function pushToast(t: Omit<Toast, 'id'>) {
 }
 
 // task5-B4: applySpreadsheetEdits 落盘通道（与文件面板同一套 /files API）
-const workspaceFilesApi = useWorkspaceFiles()
+// task6: 绑定当前会话 —— 所有文件操作落在会话隔离 workspace
+const workspaceFilesApi = useWorkspaceFiles(threadsApi.currentId)
+
+// task6-B: ChatGPT 式上传 —— 输入框"+"添加附件，即传即存当前会话工作目录；
+// 发送时附件文件名随消息进 agent prompt（spec: docs/spec/workspace-isolation.md）
+const chatAttachments = buildAttachmentsConfig({
+  upload: (file) => workspaceFilesApi.upload(file),
+  downloadUrl: (name) => workspaceFilesApi.downloadUrl(name),
+  onFailed: (e) => pushToast({ title: '附件上传失败', message: e.message, type: 'error' }),
+})
 
 const frontendTools = [
   {
@@ -185,7 +195,7 @@ function handleChatError({ error }: { error: Error }) {
                   @rename="(id: string, title: string) => threadsApi.rename(id, title)"
                 />
                 <aside v-else class="sidebar">
-                  <FilesPanel />
+                  <FilesPanel :thread-id="threadsApi.currentId.value" />
                 </aside>
               </div>
             </Transition>
@@ -194,6 +204,7 @@ function handleChatError({ error }: { error: Error }) {
               agent-id="default"
               class="chat"
               :thread-id="threadsApi.currentId.value"
+              :attachments="chatAttachments"
               :on-error="handleChatError"
             >
               <template #welcome-screen="{ modelValue, isRunning, onUpdateModelValue, onSubmitMessage }">

@@ -106,4 +106,93 @@ class WorkspaceFilesControllerTest {
         assertEquals(1, files.list().size());
         assertEquals("a.csv", files.list().get(0).name());
     }
+
+    // ---- task6-A: workspace 会话隔离（spec: docs/spec/workspace-isolation.md）----
+
+    @Test
+    void forThreadIsolatesDirectories() throws Exception {
+        var t1 = files.forThread("thread-aaa").orElseThrow();
+        var t2 = files.forThread("thread-bbb").orElseThrow();
+        t1.store("a.csv", "x".getBytes());
+        t2.store("b.csv", "y".getBytes());
+        assertEquals(1, t1.list().size());
+        assertEquals("a.csv", t1.list().get(0).name());
+        assertEquals(1, t2.list().size());
+        assertEquals("b.csv", t2.list().get(0).name());
+        // 物理隔离：各自 threads/<id>/ 下
+        assertTrue(Files.exists(dir.resolve("threads/thread-aaa/a.csv")));
+        assertTrue(Files.exists(dir.resolve("threads/thread-bbb/b.csv")));
+        // 共享根不受影响
+        assertEquals(0, files.list().size());
+    }
+
+    @Test
+    void forThreadRejectsBadThreadIds() {
+        assertTrue(files.forThread("..").isEmpty());
+        assertTrue(files.forThread("a/b").isEmpty());
+        assertTrue(files.forThread("").isEmpty());
+        assertTrue(files.forThread(null).isEmpty());
+        assertTrue(files.forThread("中文线程").isEmpty());
+        assertTrue(files.forThread("ok-thread_1.2").isPresent());
+    }
+
+    @Test
+    void forThreadSeedsSharedRootFilesOnce() throws Exception {
+        // 共享根放示例数据（模拟 workspace/ 下的销售 CSV）
+        files.store("sample.csv", "区域,销售额\n华北,1\n".getBytes());
+        Files.createDirectories(dir.resolve("threads")); // seed 不应拷贝 threads 目录自身
+
+        var t1 = files.forThread("t-seed").orElseThrow();
+        assertEquals("区域,销售额\n华北,1\n",
+                Files.readString(dir.resolve("threads/t-seed/sample.csv")),
+                "首次创建会话目录时从共享根播种示例文件");
+
+        // 用户删掉示例文件后不会被重复播种复活
+        t1.delete("sample.csv");
+        var again = files.forThread("t-seed").orElseThrow();
+        assertEquals(0, again.list().size(), "目录已存在则不重复播种");
+    }
+
+    @Test
+    void deleteThreadDirRemovesRecursively() throws Exception {
+        var t1 = files.forThread("t-del").orElseThrow();
+        t1.store("keep.csv", "x".getBytes());
+        assertTrue(Files.exists(dir.resolve("threads/t-del/keep.csv")));
+        assertTrue(files.deleteThreadDir("t-del"));
+        assertFalse(Files.exists(dir.resolve("threads/t-del")), "目录连同内容删除");
+        assertFalse(files.deleteThreadDir("t-del"), "重复删除返回 false");
+        assertFalse(files.deleteThreadDir("../etc"), "非法 id 拒绝");
+    }
+
+    @Test
+    void threadScopedControllerEndpoints() throws Exception {
+        var t1 = files.forThread("thread-aaa").orElseThrow();
+        t1.store("only-t1.csv", "1".getBytes());
+
+        // GET list 按会话隔离
+        var l1 = controller.listThreadFiles("thread-aaa");
+        assertEquals(1, l1.path("files").size());
+        assertEquals("only-t1.csv", l1.path("files").get(0).path("name").asText());
+        var l2 = controller.listThreadFiles("thread-bbb");
+        assertEquals(0, l2.path("files").size(), "另一会话看不到 t1 的文件");
+
+        // GET 下载 / PUT 覆盖写 / DELETE
+        assertTrue(controller.downloadThreadFile("thread-aaa", "only-t1.csv").getStatusCode().is2xxSuccessful());
+        assertTrue(controller.downloadThreadFile("thread-bbb", "only-t1.csv").getStatusCode().is4xxClientError());
+        var put = controller.putThreadFile("thread-aaa", "new.csv", "a,b\n".getBytes());
+        assertTrue(put.getStatusCode().is2xxSuccessful());
+        assertEquals("a,b\n", Files.readString(dir.resolve("threads/thread-aaa/new.csv")));
+        assertTrue(controller.deleteThreadFile("thread-aaa", "new.csv").getStatusCode().is2xxSuccessful());
+
+        // 非法 threadId → 400
+        assertFalse(controller.listThreadFiles("..").path("error").asText().isBlank(),
+                "listThreadFiles 非法 id 返回 error 体");
+    }
+
+    @Test
+    void threadScopedRejectsBadThreadId() {
+        assertTrue(controller.downloadThreadFile("..", "x.csv").getStatusCode().is4xxClientError());
+        assertEquals(400, controller.putThreadFile("a/b", "x.csv", "x".getBytes()).getStatusCode().value());
+        assertTrue(controller.deleteThreadFile("..", "x.csv").getStatusCode().is4xxClientError());
+    }
 }

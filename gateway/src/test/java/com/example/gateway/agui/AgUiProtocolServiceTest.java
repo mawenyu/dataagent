@@ -568,7 +568,8 @@ class AgUiProtocolServiceTest {
                 new A2UiActionHandler(),
                 new AllowAllThreadAccessPolicy(),
                 java.time.Duration.ofSeconds(10), "/tmp/ws", "deepseek-reasoner", "deepseek",
-                new ChatThreadStore(storeDir));
+                new ChatThreadStore(storeDir),
+                new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024));
         stub.eventStreams.add(textStep("m1", "ok"));
         custom.run(userMsg("t-model", "hi")).collectList().block(java.time.Duration.ofSeconds(10));
         assertEquals(1, stub.modelSets.size());
@@ -687,5 +688,71 @@ class AgUiProtocolServiceTest {
         assertTrue(events.stream().anyMatch(e -> "RUN_ERROR".equals(e.path("type").asText())
                 && e.path("message").asText().contains("denied")));
         assertEquals(0, stub.sessionCreates, "denied run must not reach OpenCode");
+    }
+
+    // ---- task6: workspace 会话隔离 + 附件消息（spec: docs/spec/workspace-isolation.md）----
+
+    /** run prompt 的数据工作目录按会话隔离：workspace/threads/<threadId>。 */
+    @Test
+    void promptPointsAtThreadIsolatedWorkspace() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        run(userMsg("t-iso-1", "分析数据"));
+        assertTrue(stub.prompts.get(0).contains("数据工作目录: workspace/threads/t-iso-1"),
+                "prompt 应指向会话隔离目录, got: " + stub.prompts.get(0));
+
+        stub.eventStreams.add(textStep("m1", "ok"));
+        run(userMsg("t-iso-2", "分析数据"));
+        assertTrue(stub.prompts.get(1).contains("数据工作目录: workspace/threads/t-iso-2"));
+        assertNotEquals(stub.prompts.get(0).split("数据工作目录: ")[1].split("\n")[0],
+                stub.prompts.get(1).split("数据工作目录: ")[1].split("\n")[0],
+                "不同会话工作目录不同");
+    }
+
+    /** 多模态用户消息（text + document parts）→ 文本拼接 + 附件名写入 prompt。 */
+    @Test
+    void multimodalMessageWithAttachmentsInPrompt() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        RunAgentInput input = new RunAgentInput("t-attach", "run-" + System.nanoTime(), null,
+                List.of(Map.of("role", "user", "content", List.of(
+                        Map.of("type", "text", "text", "分析这个文件"),
+                        Map.of("type", "document",
+                                "source", Map.of("type", "url", "value", "/agui-api/chat/threads/t-attach/files/sales-q3.csv"),
+                                "metadata", Map.of("filename", "sales-q3.csv"))
+                ))), null, null, null);
+        run(input);
+        String prompt = stub.prompts.get(0);
+        assertTrue(prompt.contains("分析这个文件"), "text part 拼入 prompt");
+        assertTrue(prompt.contains("sales-q3.csv"), "附件文件名写入 prompt");
+        assertTrue(prompt.contains("attachments"), "attachments 段落存在");
+    }
+
+    /** 纯附件消息（无文本）→ 回退引导语，不再报 empty user message。 */
+    @Test
+    void attachmentOnlyMessageGetsFallbackText() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        RunAgentInput input = new RunAgentInput("t-attach-only", "run-" + System.nanoTime(), null,
+                List.of(Map.of("role", "user", "content", List.of(
+                        Map.of("type", "document",
+                                "source", Map.of("type", "url", "value", "/x/data.csv"),
+                                "metadata", Map.of("filename", "data.csv"))
+                ))), null, null, null);
+        List<JsonNode> events = run(input);
+        assertFalse(types(events).contains("RUN_ERROR"), "纯附件消息不应 RUN_ERROR");
+        assertTrue(stub.prompts.get(0).contains("data.csv"));
+    }
+
+    /** 多模态消息的标题取 text part（而不是 List.toString() 垃圾）。 */
+    @Test
+    void multimodalMessageTitlesFromTextPart() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        RunAgentInput input = new RunAgentInput("t-title-mm", "run-" + System.nanoTime(), null,
+                List.of(Map.of("role", "user", "content", List.of(
+                        Map.of("type", "text", "text", "看看这份销量"),
+                        Map.of("type", "document",
+                                "source", Map.of("type", "url", "value", "/x/d.csv"),
+                                "metadata", Map.of("filename", "d.csv"))
+                ))), null, null, null);
+        run(input);
+        assertEquals("看看这份销量", threadStore.getThread("t-title-mm").orElseThrow().title());
     }
 }

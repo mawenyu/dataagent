@@ -125,6 +125,104 @@ public class WorkspaceFilesController {
         return files.delete(name) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 
+    // ==================== task6: 会话级文件 API（workspace 会话隔离） ====================
+    // spec: docs/spec/workspace-isolation.md —— /chat/threads/{threadId}/files
+
+    /** GET /chat/threads/{threadId}/files — 列出该会话的文件。 */
+    @GetMapping("/chat/threads/{threadId}/files")
+    public ObjectNode listThreadFiles(@PathVariable String threadId) {
+        return files.forThread(threadId)
+                .map(svc -> {
+                    ObjectNode out = MAPPER.createObjectNode();
+                    var arr = out.putArray("files");
+                    for (WorkspaceFileService.FileInfo f : svc.list()) {
+                        ObjectNode n = arr.addObject();
+                        n.put("name", f.name());
+                        n.put("size", f.size());
+                        n.put("modifiedAt", f.modifiedAt().toString());
+                    }
+                    return out;
+                })
+                .orElseGet(() -> err("invalid threadId"));
+    }
+
+    /** GET /chat/threads/{threadId}/files/{name} — 下载/查看。 */
+    @GetMapping("/chat/threads/{threadId}/files/{name}")
+    public ResponseEntity<Resource> downloadThreadFile(@PathVariable String threadId, @PathVariable String name) {
+        return files.forThread(threadId)
+                .flatMap(svc -> svc.read(name))
+                .map(res -> ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
+                        .contentType(MediaType.parseMediaType(guessContentType(name)))
+                        .body(res))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /** POST /chat/threads/{threadId}/files — 上传（multipart，字段名 file）。 */
+    @PostMapping(value = "/chat/threads/{threadId}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Mono<ResponseEntity<ObjectNode>> uploadThreadFile(@PathVariable String threadId,
+                                                             @RequestPart("file") FilePart file) {
+        var svc = files.forThread(threadId);
+        if (svc.isEmpty()) {
+            return Mono.just(ResponseEntity.badRequest().body(err("invalid threadId")));
+        }
+        String name = file.filename();
+        if (svc.get().resolve(name).isEmpty()) {
+            return Mono.just(ResponseEntity.badRequest().body(err("invalid file name")));
+        }
+        return DataBufferUtils.join(file.content())
+                .map(buf -> {
+                    byte[] bytes = new byte[buf.readableByteCount()];
+                    buf.read(bytes);
+                    DataBufferUtils.release(buf);
+                    return bytes;
+                })
+                .map(bytes -> {
+                    if (bytes.length > svc.get().maxUploadBytes()) {
+                        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
+                    }
+                    return svc.get().store(name, bytes)
+                            .map(info -> {
+                                ObjectNode ok = MAPPER.createObjectNode();
+                                ok.put("name", info.name());
+                                ok.put("size", info.size());
+                                return ResponseEntity.ok(ok);
+                            })
+                            .orElse(ResponseEntity.badRequest().body(err("empty file or store failed")));
+                })
+                .defaultIfEmpty(ResponseEntity.badRequest().body(err("empty file")));
+    }
+
+    /** PUT /chat/threads/{threadId}/files/{name} — 文本 body 覆盖写。 */
+    @PutMapping(value = "/chat/threads/{threadId}/files/{name}",
+            consumes = {MediaType.TEXT_PLAIN_VALUE, MediaType.ALL_VALUE})
+    public ResponseEntity<ObjectNode> putThreadFile(@PathVariable String threadId, @PathVariable String name,
+                                                    @RequestBody(required = false) byte[] body) {
+        var svc = files.forThread(threadId);
+        if (svc.isEmpty()) return ResponseEntity.badRequest().body(err("invalid threadId"));
+        if (svc.get().resolve(name).isEmpty()) return ResponseEntity.badRequest().body(err("invalid file name"));
+        if (body == null || body.length == 0) return ResponseEntity.badRequest().body(err("empty file"));
+        if (body.length > svc.get().maxUploadBytes()) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
+        }
+        return svc.get().store(name, body)
+                .map(info -> {
+                    ObjectNode ok = MAPPER.createObjectNode();
+                    ok.put("name", info.name());
+                    ok.put("size", info.size());
+                    return ResponseEntity.ok(ok);
+                })
+                .orElse(ResponseEntity.badRequest().body(err("store failed")));
+    }
+
+    /** DELETE /chat/threads/{threadId}/files/{name} — 删除。 */
+    @DeleteMapping("/chat/threads/{threadId}/files/{name}")
+    public ResponseEntity<Void> deleteThreadFile(@PathVariable String threadId, @PathVariable String name) {
+        var svc = files.forThread(threadId);
+        if (svc.isEmpty() || svc.get().resolve(name).isEmpty()) return ResponseEntity.badRequest().build();
+        return svc.get().delete(name) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+    }
+
     private static ObjectNode err(String msg) {
         ObjectNode n = MAPPER.createObjectNode();
         n.put("error", msg);

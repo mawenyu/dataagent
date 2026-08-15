@@ -115,3 +115,30 @@ describe('FilesPanel (task5-A workspace 文件管理)', () => {
     expect(wrapper.find('[data-testid="spreadsheet-editor"]').text()).toContain('华北')
   })
 })
+
+describe('FilesPanel (task6 会话隔离)', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+
+  it('传入 threadId 后列表按会话加载，切换会话重新加载', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ files: [{ name: 't1-only.csv', size: 5, modifiedAt: '2026-08-15T01:00:00Z' }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ files: [{ name: 't2-only.csv', size: 6, modifiedAt: '2026-08-15T01:00:00Z' }] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel, { props: { threadId: 'thread-1' } })
+    await nextTick(); await nextTick(); await nextTick()
+    expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/chat/threads/thread-1/files')
+    expect(wrapper.text()).toContain('t1-only.csv')
+
+    await wrapper.setProps({ threadId: 'thread-2' })
+    await nextTick(); await nextTick(); await nextTick()
+    expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/chat/threads/thread-2/files')
+    expect(wrapper.text()).toContain('t2-only.csv')
+    expect(wrapper.text()).not.toContain('t1-only.csv')
+  })
+})

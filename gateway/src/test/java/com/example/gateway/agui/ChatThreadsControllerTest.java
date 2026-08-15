@@ -25,12 +25,14 @@ class ChatThreadsControllerTest {
     private ChatThreadStore store;
     private AgUiProtocolServiceTest.StubOpenCode stub;
     private ChatThreadsController controller;
+    private WorkspaceFileService workspaceFiles;
 
     @BeforeEach
     void setUp() {
         store = new ChatThreadStore(dir);
         stub = new AgUiProtocolServiceTest.StubOpenCode();
-        controller = new ChatThreadsController(store, new ThreadMessagesService(), stub.client());
+        workspaceFiles = new WorkspaceFileService(dir.resolve("workspace"), 1024 * 1024);
+        controller = new ChatThreadsController(store, new ThreadMessagesService(), stub.client(), workspaceFiles);
     }
 
     @Test
@@ -86,5 +88,19 @@ class ChatThreadsControllerTest {
         store.bindSession("t-dead", "ses_gone"); // stub 不认识 → 404 → 空列表兜底
         JsonNode res2 = controller.messages("t-dead").block(java.time.Duration.ofSeconds(5));
         assertEquals(0, res2.path("data").size());
+    }
+
+    /** task6: 删除会话级联删除其工作目录（spec: docs/spec/workspace-isolation.md）。 */
+    @Test
+    void deleteThreadCascadesWorkspaceDir() throws Exception {
+        controller.create(Map.of("id", "t-ws-del"));
+        var svc = workspaceFiles.forThread("t-ws-del").orElseThrow();
+        svc.store("data.csv", "x".getBytes());
+        assertTrue(java.nio.file.Files.exists(
+                dir.resolve("workspace/threads/t-ws-del/data.csv")));
+
+        assertTrue(controller.delete("t-ws-del").getStatusCode().is2xxSuccessful());
+        assertFalse(java.nio.file.Files.exists(dir.resolve("workspace/threads/t-ws-del")),
+                "会话目录随会话删除");
     }
 }

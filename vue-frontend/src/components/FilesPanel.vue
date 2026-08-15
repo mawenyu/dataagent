@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, toRef } from 'vue'
 import { formatSize, useWorkspaceFiles } from '../composables/useWorkspaceFiles'
 import SpreadsheetEditor from './SpreadsheetEditor.vue'
 
@@ -7,8 +7,10 @@ import SpreadsheetEditor from './SpreadsheetEditor.vue'
  * workspace 文件面板（spec: docs/spec/workspace-files.md）：
  * 列表 / 文本预览 / 上传 / 下载 / 删除。与会话栏同栏位 Tab 切换（App.vue 驱动）。
  * task5-B4：.csv 文件可"表格编辑"打开 SpreadsheetEditor（PUT 覆盖写保存）。
+ * task6：threadId prop —— 面板显示当前会话的隔离 workspace（spec: workspace-isolation.md）。
  */
-const api = useWorkspaceFiles()
+const props = defineProps<{ threadId?: string }>()
+const api = useWorkspaceFiles(toRef(props, 'threadId'))
 onMounted(() => api.refresh())
 
 const uploading = ref(false)
@@ -68,7 +70,7 @@ function formatTime(iso: string) {
       </button>
       <input ref="fileInput" type="file" hidden data-testid="file-input" @change="onPick" />
     </div>
-    <p class="hint">agent 可直接读取这里的文件做分析</p>
+    <p class="hint">本会话独立文件区，agent 可直接读取做分析</p>
     <div v-if="api.error.value" class="error">{{ api.error }}</div>
     <div class="file-list">
       <div v-for="f in api.files.value" :key="f.name" class="file-item" :data-file="f.name">

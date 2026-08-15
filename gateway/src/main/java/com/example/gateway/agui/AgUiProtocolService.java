@@ -63,6 +63,7 @@ public class AgUiProtocolService {
     private final String modelId;
     private final String providerId;
     private final ChatThreadStore threadStore;
+    private final WorkspaceFileService workspaceFiles;
 
     /** Convenience constructor for tests — default everything, throwaway temp store. */
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
@@ -70,7 +71,7 @@ public class AgUiProtocolService {
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
                                ThreadAccessPolicy threadAccessPolicy) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace());
     }
 
     /** Convenience constructor for tests — custom idle timeout. */
@@ -80,7 +81,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, runIdleTimeout, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace());
     }
 
     /** Convenience constructor for tests — store given (需求1 persistence assertions). */
@@ -90,7 +91,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                ChatThreadStore threadStore) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore);
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore, throwawayWorkspace());
     }
 
     /** Convenience constructor for tests — custom timeout + workspace, default model. */
@@ -100,7 +101,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout, String dataWorkspace) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, runIdleTimeout, dataWorkspace,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace());
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -116,7 +117,8 @@ public class AgUiProtocolService {
                                String modelId,
                                @org.springframework.beans.factory.annotation.Value("${agui.model.provider-id:" + DEFAULT_PROVIDER_ID + "}")
                                String providerId,
-                               ChatThreadStore threadStore) {
+                               ChatThreadStore threadStore,
+                               WorkspaceFileService workspaceFiles) {
         this.webClient = opencodeWebClient;
         this.translator = translator;
         this.toolBridge = toolBridge;
@@ -128,11 +130,22 @@ public class AgUiProtocolService {
         this.modelId = modelId;
         this.providerId = providerId;
         this.threadStore = threadStore;
+        this.workspaceFiles = workspaceFiles;
     }
 
     private static ChatThreadStore throwawayStore() {
         try {
             return new ChatThreadStore(java.nio.file.Files.createTempDirectory("agui-threads-test"));
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    /** 测试便捷构造用：临时目录 workspace（避免污染真实 workspace/）。 */
+    private static WorkspaceFileService throwawayWorkspace() {
+        try {
+            return new WorkspaceFileService(
+                    java.nio.file.Files.createTempDirectory("agui-workspace-test"), 5 * 1024 * 1024);
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);
         }
@@ -164,11 +177,24 @@ public class AgUiProtocolService {
         if (threadStore.getThread(threadId).isEmpty()) {
             threadStore.createThread(threadId, null);
         }
-        String firstUser = extractLastUserMessage(input.messages());
-        if (firstUser != null) threadStore.setTitleFromFirstMessage(threadId, firstUser);
+        UserContent firstUser = extractLastUserContent(input.messages());
+        if (firstUser != null) {
+            String title = firstUser.text();
+            if ((title == null || title.isBlank()) && !firstUser.attachments().isEmpty()) {
+                title = "📎 " + firstUser.attachments().get(0);
+            }
+            if (title != null) threadStore.setTitleFromFirstMessage(threadId, title);
+        }
         threadStore.touch(threadId);
 
-        return doRun(input, uid, threadId, runId)
+        // task6: 会话级 workspace —— 懒创建 threads/<threadId> 并首次播种共享根示例
+        // 数据；prompt 指向会话目录，各会话文件互不串扰（spec: workspace-isolation.md）
+        String threadWorkspace = dataWorkspace;
+        if (workspaceFiles.forThread(threadId).isPresent()) {
+            threadWorkspace = dataWorkspace + "/" + WorkspaceFileService.THREADS_DIR + "/" + threadId;
+        }
+
+        return doRun(input, uid, threadId, runId, threadWorkspace)
                 .doOnNext(e -> persistSurfaceSnapshot(threadId, e));
     }
 
@@ -198,7 +224,8 @@ public class AgUiProtocolService {
         }
     }
 
-    private Flux<ServerSentEvent<String>> doRun(RunAgentInput input, String uid, String threadId, String runId) {
+    private Flux<ServerSentEvent<String>> doRun(RunAgentInput input, String uid, String threadId, String runId,
+                                                String threadWorkspace) {
 
         // 需求2: A2UI action 回传一律走真实 agent 续跑（无任何 Java 侧 if/else
         // 固定 surface）。action 被翻译成 A2UI_ACTION prompt，由 agent 判断并
@@ -226,7 +253,13 @@ public class AgUiProtocolService {
             log.info("frontend tool result received on thread {}: {}", threadId,
                     promptText.substring(0, Math.min(160, promptText.length())));
         } else {
-            String userMessage = extractLastUserMessage(input.messages());
+            UserContent userContent = extractLastUserContent(input.messages());
+            // task6: 纯附件消息（ChatGPT 式上传后不带文字直接发送）回退引导语
+            String userMessage = userContent == null ? null : userContent.text();
+            if ((userMessage == null || userMessage.isBlank())
+                    && userContent != null && !userContent.attachments().isEmpty()) {
+                userMessage = "请分析我上传的数据文件";
+            }
             if (userMessage == null || userMessage.isBlank()) {
                 return Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"empty user message\"}"));
             }
@@ -243,8 +276,15 @@ public class AgUiProtocolService {
             // 需求7: point the agent at the data workspace so "分析本月销售情况"
             // finds real data instead of wandering the repo (and hitting
             // external_directory permission asks that hang headless).
-            p.append("<environment>\n数据工作目录: ").append(dataWorkspace)
+            // task6: 数据工作目录按会话隔离（workspace/threads/<threadId>）。
+            p.append("<environment>\n数据工作目录: ").append(threadWorkspace)
                     .append("\n用户的数据文件（如销售 CSV）放在该目录；分析数据问题时先在此目录查找，回答用中文。\n</environment>\n\n");
+            // task6: 附件文件名写入 prompt —— 文件已落盘到会话工作目录，agent 直接读
+            if (userContent != null && !userContent.attachments().isEmpty()) {
+                p.append("<attachments>\n用户随消息上传了文件: ")
+                        .append(String.join(", ", userContent.attachments()))
+                        .append("（已保存到数据工作目录，直接用工具读取分析）\n</attachments>\n\n");
+            }
             p.append("<user_message>\n").append(userMessage).append("\n</user_message>");
             promptText = p.toString();
         }
@@ -430,15 +470,49 @@ public class AgUiProtocolService {
                 });
     }
 
-    private String extractLastUserMessage(List<Map<String, Object>> messages) {
+    /**
+     * task6: 用户消息的多模态内容 —— text 为拼接后的文本（无文本 part 时为空串），
+     * attachments 为附件文件名列表（来自 content part 的 metadata.filename，
+     * ChatGPT 式上传：文件已落盘会话工作目录，prompt 只需文件名）。
+     */
+    record UserContent(String text, List<String> attachments) {}
+
+    /**
+     * 提取最后一条用户消息。content 可能是纯字符串，也可能是 AG-UI 多模态
+     * parts 数组（[{type:"text",text:...}, {type:"document",metadata:{filename}}...]）。
+     */
+    private UserContent extractLastUserContent(List<Map<String, Object>> messages) {
         if (messages == null) return null;
         for (int i = messages.size() - 1; i >= 0; i--) {
             Map<String, Object> m = messages.get(i);
             Object role = m.get("role");
-            if (role != null && "user".equals(String.valueOf(role))) {
-                Object content = m.get("content");
-                if (content != null) return String.valueOf(content);
+            if (role == null || !"user".equals(String.valueOf(role))) continue;
+            Object content = m.get("content");
+            if (content == null) return null;
+            if (content instanceof List<?> parts) {
+                StringBuilder text = new StringBuilder();
+                List<String> attachments = new java.util.ArrayList<>();
+                for (Object part : parts) {
+                    if (!(part instanceof Map<?, ?> pm)) continue;
+                    Object ptype = pm.get("type");
+                    if ("text".equals(String.valueOf(ptype))) {
+                        Object t = pm.get("text");
+                        if (t != null) {
+                            if (text.length() > 0) text.append('\n');
+                            text.append(t);
+                        }
+                    }
+                    Object meta = pm.get("metadata");
+                    if (meta instanceof Map<?, ?> mm) {
+                        Object fn = mm.get("filename");
+                        if (fn != null && !String.valueOf(fn).isBlank()) {
+                            attachments.add(String.valueOf(fn));
+                        }
+                    }
+                }
+                return new UserContent(text.toString(), List.copyOf(attachments));
             }
+            return new UserContent(String.valueOf(content), List.of());
         }
         return null;
     }
@@ -450,7 +524,8 @@ public class AgUiProtocolService {
      */
     private String validate(RunAgentInput input, String runId) {
         if (!runId.matches("[A-Za-z0-9_\\-.]{1,128}")) return "invalid runId format";
-        if (input.threadId() != null && !input.threadId().matches("[A-Za-z0-9_\\-.]{1,128}"))
+        if (input.threadId() != null && (!input.threadId().matches("[A-Za-z0-9_\\-.]{1,128}")
+                || input.threadId().contains("..")))  // task6: threadId 用于拼 workspace 路径，排除穿越形态
             return "invalid threadId format";
         List<Map<String, Object>> messages = input.messages();
         if (messages != null) {
