@@ -1,0 +1,19 @@
+== P14 HITL 并发与顺序边界实测（2026-08-16）==
+
+场景：同一会话快速连续两个删除确认（vision-p14）
+- r1 删 e2e-up.txt → 卡片 hitl-del-e2e-up（2026-08-16-p14-hitl-r1.sse）
+- r2 删 region-sales-2026-08-result.csv → 卡片 hitl-del-region-sales-result（r2.sse）
+  两卡 messageId 各自独立，前端共存（vitest hitlConcurrency 锁定双卡渲染+各自派发）
+
+乱序裁决（先第2卡 confirm，后第1卡 cancel）：
+- r3 confirm card2 → region 文件已删；agent 主动提示还有一条待决请求（r3.sse）
+- r4 cancel card1 → e2e-up.txt 保留（r4.sse，文件系统核实）
+- run-metrics.log 两行 hitl_wait：act2 waitMs=31950 / act1 waitMs=66687
+  （先建后决者等待更久，顺序语义正确）
+
+边界结论：
+- 不同 actionId → 各自独立 surface/messageId，互不覆盖（HitlConfirmHandlerTest）
+- 同 actionId 重发 → 同 messageId 原位替换（不叠卡）
+- 跨会话同 actionId 裁决互不消费（metrics 复合键 threadId/actionId）
+- 重复裁决（双击/重放）只记一次等待时长
+- 单 run 内天然最多一张 HITL 卡（translator 首个 server tool 即 RUN_FINISHED）

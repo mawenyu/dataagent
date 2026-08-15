@@ -13,6 +13,9 @@
 export interface ExportableToolCall {
   id?: string
   function?: { name?: string; arguments?: string }
+  /** P-M: gateway 转换层补齐(无则字段缺省,向后兼容) */
+  durationMs?: number
+  status?: string
 }
 
 export interface ExportableMessage {
@@ -21,6 +24,10 @@ export interface ExportableMessage {
   content?: unknown
   toolCalls?: ExportableToolCall[]
   toolCallId?: string
+  /** P-M: ISO 时间戳(gateway 取自 opencode time.created) */
+  createdAt?: string
+  /** P-M: 附件文件名清单(gateway 从 prompt 的 <attachments> 段还原) */
+  attachments?: string[]
 }
 
 export interface ExportThreadMeta {
@@ -41,6 +48,36 @@ function formatDateTime(iso: string | undefined): string {
   if (Number.isNaN(d.getTime())) return iso
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+/** P-M: 消息小节时间(HH:mm:ss 本地时区)。 */
+function formatTimePart(iso: string | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+/** P-M: 工具耗时格式化(导出用,无 live 计时需求)。 */
+function formatDurationMs(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const m = Math.floor(ms / 60_000)
+  const sec = Math.round((ms % 60_000) / 1000)
+  return `${m}m ${sec}s`
+}
+
+/** P-M: 工具结果状态 → 人类可读徽标。 */
+function toolStatusLabel(status: string | undefined): string | null {
+  if (!status) return null
+  switch (status) {
+    case 'completed': return '✓ 完成'
+    case 'error':
+    case 'failed': return '✗ 失败'
+    case 'running': return '⏳ 运行中'
+    default: return status
+  }
 }
 
 function truncate(text: string, max: number): string {
@@ -81,7 +118,14 @@ function renderToolCalls(
       result = resultsByCallId.get(tc.id)
       consumedToolCallIds.add(tc.id)
     }
-    lines.push(`- **${name}** \`${args}\``)
+    // P-M: 摘要行附耗时与结果状态(字段缺省则不渲染,兼容旧历史)
+    const extras: string[] = []
+    if (typeof tc.durationMs === 'number' && Number.isFinite(tc.durationMs)) {
+      extras.push(formatDurationMs(tc.durationMs))
+    }
+    const statusLabel = toolStatusLabel(tc.status)
+    if (statusLabel) extras.push(statusLabel)
+    lines.push(`- **${name}** \`${args}\`${extras.length ? ' · ' + extras.join(' · ') : ''}`)
     lines.push(`  - ${result !== undefined ? `结果：${truncate(result, TOOL_RESULT_MAX)}` : '结果：无结果'}`)
   }
   return lines
@@ -115,9 +159,12 @@ export function buildThreadMarkdown(
 
   for (const m of messages) {
     if (m.role === 'user') {
-      lines.push('## 👤 用户', '', userContentText(m.content), '')
+      const t = formatTimePart(m.createdAt)
+      lines.push(`## 👤 用户${t ? ' · ' + t : ''}`, '', userContentText(m.content), '')
+      if (m.attachments?.length) lines.push(`📎 附件：${m.attachments.join('、')}`, '')
     } else if (m.role === 'assistant') {
-      lines.push('## 🤖 助手', '')
+      const t = formatTimePart(m.createdAt)
+      lines.push(`## 🤖 助手${t ? ' · ' + t : ''}`, '')
       const text = typeof m.content === 'string' ? m.content.trim() : userContentText(m.content).trim()
       if (text) lines.push(text, '')
       if (m.toolCalls?.length) {
@@ -140,14 +187,14 @@ export function buildThreadMarkdown(
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
 }
 
-/** 导出文件名：标题净化（去掉文件系统非法字符）+ 会话 id 前 8 位。 */
-export function exportFilename(thread: { id: string; title: string }): string {
+/** 导出文件名：标题 slug（去文件系统非法字符）+ 会话 id 前 8 位 + 扩展名。 */
+export function exportFilename(thread: { id: string; title: string }, ext: 'md' | 'json' = 'md'): string {
   const safeTitle = thread.title
     .replace(/[\\/:*?"<>|\s]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
   const base = safeTitle || thread.id.slice(0, 8)
-  return `${base}-${thread.id.slice(0, 8)}.md`
+  return `${base}-${thread.id.slice(0, 8)}.${ext}`
 }
 
 /** 前端生成 Blob 触发浏览器下载。 */

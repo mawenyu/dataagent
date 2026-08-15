@@ -108,4 +108,31 @@ class ThreadMessagesServiceTest {
             """;
         assertEquals("直接的话", svc.toAguiMessages(history).get(0).path("content").asText());
     }
+
+    @Test
+    void pmFields_createdAtDurationStatusAttachments() {
+        // P-M: 导出增强需要 —— 消息时间戳 / 工具耗时与状态 / 用户附件清单
+        String history = """
+            {"data":[
+              {"id":"a1","type":"assistant","time":{"created":1786806287752,"completed":1786806288859},"content":[
+                {"type":"text","id":"t0","text":"结论"},
+                {"type":"tool","id":"call_1","name":"shell","time":{"created":1786806287833,"ran":1786806288259,"completed":1786806288723},"state":{"status":"completed","input":{"command":"ls"},"content":[{"type":"text","text":"ok"}]}}
+              ]},
+              {"id":"u1","type":"user","time":{"created":1786806283431},"text":"<environment>\\n数据工作目录: x\\n</environment>\\n\\n<attachments>\\n用户随消息上传了文件: a.csv, b.xlsx（已保存到数据工作目录，直接用工具读取分析）\\n</attachments>\\n\\n<user_message>\\n分析这两个文件\\n</user_message>","content":[]}
+            ]}
+            """;
+        List<JsonNode> msgs = svc.toAguiMessages(history);
+        JsonNode user = msgs.get(0);
+        assertTrue(user.path("createdAt").asText("").startsWith("2026-"), "user createdAt ISO");
+        assertEquals("a.csv", user.path("attachments").get(0).asText());
+        assertEquals("b.xlsx", user.path("attachments").get(1).asText());
+        // <attachments> 段不混入正文
+        assertEquals("分析这两个文件", user.path("content").asText());
+
+        JsonNode assistant = msgs.get(1);
+        assertTrue(assistant.path("createdAt").asText("").startsWith("2026-"));
+        JsonNode tc = assistant.path("toolCalls").get(0);
+        assertEquals(464, tc.path("durationMs").asLong(), "completed - ran");
+        assertEquals("completed", tc.path("status").asText());
+    }
 }

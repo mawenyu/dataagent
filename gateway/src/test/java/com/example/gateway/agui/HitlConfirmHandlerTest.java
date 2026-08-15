@@ -96,4 +96,36 @@ class HitlConfirmHandlerTest {
         assertTrue(handler.execute("r", "t",
                 MAPPER.readTree("{\"title\":\"t\",\"message\":\"m\"}")).isEmpty());
     }
+
+    // ---- P14: 并发/顺序边界 ----
+
+    /** 同会话两张确认卡（不同 actionId）：各自独立 surface/messageId 共存。 */
+    @Test
+    void twoCardsCoexistWithDistinctMessageIds() throws Exception {
+        var c1 = handler.execute("r1", "t1", MAPPER.readTree(
+                "{\"actionId\":\"act-1\",\"title\":\"删A\",\"message\":\"m1\"}"));
+        var c2 = handler.execute("r2", "t1", MAPPER.readTree(
+                "{\"actionId\":\"act-2\",\"title\":\"删B\",\"message\":\"m2\"}"));
+        assertTrue(c1.isPresent() && c2.isPresent());
+        String m1 = MAPPER.readTree(c1.get().data()).path("messageId").asText();
+        String m2 = MAPPER.readTree(c2.get().data()).path("messageId").asText();
+        assertEquals("a2ui-hitl-act-1", m1);
+        assertEquals("a2ui-hitl-act-2", m2);
+        assertNotEquals(m1, m2, "两卡 messageId 必须不同（否则互相覆盖）");
+    }
+
+    /** 同 actionId 重发（快速连续触发同一确认）：同 messageId 原位替换，不叠卡。 */
+    @Test
+    void duplicateActionIdReplacesInPlace() throws Exception {
+        var c1 = handler.execute("r1", "t1", MAPPER.readTree(
+                "{\"actionId\":\"act-1\",\"title\":\"第一次\",\"message\":\"m\"}"));
+        var c2 = handler.execute("r2", "t1", MAPPER.readTree(
+                "{\"actionId\":\"act-1\",\"title\":\"第二次\",\"message\":\"m\"}"));
+        String m1 = MAPPER.readTree(c1.get().data()).path("messageId").asText();
+        String m2 = MAPPER.readTree(c2.get().data()).path("messageId").asText();
+        assertEquals(m1, m2, "同 actionId 重发 = 原位更新同一卡（replace 语义）");
+        // 第二帧内容生效
+        assertTrue(componentsOf(c2.get()).stream().anyMatch(c ->
+                "第二次".equals(c.path("title").asText())));
+    }
 }

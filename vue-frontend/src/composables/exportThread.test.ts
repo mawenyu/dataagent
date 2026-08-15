@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  buildThreadJson,
   buildThreadMarkdown,
+  downloadJson,
   downloadMarkdown,
   exportFilename,
   type ExportableMessage,
@@ -168,6 +170,85 @@ describe('downloadMarkdown', () => {
     expect(blob.type).toContain('text/markdown')
     expect(clickSpy).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith(url)
+    clickSpy.mockRestore()
+  })
+})
+
+describe('P-M: 导出增强(时间/耗时/状态/附件清单/JSON)', () => {
+  it('消息带 createdAt 时小节标题含时间', () => {
+    const md = buildThreadMarkdown(thread, [
+      { id: 'u1', role: 'user', content: '你好', createdAt: '2026-08-15T13:03:31Z' },
+    ], exportedAt)
+    expect(md).toMatch(/## 👤 用户 · \d{2}:\d{2}:\d{2}/)
+  })
+
+  it('工具调用摘要含耗时与结果状态', () => {
+    const md = buildThreadMarkdown(thread, [
+      {
+        id: 'a1', role: 'assistant', content: '',
+        toolCalls: [
+          { id: 't1', function: { name: 'bash', arguments: '{}' }, durationMs: 464, status: 'completed' },
+          { id: 't2', function: { name: 'read', arguments: '{}' }, durationMs: 1500, status: 'error' },
+        ],
+      },
+      { id: 'toolres-t1', role: 'tool', toolCallId: 't1', content: 'ok' },
+      { id: 'toolres-t2', role: 'tool', toolCallId: 't2', content: 'boom' },
+    ], exportedAt)
+    expect(md).toContain('**bash**')
+    expect(md).toContain('464ms')
+    expect(md).toContain('✓ 完成')
+    expect(md).toContain('1.5s')
+    expect(md).toContain('✗ 失败')
+  })
+
+  it('无耗时/状态字段时不渲染对应片段(向后兼容旧历史)', () => {
+    const md = buildThreadMarkdown(thread, [
+      { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 't1', function: { name: 'bash', arguments: '{}' } }] },
+    ], exportedAt)
+    expect(md).toContain('**bash**')
+    expect(md).not.toContain('✓ 完成')
+    expect(md).not.toContain('ms ·')
+  })
+
+  it('用户消息附件清单渲染为 📎 行', () => {
+    const md = buildThreadMarkdown(thread, [
+      { id: 'u1', role: 'user', content: '分析它们', attachments: ['a.csv', 'b.xlsx'] },
+    ], exportedAt)
+    expect(md).toContain('📎 附件：a.csv、b.xlsx')
+  })
+
+  it('buildThreadJson: 结构化会话数据(线程元数据 + 归一消息 + 导出时间)', () => {
+    const json = buildThreadJson(thread, [
+      { id: 'u1', role: 'user', content: 'hi', createdAt: '2026-08-15T13:00:00Z', attachments: ['a.csv'] },
+      {
+        id: 'a1', role: 'assistant', content: 'ok',
+        toolCalls: [{ id: 't1', function: { name: 'bash', arguments: '{"c":1}' }, durationMs: 100, status: 'completed' }],
+      },
+      { id: 'toolres-t1', role: 'tool', toolCallId: 't1', content: 'done' },
+    ], exportedAt)
+    expect(json.thread).toMatchObject({ id: thread.id, title: thread.title })
+    expect(json.messageCount).toBe(3)
+    expect(json.exportedAt).toBe(exportedAt.toISOString())
+    const m0 = json.messages[0]
+    expect(m0).toMatchObject({ role: 'user', content: 'hi', createdAt: '2026-08-15T13:00:00Z', attachments: ['a.csv'] })
+    const tc = json.messages[1].toolCalls![0]
+    expect(tc).toMatchObject({ name: 'bash', durationMs: 100, status: 'completed', result: 'done' })
+  })
+
+  it('exportFilename 支持 json 扩展名', () => {
+    expect(exportFilename(thread, 'json')).toMatch(/\.json$/)
+    expect(exportFilename(thread, 'md')).toMatch(/\.md$/)
+  })
+
+  it('downloadJson 生成 application/json Blob 下载', () => {
+    const createObjectURL = vi.fn(() => 'blob:json')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL }))
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    downloadJson('a.json', { hello: 1 })
+    const blob = createObjectURL.mock.calls[0][0] as Blob
+    expect(blob.type).toContain('application/json')
+    expect(clickSpy).toHaveBeenCalledTimes(1)
     clickSpy.mockRestore()
   })
 })

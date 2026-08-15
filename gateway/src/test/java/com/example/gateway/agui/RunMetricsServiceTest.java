@@ -119,4 +119,49 @@ class RunMetricsServiceTest {
         JsonNode n = lines(svc).get(0);
         assertEquals("error", n.path("outcome").asText());
     }
+
+    // ---- P14: HITL 并发裁决 ----
+
+    @Test
+    void outOfOrderResolvesRecordedIndependently() throws Exception {
+        RunMetricsService svc = newService();
+        svc.hitlInterrupted("t1", "act-1");
+        Thread.sleep(3);
+        svc.hitlInterrupted("t1", "act-2");
+        Thread.sleep(3);
+        // 乱序裁决：先 act-2 后 act-1
+        svc.hitlResolved("t1", "act-2", "confirm");
+        svc.hitlResolved("t1", "act-1", "cancel");
+
+        List<JsonNode> ls = lines(svc);
+        assertEquals(2, ls.size());
+        JsonNode first = ls.get(0);
+        JsonNode second = ls.get(1);
+        assertEquals("act-2", first.path("actionId").asText());
+        assertEquals("confirm", first.path("decision").asText());
+        assertEquals("act-1", second.path("actionId").asText());
+        assertEquals("cancel", second.path("decision").asText());
+        // act-1 等待时长 > act-2（先开始先结束于后）—— 只断言非负且各自独立
+        assertTrue(first.path("waitMs").asLong() >= 0);
+        assertTrue(second.path("waitMs").asLong() >= first.path("waitMs").asLong());
+    }
+
+    @Test
+    void crossThreadResolutionDoesNotConsume() throws Exception {
+        RunMetricsService svc = newService();
+        svc.hitlInterrupted("thread-A", "act-1");
+        svc.hitlResolved("thread-B", "act-1", "confirm"); // 别的会话同 actionId
+        assertFalse(Files.exists(svc.metricsFile()), "跨会话不得消费待决卡");
+        svc.hitlResolved("thread-A", "act-1", "confirm");
+        assertEquals(1, lines(svc).size(), "本会话裁决正常记录");
+    }
+
+    @Test
+    void duplicateResolveOnlyCountsOnce() throws Exception {
+        RunMetricsService svc = newService();
+        svc.hitlInterrupted("t1", "act-1");
+        svc.hitlResolved("t1", "act-1", "confirm");
+        svc.hitlResolved("t1", "act-1", "confirm"); // 重复点击/重放
+        assertEquals(1, lines(svc).size(), "重复裁决只记一次（起点已消费）");
+    }
 }

@@ -6,8 +6,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 需求1: 把 OpenCode session 历史（/api/session/{id}/message）转换为
@@ -22,6 +26,23 @@ public class ThreadMessagesService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TOOL_RESULT_MAX = 2000;
+    /** P-M: 从 gateway 注入 prompt 的 <attachments> 段还原附件文件名(导出清单用)。 */
+    private static final Pattern ATTACHMENTS_BLOCK = Pattern.compile(
+            "(?s)<attachments>\\s*用户随消息上传了文件:\\s*(.+?)（已保存");
+
+    /** P-M: 消息级时间戳(ms epoch → ISO 字符串),无则不写。 */
+    private void putCreatedAt(JsonNode m, ObjectNode msg) {
+        long created = m.path("time").path("created").asLong(0);
+        if (created > 0) msg.put("createdAt", Instant.ofEpochMilli(created).toString());
+    }
+
+    private List<String> extractAttachments(String wrappedText) {
+        if (wrappedText == null) return List.of();
+        Matcher m = ATTACHMENTS_BLOCK.matcher(wrappedText);
+        if (!m.find()) return List.of();
+        return Arrays.stream(m.group(1).split(",\\s*"))
+                .map(String::trim).filter(x -> !x.isEmpty()).toList();
+    }
 
     public List<JsonNode> toAguiMessages(String historyJson) {
         List<JsonNode> out = new ArrayList<>();
@@ -64,6 +85,13 @@ public class ThreadMessagesService {
                 msg.put("id", id);
                 msg.put("role", "user");
                 msg.put("content", sb.toString());
+                // P-M: 消息时间戳 + 附件清单(从 prompt 包装的 <attachments> 段还原)
+                putCreatedAt(m, msg);
+                List<String> attachments = extractAttachments(m.path("text").asText(""));
+                if (!attachments.isEmpty()) {
+                    ArrayNode arr = msg.putArray("attachments");
+                    attachments.forEach(arr::add);
+                }
                 out.add(msg);
             }
             case "assistant" -> {
@@ -115,6 +143,15 @@ public class ThreadMessagesService {
                             tc.put("id", callId);
                             tc.put("type", "function");
                             tc.set("function", fn);
+                            // P-M: 工具耗时(part.time: ran→completed)与结果状态
+                            long ranAt = p.path("time").path("ran").asLong(0);
+                            long started = ranAt > 0 ? ranAt : p.path("time").path("created").asLong(0);
+                            long completedAt = p.path("time").path("completed").asLong(0);
+                            if (completedAt > 0 && started > 0 && completedAt >= started) {
+                                tc.put("durationMs", completedAt - started);
+                            }
+                            String toolStatus = p.path("state").path("status").asText("");
+                            if (!toolStatus.isBlank()) tc.put("status", toolStatus);
                             toolCalls.add(tc);
 
                             ObjectNode result = MAPPER.createObjectNode();
@@ -127,7 +164,10 @@ public class ThreadMessagesService {
                         default -> { /* step/synthetic 等跳过 */ }
                     }
                 }
-                if (assistant != null) out.add(assistant);
+                if (assistant != null) {
+                    putCreatedAt(m, assistant); // P-M
+                    out.add(assistant);
+                }
                 out.addAll(toolResults);
             }
             default -> { /* system/model-switched 等跳过 */ }

@@ -113,3 +113,10 @@ AG-UI 的 HITL 模式（interrupt → 用户决策 → resume 为新 run）落�
 - 嵌套关闭：深层嵌套 + 数据绑定的 surface 整面关闭无残留无报错（vitest #5）
 - **协议发现**：嵌套数据绑定路径必须 JSON-pointer 形式（/deep/value），点号（deep.value）不解析
 - deleteSurface 对不存在 surface 为幂等 no-op（web_core 语义）
+
+## 七、HITL 并发与顺序（vision-P14，2026-08-16 实测）
+
+多确认卡排队场景的裁决语义：不同 actionId 各自独立 surface/messageId 共存；
+同 actionId 重发原位替换；乱序裁决互不影响（先决第二张再决第一张，各自
+路由正确）；跨会话同 actionId 互不消费；重复裁决幂等。单 run 内最多一张
+卡（server tool 即终态）。证据 docs/evidence/2026-08-16-p14-hitl-concurrency.txt。
