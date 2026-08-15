@@ -364,6 +364,41 @@ public class A2UiBridgeService {
     }
 
     /**
+     * P5-1: 公开校验（插件回执同步用）—— 与 execute 完全同一条校验管线，
+     * 返回 null = 通过，否则返回人类可读原因（模型据此纠正后重试）。
+     * 供 POST /a2ui/validate 使用：opencode 插件 execute 先问 gateway，
+     * 回执与真实渲染裁决一致（此前插件无条件回 "rendered"，被拒时 agent
+     * 会自称已渲染 —— matrix 附录已知边界）。
+     */
+    public String validate(JsonNode args) {
+        if (args == null || !args.isObject()) return "arguments missing/not an object";
+        String surfaceId = args.path("surfaceId").asText("");
+        if (surfaceId.isBlank() || !surfaceId.matches("[A-Za-z0-9_\\-]{1,64}")) {
+            return "invalid surfaceId '" + surfaceId + "'";
+        }
+        JsonNode comps = args.path("components");
+        if (!comps.isArray() || comps.isEmpty()) return "components missing/empty";
+        ArrayNode flat = flattenComponents((ArrayNode) comps);
+        if (flat == null) return "components malformed (child without id)";
+        ArrayNode normalized = normalizeComponents(flat);
+        if (hasReferenceCycle(normalized)) return "reference cycle detected";
+        if (normalized.size() > MAX_COMPONENTS || normalized.toString().length() > MAX_PAYLOAD_CHARS) {
+            return "payload too large (" + normalized.size() + " components, "
+                    + normalized.toString().length() + " chars)";
+        }
+        List<String> rejected = new ArrayList<>();
+        for (JsonNode c : normalized) {
+            String type = c.path("component").asText("");
+            String id = c.path("id").asText("");
+            if (id.isBlank() || !ALLOWED_COMPONENTS.contains(type)) {
+                rejected.add(type + "#" + id);
+            }
+        }
+        if (!rejected.isEmpty()) return "not in whitelist or missing id: " + rejected;
+        return null;
+    }
+
+    /**
      * Execute render_a2ui: validate arguments and build the ACTIVITY_SNAPSHOT
      * SSE event. Empty Optional = invalid call (logged; run continues without
      * a surface). The surface is registered in {@link A2UiSurfaceRegistry}

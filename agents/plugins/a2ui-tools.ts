@@ -17,6 +17,7 @@
  * 插件 API 严格同源（npm 包 1.18.15 是旧 API，无 tool.transform）。
  */
 const FORK = process.env.OPENCODE_FORK_PATH ?? "/home/ubuntu/opencode-fork"
+const GATEWAY = process.env.AGUI_GATEWAY_URL ?? "http://127.0.0.1:8090"
 const { Plugin } = await import(`${FORK}/packages/plugin/src/promise/index.ts`)
 
 // 与 gateway A2UiBridgeService.ALLOWED_COMPONENTS + 前端 dataAgentCatalog 严格同源：
@@ -89,6 +90,30 @@ export default Plugin.define({
         execute: async (args: { surfaceId: string; components: unknown[]; data?: unknown; catalogId?: string }) => {
           if (!Array.isArray(args.components) || args.components.length === 0) {
             return { output: { status: "error", surfaceId: args.surfaceId ?? "" }, content: "components 不能为空" }
+          }
+          // P5-1: 回执先过 gateway 裁决（POST /a2ui/validate，与 render 同一校验
+          // 管线）——被拒时如实告知模型原因并可纠正重试，不再自称"已渲染"。
+          // gateway 不可达时回退乐观回执（本地开发/部署顺序容错）。
+          try {
+            const res = await fetch(`${GATEWAY}/a2ui/validate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(args),
+              signal: AbortSignal.timeout(3000),
+            })
+            if (res.ok) {
+              const verdict = (await res.json()) as { ok: boolean; reason?: string }
+              if (!verdict.ok) {
+                return {
+                  output: { status: "rejected", surfaceId: args.surfaceId ?? "" },
+                  content:
+                    `Surface NOT rendered — gateway rejected it: ${verdict.reason}. ` +
+                    `Do NOT claim it was rendered. Fix the components (whitelist: ${CATALOG_COMPONENTS}) and call render_a2ui again.`,
+                }
+              }
+            }
+          } catch {
+            // gateway 不可达 → 乐观回执（原行为）
           }
           return ok(args.surfaceId, `${args.components.length} components`)
         },

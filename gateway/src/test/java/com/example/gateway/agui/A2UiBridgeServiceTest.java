@@ -321,4 +321,68 @@ class A2UiBridgeServiceTest {
         json.append(",{\"component\":\"Text\",\"id\":\"deep\",\"text\":\"x\"}]}");
         assertTrue(bridge.execute("run", "t", MAPPER.readTree(json.toString())).isPresent());
     }
+
+    // ---- P5-1: validate() 公开校验（插件回执同步用，spec: a2ui-component-matrix.md 附录）----
+
+    @Test
+    void validateReturnsNullForValidArgs() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["m"]},
+                  {"component":"MetricCard","id":"m","title":"t","value":"v"}
+                ]}""";
+        assertNull(bridge.validate(MAPPER.readTree(args)));
+    }
+
+    @Test
+    void validateReportsWhitelistRejection() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["g"]},
+                  {"component":"Gauge","id":"g","value":42}
+                ]}""";
+        String reason = bridge.validate(MAPPER.readTree(args));
+        assertNotNull(reason);
+        assertTrue(reason.contains("Gauge"), reason);
+    }
+
+    @Test
+    void validateReportsCycle() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["a"]},
+                  {"component":"Column","id":"a","children":["b"]},
+                  {"component":"Column","id":"b","children":["a"]}
+                ]}""";
+        String reason = bridge.validate(MAPPER.readTree(args));
+        assertNotNull(reason);
+        assertTrue(reason.toLowerCase().contains("cycle"), reason);
+    }
+
+    @Test
+    void validateReportsStructuralProblems() throws Exception {
+        assertNotNull(bridge.validate(MAPPER.readTree("{}")), "缺 components");
+        assertNotNull(bridge.validate(MAPPER.readTree(
+                "{\"surfaceId\":\"bad id!\",\"components\":[{\"component\":\"Text\",\"id\":\"root\",\"text\":\"x\"}]}")),
+                "非法 surfaceId");
+        assertNotNull(bridge.validate(MAPPER.readTree(
+                "{\"surfaceId\":\"s1\",\"components\":[]}")), "空组件数组");
+        assertNotNull(bridge.validate(MAPPER.readTree(
+                "{\"surfaceId\":\"s1\",\"components\":[{\"component\":\"Text\",\"text\":\"x\"}]}")),
+                "缺 id");
+    }
+
+    /** 校验端点：POST /a2ui/validate → {ok} / {ok:false, reason}。 */
+    @Test
+    void validateEndpoint() throws Exception {
+        var controller = new A2UiValidateController(bridge);
+        var ok = controller.validate(MAPPER.readTree(
+                "{\"surfaceId\":\"s1\",\"components\":[{\"component\":\"Text\",\"id\":\"root\",\"text\":\"x\"}]}"));
+        assertTrue(ok.path("ok").asBoolean());
+
+        var bad = controller.validate(MAPPER.readTree(
+                "{\"surfaceId\":\"s1\",\"components\":[{\"component\":\"Gauge\",\"id\":\"root\"}]}"));
+        assertFalse(bad.path("ok").asBoolean());
+        assertTrue(bad.path("reason").asText().contains("Gauge"));
+    }
 }
