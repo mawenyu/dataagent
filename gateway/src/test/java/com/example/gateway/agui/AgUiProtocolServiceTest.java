@@ -310,6 +310,23 @@ class AgUiProtocolServiceTest {
         assertTrue(snap.toString().contains("MetricCard"));
     }
 
+    /** 2026-08-15：server tool 已在 opencode 注册，原生调用不再截断 run ——
+        surface 立即产出，run 自然结束，不 abort（收尾叙述照常流出）。 */
+    @Test
+    void nativeServerToolRendersWithoutAbort() {
+        String stream =
+                ocEvent("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"render_a2ui\"}")
+                + ocEvent("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\"}")
+                + ocEvent("session.tool.called",
+                        "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"input\":{\"surfaceId\":\"s\",\"components\":[{\"component\":\"Text\",\"id\":\"root\",\"text\":\"hi\"}]}}");
+        stub.eventStreams.add(stream);
+        List<JsonNode> events = run(userMsg("t-abort", "render"));
+        List<String> types = types(events);
+        assertTrue(types.contains("ACTIVITY_SNAPSHOT"));
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1));
+        assertEquals(0, stub.aborts.size(), "no truncation → no abort");
+    }
+
     @Test
     void 需求2_a2uiAction一律走真实agent续跑() {
         // 原来的 deterministic 路由（refresh_sales → Java 固定 surface）已删除；

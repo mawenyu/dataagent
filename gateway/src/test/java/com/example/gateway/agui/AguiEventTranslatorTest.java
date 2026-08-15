@@ -577,6 +577,59 @@ class AguiEventTranslatorTest {
         assertFalse(types.contains("TOOL_CALL_RESULT"), "Unknown-tool failure must NOT reach the client");
     }
 
+
+    /** 2026-08-15 实测回归：原生 render_a2ui 截断 run 后 opencode 仍继续执行，
+        尾随事件流入同 session 的下一个 run（把旧回答当成新回答输出）。
+        截断分支必须回调上层 abort opencode 执行；正常完成不回调。 */
+    @Test
+    void nativeServerToolRendersSurfaceWithoutTruncatingRun() {
+        java.util.concurrent.atomic.AtomicInteger aborts = new java.util.concurrent.atomic.AtomicInteger();
+        List<JsonNode> events = translator.translate("thread", "run", Set.of(), Flux.just(
+                oc("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"render_a2ui\"}"),
+                oc("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\"}"),
+                oc("session.tool.called", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"input\":{\"surfaceId\":\"s1\",\"components\":[{\"component\":\"Text\",\"id\":\"root\",\"text\":\"hi\"}]}}")),
+                null, (Runnable) aborts::incrementAndGet)
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        List<String> types = types(events);
+        assertTrue(types.contains("ACTIVITY_SNAPSHOT"), "surface rendered immediately");
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1), "run ends at natural stream end");
+        assertEquals(0, aborts.get(), "server tools are registered in opencode now — no truncation, no abort");
+    }
+
+    @Test
+    void promptContractFrontendToolInvokesAbortHook() {
+        java.util.concurrent.atomic.AtomicInteger aborts = new java.util.concurrent.atomic.AtomicInteger();
+        String block = "<tool_call>{\"name\":\"showNotification\",\"arguments\":{\"title\":\"t\",\"message\":\"m\"}}</tool_call>";
+        List<JsonNode> events = translator.translate("thread", "run", Set.of("showNotification"), Flux.just(
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(block) + "}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}")),
+                null, (Runnable) aborts::incrementAndGet)
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        assertEquals("RUN_FINISHED", types(events).get(types(events).size() - 1));
+        assertEquals(1, aborts.get(), "frontend-tool truncation must abort the opencode execution");
+    }
+
+    @Test
+    void naturalCompletionDoesNotInvokeAbortHook() {
+        java.util.concurrent.atomic.AtomicInteger aborts = new java.util.concurrent.atomic.AtomicInteger();
+        List<JsonNode> events = translator.translate("thread", "run", Set.of(), Flux.just(
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"答\"}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"stop\"}")),
+                null, (Runnable) aborts::incrementAndGet)
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        assertEquals("RUN_FINISHED", types(events).get(types(events).size() - 1));
+        assertEquals(0, aborts.get(), "natural completion: execution already settled, no abort");
+    }
+
     private static String json(String s) {        try {
             return MAPPER.writeValueAsString(s);
         } catch (Exception e) {

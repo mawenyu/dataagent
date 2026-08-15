@@ -327,7 +327,11 @@ public class AgUiProtocolService {
                                     // 客户端 useAgent().state 可见；contextSize 由 STATE_DELTA 续更
                                     Map.of("threadId", finalThreadId, "model", modelId,
                                             "provider", providerId, "workspace", dataWorkspace,
-                                            "contextSize", 0))
+                                            "contextSize", 0),
+                                    // 2026-08-15 实测回归：截断式终止（原生 server/frontend 工具、
+                                    // prompt 契约 frontend 工具）后 opencode 仍在跑，尾随事件会
+                                    // 流入同 session 的下一个 run（旧回答污染新回答）——abort 掉
+                                    () -> abortSession(sessionId).subscribe())
                             // vision-P1: RUN_FINISHED 前插 MESSAGES_SNAPSHOT —— 以 OpenCode
                             // session 历史为权威对账客户端消息流（delta 丢失自愈）；空历史
                             // 跳过（空数组会清掉客户端消息，宁可不发）

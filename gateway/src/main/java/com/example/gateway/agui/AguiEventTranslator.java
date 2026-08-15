@@ -142,6 +142,19 @@ public class AguiEventTranslator {
     public Flux<ServerSentEvent<String>> translate(String threadId, String runId, Set<String> frontendTools,
                                                    Flux<ServerSentEvent<String>> opencodeEvents,
                                                    Map<String, Object> initialState) {
+        return translate(threadId, runId, frontendTools, opencodeEvents, initialState, null);
+    }
+
+    /**
+     * @param onEarlyTerminate 截断回调：gateway 在 OpenCode 执行自然结束前终止 run
+     *        （原生 server/frontend 工具调用、prompt 契约 frontend 工具）时触发。
+     *        2026-08-15 实测：不 abort 的话 opencode 继续执行，尾随事件（旧回答文本、
+     *        step.ended）会流入同 session 的下一个 run，把旧回答当新回答输出。
+     */
+    public Flux<ServerSentEvent<String>> translate(String threadId, String runId, Set<String> frontendTools,
+                                                   Flux<ServerSentEvent<String>> opencodeEvents,
+                                                   Map<String, Object> initialState,
+                                                   Runnable onEarlyTerminate) {
         AtomicBoolean sawOutput = new AtomicBoolean(false);
         AtomicBoolean terminalEmitted = new AtomicBoolean(false);
         // 需求7: AG-UI 客户端状态机要求 STEP_FINISHED/RUN_FINISHED 与 STEP_STARTED 严格配对。
@@ -198,14 +211,14 @@ public class AguiEventTranslator {
                             });
                             String delta = data.path("delta").asText("");
                             return Flux.fromIterable(
-                                    processDelta(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, delta));
+                                    processDelta(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, delta, onEarlyTerminate));
                         }
                         case "session.text.ended": {
                             String aMsgId = data.path("assistantMessageID").asText();
                             MsgState st = msgStates.remove(aMsgId);
                             if (st == null) return Flux.empty();
                             return Flux.fromIterable(
-                                    processTextEnd(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st));
+                                    processTextEnd(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, onEarlyTerminate));
                         }
                         case "session.tool.input.started": {
                             // builtin opencode tools — mirror for progress rendering only
@@ -275,21 +288,19 @@ public class AguiEventTranslator {
                                 closeAllActiveSteps(runId, threadId, activeSteps, out);
                                 if (terminalEmitted.compareAndSet(false, true)) {
                                     out.add(sse(base("RUN_FINISHED", runId, threadId)));
+                                    fireEarlyTerminate(onEarlyTerminate);
                                 }
                                 return Flux.fromIterable(out);
                             }
-                            // A "real" tool call to render_a2ui (the model emits it as a
-                            // genuine tool_call even though OpenCode can't execute it):
-                            // execute server-side and finish the run with the surface —
-                            // OpenCode's own "unknown tool" follow-up is dropped.
+                            // 原生 server tool（render_a2ui/render_report/...）：
+                            // 2026-08-15 起工具已在 opencode 注册（agents/plugins/a2ui-tools.ts），
+                            // 原生调用会真实执行并回执 —— 不再截断 run：立即产出 surface，
+                            // run 继续到自然终止（模型收到回执后做收尾叙述，文本照常流出）。
+                            // （截断时代的"unknown tool 跟进丢弃"已随注册消失；截断还会把
+                            // 收尾叙述丢进下一个 run —— 实测回归。）
                             if (isServerTool(name)) {
                                 log.info("server tool call (native): {} id={}", name, callId);
-                                closeOpenMessages(runId, threadId, msgStates, openReasoning, out);
-                                closeAllActiveSteps(runId, threadId, activeSteps, out);
                                 executeServerTool(name, runId, threadId, data.path("input")).ifPresent(out::add);
-                                if (terminalEmitted.compareAndSet(false, true)) {
-                                    out.add(sse(base("RUN_FINISHED", runId, threadId)));
-                                }
                             }
                             return Flux.fromIterable(out);
                         }
@@ -681,7 +692,7 @@ public class AguiEventTranslator {
     private List<ServerSentEvent<String>> processDelta(String threadId, String runId, Set<String> frontendTools,
                                                        AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
                                                        Set<String> activeSteps,
-                                                       MsgState st, String delta) {
+                                                       MsgState st, String delta, Runnable onEarlyTerminate) {
         List<ServerSentEvent<String>> out = new ArrayList<>();
         switch (st.mode) {
             case BUFFERING -> {
@@ -700,7 +711,7 @@ public class AguiEventTranslator {
             }
             case TOOL_CALL -> {
                 st.buf.append(delta);
-                scanToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, out);
+                scanToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st, out, onEarlyTerminate);
             }
         }
         return out;
@@ -732,7 +743,7 @@ public class AguiEventTranslator {
     private void scanToolCall(String threadId, String runId, Set<String> frontendTools,
                               AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
                               Set<String> activeSteps,
-                              MsgState st, List<ServerSentEvent<String>> out) {
+                              MsgState st, List<ServerSentEvent<String>> out, Runnable onEarlyTerminate) {
         String b = st.buf.toString();
         int endIdx = b.indexOf(END_MARKER);
         int dsmlIdx = FrontendToolBridge.dsmlTailIndex(b);
@@ -743,7 +754,7 @@ public class AguiEventTranslator {
         String remainder = b.substring(endIdx + (endIdx == dsmlIdx ? 0 : END_MARKER.length()))
                 .replaceAll("</?[|｜]+DSML[|｜]+[^>]*>", "");
         dispatchToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st,
-                MARKER + payload + END_MARKER, out);
+                MARKER + payload + END_MARKER, out, onEarlyTerminate);
         // anything after the end marker is treated as text again
         st.mode = MsgMode.TEXT;
         st.buf.setLength(0);
@@ -755,7 +766,7 @@ public class AguiEventTranslator {
     private List<ServerSentEvent<String>> processTextEnd(String threadId, String runId, Set<String> frontendTools,
                                                          AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
                                                          Set<String> activeSteps,
-                                                         MsgState st) {
+                                                         MsgState st, Runnable onEarlyTerminate) {
         List<ServerSentEvent<String>> out = new ArrayList<>();
         switch (st.mode) {
             case BUFFERING -> {
@@ -763,7 +774,7 @@ public class AguiEventTranslator {
                 var parsed = toolBridge.parseToolCall(st.buf.toString());
                 if (parsed.isPresent()) {
                     dispatchToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st,
-                            st.buf.toString(), out);
+                            st.buf.toString(), out, onEarlyTerminate);
                 } else if (st.buf.length() > 0) {
                     emitTextStart(runId, threadId, st, sawOutput, out);
                     emitTextContent(runId, threadId, st, st.buf.toString(), sawOutput, out);
@@ -784,7 +795,7 @@ public class AguiEventTranslator {
                         ? b.substring(0, b.indexOf(END_MARKER))
                         : b;
                 dispatchToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st,
-                        MARKER + payload + END_MARKER, out);
+                        MARKER + payload + END_MARKER, out, onEarlyTerminate);
                 if (st.textStarted) emitTextEnd(runId, threadId, st, out);
             }
         }
@@ -796,6 +807,15 @@ public class AguiEventTranslator {
                                   AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
                                   Set<String> activeSteps,
                                   MsgState st, String rawBlock, List<ServerSentEvent<String>> out) {
+        dispatchToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st,
+                rawBlock, out, null);
+    }
+
+    private void dispatchToolCall(String threadId, String runId, Set<String> frontendTools,
+                                  AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
+                                  Set<String> activeSteps,
+                                  MsgState st, String rawBlock, List<ServerSentEvent<String>> out,
+                                  Runnable onEarlyTerminate) {
         var parsed = toolBridge.parseToolCall(rawBlock);
         if (parsed.isEmpty()) {
             log.warn("unparseable tool_call block; emitting as text");
@@ -838,6 +858,7 @@ public class AguiEventTranslator {
         if (terminalEmitted.compareAndSet(false, true)) {
             closeAllActiveSteps(runId, threadId, activeSteps, out);
             out.add(sse(base("RUN_FINISHED", runId, threadId)));
+            fireEarlyTerminate(onEarlyTerminate);
         }
     }
 
@@ -846,6 +867,17 @@ public class AguiEventTranslator {
                                                                 String threadId, JsonNode args) {
         if (a2UiBridge.isServerTool(name)) return a2UiBridge.execute(runId, threadId, args);
         return extraTool(name).flatMap(t -> t.execute(runId, threadId, args));
+    }
+
+    /** 截断回调（null 安全）。 */
+    private static void fireEarlyTerminate(Runnable hook) {
+        if (hook != null) {
+            try {
+                hook.run();
+            } catch (Exception e) {
+                log.warn("onEarlyTerminate hook failed: {}", e.getMessage());
+            }
+        }
     }
 
     // ------------------------------------------------------------------
