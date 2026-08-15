@@ -45,5 +45,6 @@ F1 主链路 / F2 功能项 / F4 全部在 task6 及之前已完成；本次补�
 | `b408991` | **P-H 多选批量操作**：头部"☑ 多选"进入多选模式（行首 checkbox、点行=选中不跳会话），批量栏全选/计数/归档/删除/取消；批量归档复用 P-G 语义（同一 localStorage），批量删除走 F2 确认 modal（含数量，逐项 emit remove），取消 modal 保留多选状态 |
 | `6e5dbfd` | **P-I 断线恢复+错误码**：window online/offline 检测 + 顶栏离线徽章（琥珀呼吸点）；离线期中断的 run 在恢复后自动续跑（复用 P-B 原线程重发）+ 恢复 toast，在线普通失败不误触；parseRunError 结构化解析（显式 code 优先/消息提取 HTTP 码，5xx 归一友好文案、413/429 专属），RunErrorCard 新增等宽错误码徽章 |
 | `615c179` | **P-J 附件上传真实化**：真实链路 e2e（scripts/test-attachment-e2e.sh，真 gateway+opencode）8/8——建会话→上传→多模态 run→agent 工具读文件并答出 CSV 独特数值（920,417/华东），超限 413+结构化错误体，证据 docs/evidence/pj-attachment-e2e.txt；补强：0 字节前端拦截、失败 chip 带 errorMessage 悬停可查、超限提示含 50MB |
+| `48229ba` | **P-K token/上下文可观测**：顶栏新增 tokens 徽章（每会话分桶累计 input+output+reasoning，悬停见 step 数与输入/输出/推理/缓存明细，切会话各自保留）；context 徽章分级变色（≥80% 琥珀 / ≥95% 红）+ 升级一次性 toast（red 档建议新建会话+导出）；数据源 gateway context_usage 实测载荷吻合，零 mock 零 gateway 改动 |
 
-**验证**：vue-frontend vitest 27 文件 182 全绿;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
+**验证**：vue-frontend vitest 27 文件 186 全绿;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
