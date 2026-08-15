@@ -183,6 +183,9 @@ public class A2UiBridgeService {
                 .append("charts:[{type:bar|line|pie, groupBy:region|category|date|channel, title?}], ")
                 .append("table:{groupBy, title?}?, actions:[{label, event, context?}]?, surfaceId?}. ")
                 .append("Prefer this over render_a2ui for numeric sales/data reports — never hand-write numbers or component JSON.\n");
+        sb.append("- render_slides: render a slide deck as a tabbed surface. arguments: ")
+                .append("{title, slides:[{heading, bullets:[string], note?}], surfaceId?}. ")
+                .append("Use for 演示/presentation/slides requests; bullets are plain text (no markdown tables).\n");
         if (context != null) {
             sb.append("\nThe client provided these A2UI capabilities (catalog, component schemas, guidelines):\n");
             for (Map<String, Object> entry : context) {

@@ -45,7 +45,7 @@ DataTable → ActionButton×M；数据全部内联（gateway 算好的真实聚�
 - 单测：假 CSV → 展开 ops 组件结构/数值断言；非法枚举/缺列 → 优雅降级
 - curl 实测："给我一份本月销售报告" → ACTIVITY_SNAPSHOT + 文本无 JSON 泄漏
 
-## B2. render_slides（presentation 模式）
+## B2. render_slides（presentation 模式）✅ 已完成（2026-08-15）
 
 模型输出 `{title, slides:[{heading, bullets[], note?}]}`；gateway 确定性展开为
 A2UI Tabs（每页一个 tab：Markdown 渲染 bullets，note 作 caption Text）。
