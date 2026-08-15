@@ -16,15 +16,42 @@ describe('App UI (需求4)', () => {
     })))
   })
 
-  it('空会话显示品牌欢迎页与 3 个建议问题', async () => {
+  it('空会话显示品牌欢迎页与 4 个场景模板卡', async () => {
     const w = mount(App)
     for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
     const welcome = w.find('[data-testid="welcome-screen"]')
     expect(welcome.exists()).toBe(true)
     expect(welcome.text()).toContain('DataAgent 数据分析助手')
     const cards = w.findAll('.welcome-card')
-    expect(cards).toHaveLength(3)
-    expect(cards[0].text()).toContain('本月销售分析')
+    expect(cards).toHaveLength(4)
+    expect(cards[0].text()).toContain('销售分析')
+    expect(welcome.text()).toContain('周报生成')
+    expect(welcome.text()).toContain('数据清洗')
+  })
+
+  it('P-D: 点模板卡填充输入框(不直接发送),可编辑后回车发出', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: [] }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
+
+    await w.findAll('.welcome-card')[0].trigger('click')
+    await nextTick()
+    const textarea = w.find('.welcome-input textarea').element as HTMLTextAreaElement
+    expect(textarea.value.length).toBeGreaterThan(10)
+    // 未直接发送
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/agent/run'))).toBe(false)
+
+    // 编辑后回车发送
+    await w.find('.welcome-input textarea').setValue(`${textarea.value}（补充：只看华东）`)
+    await w.find('.welcome-input textarea').trigger('keydown.enter')
+    for (let i = 0; i < 8; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    const runCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/agent/run'))
+    expect(runCall, '回车应发出编辑后的内容').toBeDefined()
+    expect(String((runCall![1] as RequestInit)?.body ?? '')).toContain('只看华东')
   })
 
   it('顶栏 ☰ 按钮折叠/展开侧边栏', async () => {

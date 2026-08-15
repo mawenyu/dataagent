@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, nextTick } from 'vue'
 import { z } from 'zod'
 import { CopilotKitProvider, CopilotChat, getThreadClone } from '@copilotkit/vue'
 import { dataAgent } from './agents/dataAgent'
@@ -138,12 +138,34 @@ function closeSidebarOnMobile() {
 }
 onMounted(() => { if (window.innerWidth <= 720) sidebarOpen.value = false })
 
-// 需求4: 空会话欢迎页的建议问题
-const welcomeSuggestions = [
-  { title: '本月销售分析', desc: '总销售额 / 区域排名 / 品类结构', prompt: '分析本月销售情况' },
-  { title: '销售看板', desc: '指标卡 + 柱状图直观呈现', prompt: '分析本月各区域销售额，并用图表看板展示' },
-  { title: '趋势与异常', desc: '按日趋势、峰值与低谷解读', prompt: '本月按日销售趋势如何？指出峰值和异常低谷' },
+// P-D: 空会话欢迎页的场景模板卡 —— 点击填充输入框(可编辑后再发送,非直接提交)
+const promptTemplates = [
+  {
+    title: '销售分析',
+    desc: '总额 / 区域排名 / 品类结构',
+    prompt: '分析本月销售情况：总销售额、各区域销售额排名、品类销售结构，并指出值得关注的异常波动。',
+  },
+  {
+    title: '可视化看板',
+    desc: '指标卡 + 图表直观呈现',
+    prompt: '分析本月各区域销售额，用图表看板展示：顶部核心指标卡，下方销售额柱状图与占比图。',
+  },
+  {
+    title: '周报生成',
+    desc: '核心指标 + 趋势 + 风险',
+    prompt: '根据 workspace 里的销售数据生成本周周报：核心指标一览、按日趋势变化、同比异常点与风险提示，用 Markdown 格式输出。',
+  },
+  {
+    title: '数据清洗',
+    desc: '缺失 / 重复 / 异常值体检',
+    prompt: '检查 workspace 里 CSV 文件的数据质量：缺失值、重复行、明显异常值，给出清洗建议，并生成清洗后的新文件。',
+  },
 ]
+const welcomeTextarea = ref<HTMLTextAreaElement | null>(null)
+function fillTemplate(prompt: string, onUpdate: (v: string) => void) {
+  onUpdate(prompt)
+  void nextTick(() => welcomeTextarea.value?.focus())
+}
 
 // 需求7-6 + P-B: run 超时/失败 → 内联错误卡（原因+重试）+ toast；
 // 用户主动停止(abort)不算失败，两者都不弹
@@ -281,10 +303,11 @@ async function exportThread(id: string) {
                   <p class="welcome-sub">用自然语言分析 workspace 里的数据，自动生成图表看板</p>
                   <div class="welcome-grid">
                     <button
-                      v-for="sg in welcomeSuggestions"
+                      v-for="sg in promptTemplates"
                       :key="sg.title"
                       class="welcome-card"
-                      @click="onSubmitMessage(sg.prompt)"
+                      :title="`填充模板：${sg.prompt}`"
+                      @click="fillTemplate(sg.prompt, onUpdateModelValue)"
                     >
                       <strong>{{ sg.title }}</strong>
                       <span>{{ sg.desc }}</span>
@@ -339,6 +362,7 @@ async function exportThread(id: string) {
                         @change="onWelcomeFilesPicked"
                       />
                       <textarea
+                        ref="welcomeTextarea"
                         :value="modelValue"
                         placeholder="输入你的数据问题，回车发送…"
                         rows="1"
