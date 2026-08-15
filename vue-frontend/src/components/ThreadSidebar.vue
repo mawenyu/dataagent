@@ -18,6 +18,7 @@ const emit = defineEmits<{
   (e: 'switch', id: string): void
   (e: 'remove', id: string): void
   (e: 'rename', id: string, title: string): void
+  (e: 'export', id: string): void
 }>()
 
 type DialogState =
@@ -84,7 +85,13 @@ const renameInvalid = () => !renameDraft.value.trim()
       >
         <span class="thread-title" :title="t.title">{{ t.title }}</span>
         <button
-          class="del-btn"
+          class="icon-btn export-btn"
+          :data-testid="`export-${t.id}`"
+          title="导出会话为 Markdown"
+          @click.stop="emit('export', t.id)"
+        >⤓</button>
+        <button
+          class="icon-btn del-btn"
           :data-testid="`del-${t.id}`"
           title="删除会话"
           @click.stop="confirmRemove(t)"
@@ -190,7 +197,7 @@ const renameInvalid = () => !renameDraft.value.trim()
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.del-btn {
+.icon-btn {
   opacity: 0;
   border: none;
   background: transparent;
@@ -201,7 +208,9 @@ const renameInvalid = () => !renameDraft.value.trim()
   padding: 0 5px;
   line-height: 1.4;
 }
-.thread-item:hover .del-btn { opacity: 1; }
+.thread-item:hover .icon-btn { opacity: 1; }
+.export-btn { font-size: 13px; }
+.export-btn:hover { color: #6366f1; background: #eef2ff; }
 .del-btn:hover { color: #ef4444; background: #fef2f2; }
 .empty { padding: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; }
 

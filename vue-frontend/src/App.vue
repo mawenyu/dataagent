@@ -11,6 +11,7 @@ import { useWorkspaceFiles } from './composables/useWorkspaceFiles'
 import { buildAttachmentsConfig, ATTACH_ACCEPT } from './composables/chatAttachments'
 import { useWelcomeAttachments } from './composables/welcomeAttachments'
 import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
+import { buildThreadMarkdown, downloadMarkdown, exportFilename } from './composables/exportThread'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
 import FilesPanel from './components/FilesPanel.vue'
@@ -150,6 +151,26 @@ function handleChatError({ error }: { error: Error }) {
     type: 'error',
   })
 }
+
+// P-A: 会话导出 —— 拉 gateway 历史消息 → 前端生成 Markdown Blob 下载
+async function exportThread(id: string) {
+  const meta = threadsApi.threads.value.find((t) => t.id === id)
+  try {
+    const res = await fetch(`/agui-api/chat/threads/${encodeURIComponent(id)}/messages`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const body = await res.json()
+    const messages = body.data ?? []
+    const md = buildThreadMarkdown(
+      { id, title: meta?.title ?? id, createdAt: meta?.createdAt, updatedAt: meta?.updatedAt },
+      messages,
+      new Date(),
+    )
+    downloadMarkdown(exportFilename({ id, title: meta?.title ?? id }), md)
+    pushToast({ title: '导出成功', message: `已导出 ${messages.length} 条消息为 Markdown`, type: 'success' })
+  } catch (e: any) {
+    pushToast({ title: '导出失败', message: e?.message ?? '未知错误', type: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -218,6 +239,7 @@ function handleChatError({ error }: { error: Error }) {
                   @switch="threadsApi.switchTo($event); closeSidebarOnMobile()"
                   @remove="threadsApi.remove($event)"
                   @rename="(id: string, title: string) => threadsApi.rename(id, title)"
+                  @export="exportThread($event)"
                 />
                 <aside v-else class="sidebar">
                   <FilesPanel :thread-id="threadsApi.currentId.value" />

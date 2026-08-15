@@ -35,6 +35,13 @@ describe('ThreadSidebar (需求1/F2)', () => {
     expect(w.emitted('new')).toHaveLength(1)
   })
 
+  it('P-A: 导出按钮发 export 事件且不触发切换', async () => {
+    const w = mount(ThreadSidebar, { props: { threads, currentId: 'a' } })
+    await w.find('[data-testid="export-b"]').trigger('click')
+    expect(w.emitted('export')).toEqual([['b']])
+    expect(w.emitted('switch')).toBeUndefined()
+  })
+
   it('删除点确认按钮先弹 modal(不发事件),点"删除"才发 remove', async () => {
     const w = mount(ThreadSidebar, { props: { threads, currentId: 'a' }, attachTo: document.body })
     await w.find('[data-testid="del-a"]').trigger('click')

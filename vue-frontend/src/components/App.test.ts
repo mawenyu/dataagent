@@ -78,4 +78,54 @@ describe('App UI (需求4)', () => {
     expect(body).toContain('sales.csv')
     expect(body).toContain('请分析我上传的数据文件')
   })
+
+  it('P-A: 会话导出 —— 点导出按钮拉历史消息生成 Markdown Blob 下载', async () => {
+    const thread = { id: 't-exp', title: '八月销售', sessionId: 's-1', createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-02T00:00:00Z' }
+    const messages = [
+      { id: 'u1', role: 'user', content: '分析八月销售' },
+      {
+        id: 'a1', role: 'assistant', content: '总额 120 万',
+        toolCalls: [{ id: 'tc1', function: { name: 'bash', arguments: '{"command":"ls"}' } }],
+      },
+      { id: 'toolres-tc1', role: 'tool', toolCallId: 'tc1', content: 'sales.csv' },
+    ]
+    const fetchMock = vi.fn(async (input: any) => {
+      const url = String(input)
+      if (url.endsWith('/chat/threads')) return { ok: true, json: async () => ({ data: [thread] }) }
+      if (url.includes('/messages')) return { ok: true, json: async () => ({ data: messages }) }
+      return { ok: true, json: async () => ({ data: [] }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const createObjectURL = vi.fn(() => 'blob:mock')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL }))
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
+
+    const exportBtn = w.find('[data-testid="export-t-exp"]')
+    expect(exportBtn.exists(), '会话列表项应有导出按钮').toBe(true)
+    await exportBtn.trigger('click')
+    for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    const blob = createObjectURL.mock.calls[0][0] as Blob
+    expect(blob.type).toContain('text/markdown')
+    const md = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(blob)
+    })
+    expect(md).toContain('# 会话导出：八月销售')
+    expect(md).toContain('## 👤 用户')
+    expect(md).toContain('分析八月销售')
+    expect(md).toContain('**bash**')
+    expect(md).toContain('sales.csv')
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+    // 成功 toast
+    expect(w.find('.toast-stack').text()).toContain('导出成功')
+    clickSpy.mockRestore()
+  })
 })
