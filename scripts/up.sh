@@ -48,6 +48,7 @@ elif gateway_healthy; then
 else
   if [[ -f /tmp/agui-gateway-run.jar ]]; then
     echo "== 从 /tmp 副本直接启动 gateway(不重打包;重建用 --build) =="
+    set -a; . ./.env.opencode; set +a   # P0: 密码经环境变量
     setsid nohup java -XX:TieredStopAtLevel=1 -Xmx384m -jar /tmp/agui-gateway-run.jar > /tmp/agui-gateway.log 2>&1 < /dev/null &
   else
     echo "== /tmp 副本不存在,走完整构建启动 =="

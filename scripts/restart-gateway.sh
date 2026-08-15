@@ -37,6 +37,11 @@ fi
 echo "== copy artifact → $RUN_JAR =="
 cp "gateway/$JAR" "$RUN_JAR"
 
+# P0: opencode 密码经环境变量注入(application.yml 不再入库明文)
+[[ -f .env.opencode ]] || { echo "!! 缺 .env.opencode(OPENCODE_SERVER_PASSWORD)" >&2; exit 1; }
+set -a; . ./.env.opencode; set +a
+[[ -n "${OPENCODE_SERVER_PASSWORD:-}" ]] || { echo "!! .env.opencode 缺 OPENCODE_SERVER_PASSWORD" >&2; exit 1; }
+
 echo "== start from $RUN_JAR (cwd=$(pwd)) =="
 setsid nohup java -XX:TieredStopAtLevel=1 -Xmx384m -jar "$RUN_JAR" > "$LOG" 2>&1 < /dev/null &
 

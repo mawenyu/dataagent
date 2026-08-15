@@ -7,7 +7,8 @@ opencode:
     # OpenCode server 以 OPENCODE_SERVER_USERNAME/PASSWORD 启动时在此配置；
     # 留空表示无认证（本地默认）。明文即可（内网组件间凭证）。
     username: "opencode"
-    password: "6EUNdhPwmwXP2HBalxmNKAjmUzW8WzdRHrH8iEhSFT0"
+    # P0: 密码不入库 —— 取 .env.opencode(up.sh/restart-gateway.sh 启动时 source)
+    password: ${OPENCODE_SERVER_PASSWORD:}
 
 agui:
   # deepseek-reasoner streams thinking (session.reasoning.*) so the UI can
