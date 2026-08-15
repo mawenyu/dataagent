@@ -544,16 +544,33 @@ const DefaultToolCallRenderer = defineComponent({
                       argsExpanded,
                       "copilot-tool-render-args",
                     ),
-                    props.result !== undefined
-                      ? renderPayloadBlock(
-                          "Result",
-                          typeof props.result === "string"
-                            ? props.result
-                            : safeStringifyForPre(props.result),
-                          resultExpanded,
-                          "copilot-tool-render-result",
-                        )
-                      : null,
+                    // P-R: 完成态但无输出 → 明确提示,不留空白
+                    isComplete &&
+                    (props.result === undefined ||
+                      (typeof props.result === "string"
+                        ? props.result.trim() === ""
+                        : safeStringifyForPre(props.result).trim() === ""))
+                      ? h("div", [
+                          h("div", "Result"),
+                          h(
+                            "div",
+                            {
+                              "data-testid": "copilot-tool-render-result-empty",
+                              style: { color: "#9ca3af", fontSize: "12.5px", fontStyle: "italic" },
+                            },
+                            "（无输出）",
+                          ),
+                        ])
+                      : props.result !== undefined
+                        ? renderPayloadBlock(
+                            "Result",
+                            typeof props.result === "string"
+                              ? props.result
+                              : safeStringifyForPre(props.result),
+                            resultExpanded,
+                            "copilot-tool-render-result",
+                          )
+                        : null,
                   ])
                 : null,
             ],

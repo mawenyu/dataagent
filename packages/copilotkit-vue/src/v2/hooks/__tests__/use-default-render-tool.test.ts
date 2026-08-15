@@ -924,4 +924,44 @@ describe("useDefaultRenderTool", () => {
       expect(screen.getByTestId("copilot-tool-render-result-pre").textContent).toBe(longResult);
     });
   });
+
+  // P-R: 工具结果为空时的明确提示(完成态但无输出 → "（无输出）",不留空白)
+  describe("P-R empty tool result hint", () => {
+    it("complete + result undefined → 展开显示（无输出）", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      render(DefaultRenderer as never, {
+        props: { name: "bash", toolCallId: "pr-empty-1", parameters: {}, status: "complete", result: undefined },
+      });
+      await fireEvent.click(screen.getByText("bash"));
+      expect(screen.getByTestId("copilot-tool-render-result-empty").textContent).toContain("无输出");
+    });
+
+    it("complete + 空白结果字符串 → 同样提示", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      render(DefaultRenderer as never, {
+        props: { name: "bash", toolCallId: "pr-empty-2", parameters: {}, status: "complete", result: "   " },
+      });
+      await fireEvent.click(screen.getByText("bash"));
+      expect(screen.getByTestId("copilot-tool-render-result-empty").textContent).toContain("无输出");
+    });
+
+    it("运行中(result undefined)不显示空提示", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      render(DefaultRenderer as never, {
+        props: { name: "bash", toolCallId: "pr-run", parameters: {}, status: "executing", result: undefined },
+      });
+      await fireEvent.click(screen.getByText("bash"));
+      expect(screen.queryByTestId("copilot-tool-render-result-empty")).toBeNull();
+    });
+
+    it("有结果时不显示空提示", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      render(DefaultRenderer as never, {
+        props: { name: "bash", toolCallId: "pr-ok", parameters: {}, status: "complete", result: "done" },
+      });
+      await fireEvent.click(screen.getByText("bash"));
+      expect(screen.queryByTestId("copilot-tool-render-result-empty")).toBeNull();
+      expect(screen.getByTestId("copilot-tool-render-result-pre").textContent).toBe("done");
+    });
+  });
 });
