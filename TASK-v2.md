@@ -196,3 +196,32 @@ gateway 73 全绿；实测 8 组件扁平看板、文本零泄漏（docs/evidenc
   裸 JSON 泄漏（仅剩"模型产出不合法 JSON"的设计性文本 fallback，脚本按组重试规避）
 - 门槛：gateway 76 mvn 全绿、前端 34 vitest 全绿、vite build 通过、
   公网 /agui/ 200 + 最终 SSE 实测 8 类事件全齐（59 text delta）
+
+## 需求 9（2026-08-15 task5，SDD 模式）：workspace 文件面板 + CopilotKit 官方能力真实化
+
+### [DONE] 2026-08-15 全部完成（spec 在 docs/spec/，逐特性 TDD + curl 实测）
+
+**阻塞修复（用户公网实测发现）**：
+- `55c9241` opencode 端真实注册 UI 工具：agents/plugins/a2ui-tools.ts（tool.transform
+  注册 render_a2ui/render_report/render_slides/update_canvas，codemode:false），
+  修复全局 demo.ts 失效 import；实测原生调用无 Unknown tool
+- `1c1bcdc` 模型原生调 frontend tool 的 Unknown tool 重试循环：translator 在
+  tool.called 识别 frontend 工具名 → 直接转浏览器执行流并截断 opencode 失败重试
+
+**A. workspace 文件管理（fa9baa0 + B4 合并）**：/files REST（列表/下载/上传 multipart/
+PUT 覆盖写/删除，白名单+5MB+双保险 canonical 校验）；前端 会话/文件 Tab + FilesPanel
+（列表/预览/上传/下载/删除）。另修复 WorkspaceFileService 启动崩溃（@Autowired 构造）
++ 新增 @SpringBootTest 冒烟防回归；gateway 从项目根启动对齐 workspace 路径。
+
+**B. 官方能力真实化（禁 mock，模型只产小选择集、gateway 确定性展开）**：
+- B1 render_report（41fb251）：选择集 → Java 真实聚合 CSV → KPI/图表/明细 surface；
+  实测值与 agent 独立分析一致（1,360,700/137/华北）
+- B2 render_slides（7ecd485）：slides 结构 → Tabs surface；实测 4 页含真实数字
+- B3 update_canvas（merge 047555f，子 agent worktree 并行开发）：research 画布 +
+  append 就地追加；实测两轮 2 节→3 节旧节保留
+- B4 spreadsheet（merge 9424807，子 agent worktree 并行开发）：CSV 表格编辑器
+  （contenteditable 网格+加行列+PUT 保存）+ frontend tool applySpreadsheetEdits
+  （confirm HITL 确认后落盘）
+
+**门槛**：gateway 97 mvn 全绿、前端 55 vitest 全绿、vite build + 部署
+/agui/ 200、公网 /agui-api/files 200；证据 docs/evidence/2026-08-15-*.sse/txt
