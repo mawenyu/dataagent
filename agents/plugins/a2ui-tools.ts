@@ -3,7 +3,7 @@
  *
  * 背景（2026-08-15 实测）：render_a2ui / render_report 等之前只靠 gateway 的
  * <tool_call> prompt 契约 —— 模型以原生 tool call 形式调用时 opencode 没有注册
- * 这些工具，provider 按名调用得到 "Unknown tool"。本插件把 4 个 UI 工具注册进
+ * 这些工具，provider 按名调用得到 "Unknown tool"。本插件把 5 个 UI 工具注册进
  * opencode（codemode:false，否则只经 CodeMode 暴露，按名调用仍 Unknown tool）。
  *
  * 职责划分：
