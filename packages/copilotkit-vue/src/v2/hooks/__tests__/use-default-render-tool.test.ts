@@ -1,8 +1,20 @@
 import { fireEvent, render, screen } from "@testing-library/vue";
-import { defineComponent } from "vue";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  computed,
+  defineComponent,
+  h,
+  nextTick,
+  provide,
+  ref,
+  shallowRef,
+} from "vue";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useDefaultRenderTool } from "../use-default-render-tool";
 import { useRenderTool } from "../use-render-tool";
+import {
+  CopilotChatConfigurationKey,
+  CopilotKitKey,
+} from "../../providers/keys";
 
 vi.mock("../use-render-tool", () => ({
   useRenderTool: vi.fn(),
@@ -576,5 +588,258 @@ describe("useDefaultRenderTool", () => {
 
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  // F3: tool-call observability — live duration, status icons (spinner/✓/✗),
+  // and failure/interrupt marking driven by agent run-lifecycle events.
+  describe("F3 duration / status icon / failure state", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function getDefaultRenderer(): (props: Record<string, unknown>) => unknown {
+      const Harness = defineComponent({
+        setup() {
+          useDefaultRenderTool();
+          return {};
+        },
+        template: `<div />`,
+      });
+      render(Harness);
+      const [config] = mockUseRenderTool.mock.calls[0] as [
+        { render: (props: Record<string, unknown>) => unknown },
+      ];
+      return config.render;
+    }
+
+    function renderWithRunContext(
+      renderer: (props: Record<string, unknown>) => unknown,
+      props: Record<string, unknown>,
+      fakeAgent: {
+        isRunning: boolean;
+        subscribe: ReturnType<typeof vi.fn>;
+      },
+    ) {
+      const fakeCore = { getAgent: vi.fn(() => fakeAgent) };
+      const Harness = defineComponent({
+        setup() {
+          provide(CopilotKitKey, {
+            copilotkit: shallowRef(fakeCore),
+            executingToolCallIds: ref(new Set<string>()),
+            a2uiTheme: computed(() => undefined),
+            a2uiCatalog: computed(() => undefined),
+            a2uiLoadingComponent: computed(() => undefined),
+            a2uiIncludeSchema: computed(() => false),
+          } as never);
+          provide(
+            CopilotChatConfigurationKey,
+            computed(
+              () =>
+                ({ agentId: "default", threadId: "t-f3" }) as never,
+            ),
+          );
+          return () => h(renderer as never, props);
+        },
+      });
+      render(Harness);
+    }
+
+    function makeFakeAgent(isRunning = true) {
+      let subscriber: Record<string, ((evt?: unknown) => void) | undefined>;
+      const agent = {
+        isRunning,
+        subscribe: vi.fn((sub: Record<string, (evt?: unknown) => void>) => {
+          subscriber = sub;
+          return { unsubscribe: vi.fn() };
+        }),
+      };
+      return {
+        agent,
+        fire(event: "onRunStartedEvent" | "onRunFinishedEvent" | "onRunErrorEvent") {
+          return subscriber[event]?.({});
+        },
+      };
+    }
+
+    it("shows a spinner and live elapsed time while running, then freezes the duration on complete", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000_000);
+      const DefaultRenderer = getDefaultRenderer();
+
+      const rendered = render(DefaultRenderer as never, {
+        props: {
+          name: "bash",
+          toolCallId: "tc-dur-1",
+          parameters: {},
+          status: "executing",
+          result: undefined,
+        },
+      });
+
+      // spinner visible while active, no ✓/✗ glyph
+      expect(
+        screen.getByTestId("copilot-tool-render-spinner"),
+      ).toBeDefined();
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
+        "Running",
+      );
+
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(
+        screen.getByTestId("copilot-tool-render-duration").textContent,
+      ).toBe("1.5s");
+
+      await rendered.rerender({ status: "complete", result: "ok" });
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
+        "Done",
+      );
+      expect(
+        screen.getByTestId("copilot-tool-render-status-icon").textContent,
+      ).toBe("✓");
+      expect(
+        screen.getByTestId("copilot-tool-render-duration").textContent,
+      ).toBe("1.5s");
+
+      // frozen: further time passing must not change the displayed duration
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(
+        screen.getByTestId("copilot-tool-render-duration").textContent,
+      ).toBe("1.5s");
+    });
+
+    it("shows no duration for calls that were already complete at mount (history restore)", () => {
+      const DefaultRenderer = getDefaultRenderer();
+      render(DefaultRenderer as never, {
+        props: {
+          name: "bash",
+          toolCallId: "tc-dur-hist",
+          parameters: {},
+          status: "complete",
+          result: "ok",
+        },
+      });
+
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
+        "Done",
+      );
+      expect(
+        screen.getByTestId("copilot-tool-render-status-icon").textContent,
+      ).toBe("✓");
+      expect(screen.queryByTestId("copilot-tool-render-duration")).toBeNull();
+    });
+
+    it("marks the card ✗失败 when the run errors while the call is still active", async () => {
+      const { agent, fire } = makeFakeAgent(true);
+      const DefaultRenderer = getDefaultRenderer();
+      renderWithRunContext(DefaultRenderer, {
+        name: "bash",
+        toolCallId: "tc-fail-1",
+        parameters: {},
+        status: "inProgress",
+        result: undefined,
+      }, agent);
+
+      expect(agent.subscribe).toHaveBeenCalledTimes(1);
+      fire("onRunErrorEvent");
+      await nextTick();
+
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
+        "失败",
+      );
+      expect(
+        screen.getByTestId("copilot-tool-render-status-icon").textContent,
+      ).toBe("✗");
+    });
+
+    it("marks the card ✗已中断 when the run finishes without a result for this call", async () => {
+      const { agent, fire } = makeFakeAgent(true);
+      const DefaultRenderer = getDefaultRenderer();
+      renderWithRunContext(DefaultRenderer, {
+        name: "bash",
+        toolCallId: "tc-abort-1",
+        parameters: {},
+        status: "executing",
+        result: undefined,
+      }, agent);
+
+      fire("onRunFinishedEvent");
+      await nextTick();
+
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
+        "已中断",
+      );
+      expect(
+        screen.getByTestId("copilot-tool-render-status-icon").textContent,
+      ).toBe("✗");
+    });
+
+    it("does not mark an already-complete card when the run errors later", async () => {
+      const { agent, fire } = makeFakeAgent(true);
+      const DefaultRenderer = getDefaultRenderer();
+      renderWithRunContext(DefaultRenderer, {
+        name: "bash",
+        toolCallId: "tc-done-1",
+        parameters: {},
+        status: "complete",
+        result: "ok",
+      }, agent);
+
+      fire("onRunErrorEvent");
+      await nextTick();
+
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
+        "Done",
+      );
+      expect(
+        screen.getByTestId("copilot-tool-render-status-icon").textContent,
+      ).toBe("✓");
+    });
+
+    it("recovers to spinner when a new run starts (resume after failure)", async () => {
+      const { agent, fire } = makeFakeAgent(true);
+      const DefaultRenderer = getDefaultRenderer();
+      renderWithRunContext(DefaultRenderer, {
+        name: "bash",
+        toolCallId: "tc-resume-1",
+        parameters: {},
+        status: "inProgress",
+        result: undefined,
+      }, agent);
+
+      fire("onRunErrorEvent");
+      await nextTick();
+      expect(
+        screen.getByTestId("copilot-tool-render-status-icon").textContent,
+      ).toBe("✗");
+
+      fire("onRunStartedEvent");
+      await nextTick();
+      expect(
+        screen.getByTestId("copilot-tool-render-spinner"),
+      ).toBeDefined();
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
+        "Running",
+      );
+    });
+
+    it("marks a stale active card as 已中断 at mount when the agent is idle (restored dangling call)", async () => {
+      const { agent } = makeFakeAgent(false);
+      const DefaultRenderer = getDefaultRenderer();
+      renderWithRunContext(DefaultRenderer, {
+        name: "bash",
+        toolCallId: "tc-stale-1",
+        parameters: {},
+        status: "inProgress",
+        result: undefined,
+      }, agent);
+
+      await nextTick();
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
+        "已中断",
+      );
+      expect(
+        screen.getByTestId("copilot-tool-render-status-icon").textContent,
+      ).toBe("✗");
+    });
   });
 });

@@ -1,8 +1,24 @@
-import { defineComponent, h, ref } from "vue";
+import {
+  computed,
+  defineComponent,
+  h,
+  inject,
+  onUnmounted,
+  ref,
+  toRaw,
+  watch,
+  watchEffect,
+} from "vue";
 import type { WatchSource } from "vue";
 import type { Component, VNodeChild } from "vue";
 import { ToolCallStatus } from "@copilotkit/core";
+import { DEFAULT_AGENT_ID } from "@copilotkit/shared";
 import { useRenderTool } from "./use-render-tool";
+import { getThreadClone } from "./use-agent";
+import {
+  CopilotChatConfigurationKey,
+  CopilotKitKey,
+} from "../providers/keys";
 
 type DefaultRenderProps = {
   name: string;
@@ -104,6 +120,59 @@ function safeStringifyForPre(value: unknown): string {
   }
 }
 
+/**
+ * Human-readable tool-call duration: "850ms" under a second, "1.2s" under a
+ * minute, "2m 5s" beyond.
+ */
+function formatToolCallDuration(ms: number): string {
+  const clamped = Math.max(0, ms);
+  if (clamped < 1000) return `${Math.round(clamped)}ms`;
+  if (clamped < 60_000) return `${(clamped / 1000).toFixed(1)}s`;
+  const minutes = Math.floor(clamped / 60_000);
+  const seconds = Math.round((clamped % 60_000) / 1000);
+  return `${minutes}m ${seconds}s`;
+}
+
+/** Inline SVG spinner (SMIL-animated, no CSS keyframes needed). */
+function renderSpinner() {
+  return h(
+    "svg",
+    {
+      width: "12",
+      height: "12",
+      viewBox: "0 0 16 16",
+      "data-testid": "copilot-tool-render-spinner",
+      "aria-hidden": "true",
+    },
+    [
+      h(
+        "circle",
+        {
+          cx: "8",
+          cy: "8",
+          r: "6",
+          fill: "none",
+          stroke: "#64748b",
+          "stroke-width": "2.5",
+          "stroke-linecap": "round",
+          "stroke-dasharray": "28.3 9.4",
+        },
+        [
+          h("animateTransform", {
+            attributeName: "transform",
+            attributeType: "XML",
+            type: "rotate",
+            from: "0 8 8",
+            to: "360 8 8",
+            dur: "0.8s",
+            repeatCount: "indefinite",
+          }),
+        ],
+      ),
+    ],
+  );
+}
+
 const DefaultToolCallRenderer = defineComponent({
   props: {
     name: {
@@ -136,15 +205,151 @@ const DefaultToolCallRenderer = defineComponent({
   setup(props) {
     const isExpanded = ref(false);
 
+    const isActiveStatus = () =>
+      props.status === "inProgress" || props.status === "executing";
+
+    // --- Duration tracking -------------------------------------------------
+    // `startedAt` is set the first time an active status is observed; the
+    // duration freezes when the call completes OR when the run dies while
+    // the call is still active. Calls that mount already-complete (history
+    // restore) never get a `startedAt`, so no duration is shown for them.
+    const startedAt = ref<number | null>(null);
+    const frozenDurationMs = ref<number | null>(null);
+    const nowTick = ref(Date.now());
+    let tickTimer: ReturnType<typeof setInterval> | null = null;
+
+    function stopTicking() {
+      if (tickTimer !== null) {
+        clearInterval(tickTimer);
+        tickTimer = null;
+      }
+    }
+    function startTicking() {
+      if (tickTimer === null) {
+        tickTimer = setInterval(() => {
+          nowTick.value = Date.now();
+        }, 100);
+      }
+    }
+    function freezeDuration() {
+      if (startedAt.value !== null && frozenDurationMs.value === null) {
+        frozenDurationMs.value = Date.now() - startedAt.value;
+      }
+      stopTicking();
+    }
+
+    watch(
+      () => props.status,
+      () => {
+        if (isActiveStatus()) {
+          if (startedAt.value === null) startedAt.value = Date.now();
+          nowTick.value = Date.now();
+          startTicking();
+        } else {
+          freezeDuration();
+        }
+      },
+      { immediate: true },
+    );
+    onUnmounted(stopTicking);
+
+    // --- Run lifecycle (failure / interrupt detection) ---------------------
+    // The ToolCallStatus enum has no error state, so a failed or aborted run
+    // leaves the card stuck on "Running". Subscribe to the same (possibly
+    // thread-cloned) agent the chat uses and mark still-active cards ✗ when
+    // the run errors or ends without a result for this call.
+    // Both injections degrade gracefully to null outside a provider (unit
+    // tests mount the renderer bare), in which case the card simply keeps
+    // the spinner/✓ behaviour.
+    type RunEnd = "failed" | "finished" | null;
+    const runEnd = ref<RunEnd>(null);
+
+    const kitContext = inject(CopilotKitKey, null);
+    const chatConfig = inject(CopilotChatConfigurationKey, null);
+
+    watchEffect((onCleanup) => {
+      const core = kitContext?.copilotkit.value;
+      if (!core) return;
+      const agentId = chatConfig?.value?.agentId ?? DEFAULT_AGENT_ID;
+      const threadId = chatConfig?.value?.threadId;
+      const registryAgent = core.getAgent(agentId);
+      const rawRegistry = registryAgent ? toRaw(registryAgent) : undefined;
+      const agent =
+        (threadId ? getThreadClone(rawRegistry, threadId) : undefined) ??
+        rawRegistry;
+      if (!agent) return;
+
+      // A card that mounts still-active while the agent is idle is a
+      // dangling call from a dead run (e.g. restored history) — mark it
+      // interrupted immediately instead of spinning forever.
+      if (!agent.isRunning && isActiveStatus() && runEnd.value === null) {
+        runEnd.value = "finished";
+        freezeDuration();
+      }
+
+      const sub = agent.subscribe({
+        onRunStartedEvent: () => {
+          // A fresh run (e.g. resume after failure) revives active cards.
+          runEnd.value = null;
+          if (isActiveStatus() && frozenDurationMs.value === null) {
+            startTicking();
+          }
+        },
+        onRunFinishedEvent: () => {
+          if (runEnd.value === null) runEnd.value = "finished";
+          if (isActiveStatus()) freezeDuration();
+        },
+        onRunErrorEvent: () => {
+          runEnd.value = "failed";
+          if (isActiveStatus()) freezeDuration();
+        },
+      });
+      onCleanup(() => sub.unsubscribe());
+    });
+
+    const failedState = computed<RunEnd>(() => {
+      if (props.status === "complete") return null;
+      return runEnd.value;
+    });
+
+    const durationText = computed(() => {
+      if (frozenDurationMs.value !== null) {
+        return formatToolCallDuration(frozenDurationMs.value);
+      }
+      if (startedAt.value !== null && props.status !== "complete") {
+        return formatToolCallDuration(nowTick.value - startedAt.value);
+      }
+      return null;
+    });
+
     return () => {
-      const isActive =
-        props.status === "inProgress" || props.status === "executing";
+      const isActive = isActiveStatus();
       const isComplete = props.status === "complete";
-      const statusLabel = isActive
-        ? "Running"
+      const failed = failedState.value;
+      const statusLabel = failed
+        ? failed === "failed"
+          ? "失败"
+          : "已中断"
+        : isActive
+          ? "Running"
+          : isComplete
+            ? "Done"
+            : props.status;
+      const statusColor = failed
+        ? failed === "failed"
+          ? "#dc2626"
+          : "#d97706"
         : isComplete
-          ? "Done"
-          : props.status;
+          ? "#16a34a"
+          : undefined;
+
+      const iconNode = failed
+        ? "✗"
+        : isComplete
+          ? "✓"
+          : isActive
+            ? renderSpinner()
+            : null;
 
       return h(
         "div",
@@ -153,6 +358,7 @@ const DefaultToolCallRenderer = defineComponent({
           "data-tool-name": props.name,
           "data-tool-call-id": props.toolCallId,
           "data-status": props.status,
+          "data-run-end": failed ?? "",
           "data-args": safeStringifyForAttr(props.parameters),
           "data-result": safeStringifyForAttr(props.result),
           style: { marginTop: "8px", paddingBottom: "8px" },
@@ -164,7 +370,7 @@ const DefaultToolCallRenderer = defineComponent({
               style: {
                 borderRadius: "12px",
                 border: "1px solid #e4e4e7",
-                backgroundColor: "#fafafa",
+                backgroundColor: failed ? "#fef2f2" : "#fafafa",
                 padding: "14px 16px",
               },
             },
@@ -202,8 +408,44 @@ const DefaultToolCallRenderer = defineComponent({
                   ),
                   h(
                     "span",
-                    { "data-testid": "copilot-tool-render-status" },
-                    statusLabel,
+                    {
+                      style: {
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        color: statusColor,
+                      },
+                    },
+                    [
+                      h(
+                        "span",
+                        {
+                          "data-testid": "copilot-tool-render-status-icon",
+                          style: {
+                            display: "inline-flex",
+                            alignItems: "center",
+                            fontSize: "12px",
+                            lineHeight: 1,
+                          },
+                        },
+                        iconNode ? [iconNode] : [],
+                      ),
+                      h(
+                        "span",
+                        { "data-testid": "copilot-tool-render-status" },
+                        statusLabel,
+                      ),
+                      durationText.value
+                        ? h(
+                            "span",
+                            {
+                              "data-testid": "copilot-tool-render-duration",
+                              style: { color: "#94a3b8", fontSize: "12px" },
+                            },
+                            durationText.value,
+                          )
+                        : null,
+                    ],
                   ),
                 ],
               ),
