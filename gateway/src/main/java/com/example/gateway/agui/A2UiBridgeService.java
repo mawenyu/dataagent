@@ -186,6 +186,10 @@ public class A2UiBridgeService {
         sb.append("- render_slides: render a slide deck as a tabbed surface. arguments: ")
                 .append("{title, slides:[{heading, bullets:[string], note?}], surfaceId?}. ")
                 .append("Use for 演示/presentation/slides requests; bullets are plain text (no markdown tables).\n");
+        // task5-B3: research-canvas 模式 —— 研究报告/文档类内容进 canvas surface
+        sb.append("- update_canvas: write structured research/doc content into a canvas surface. arguments: ")
+                .append("{title, sections:[{heading, markdown}], append?, surfaceId?}. ")
+                .append("Same surfaceId updates in place; append=true appends sections.\n");
         if (context != null) {
             sb.append("\nThe client provided these A2UI capabilities (catalog, component schemas, guidelines):\n");
             for (Map<String, Object> entry : context) {
