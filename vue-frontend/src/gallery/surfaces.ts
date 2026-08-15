@@ -142,6 +142,27 @@ const hitl = ops('g-hitl', [
   { component: 'ActionButton', id: 'cancel', label: '取消', action: { event: { name: 'hitl_cancel', context: { actionId: 'del-region-sales-csv' } } } },
 ])
 
+
+// ⑦ 边界/异常（vision-P4）：未知组件占位 / 缺必填 prop / 8 层嵌套 / 坏路径绑定 / cycle 防护
+const edge = ops('g-edge', [
+  { component: 'Column', id: 'root', children: ['e-title', 'e-unknown', 'e-noprop', 'e-deep1', 'e-badpath', 'e-cycle-a', 'e-ok'] },
+  { component: 'Text', id: 'e-title', text: '边界/异常健壮性画廊', variant: 'h3' },
+  { component: 'Gauge', id: 'e-unknown', value: 42 } as any,  // 不在 catalog → 红字占位 + console.warn
+  { component: 'MetricCard', id: 'e-noprop', title: '缺 value 的指标卡' } as any,  // 缺必填 prop
+  { component: 'Column', id: 'e-deep1', children: ['e-deep2'] },
+  { component: 'Column', id: 'e-deep2', children: ['e-deep3'] },
+  { component: 'Column', id: 'e-deep3', children: ['e-deep4'] },
+  { component: 'Column', id: 'e-deep4', children: ['e-deep5'] },
+  { component: 'Column', id: 'e-deep5', children: ['e-deep6'] },
+  { component: 'Column', id: 'e-deep6', children: ['e-deep7'] },
+  { component: 'Column', id: 'e-deep7', children: ['e-deep-text'] },
+  { component: 'Text', id: 'e-deep-text', text: '↳ 第八层深处正常渲染', variant: 'caption' },
+  { component: 'Text', id: 'e-badpath', text: { path: 'nonexistent.field' } },  // 不存在的数据路径
+  { component: 'Column', id: 'e-cycle-a', children: ['e-cycle-b'] },  // cycle A↔B
+  { component: 'Column', id: 'e-cycle-b', children: ['e-cycle-a'] },
+  { component: 'Text', id: 'e-ok', text: '✓ 页面存活：所有异常均被降级处理', variant: 'caption' },
+])
+
 export const GALLERY_BATCHES: Record<string, GalleryBatch> = {
   layout: { label: '布局容器类', components: ['Card', 'Row', 'Column', 'List', 'Tabs', 'Divider', 'Modal'], operations: layout },
   form: { label: '表单交互类', components: ['TextField', 'CheckBox', 'ChoicePicker', 'Slider', 'DateTimeInput', 'Button'], operations: form },
@@ -149,4 +170,5 @@ export const GALLERY_BATCHES: Record<string, GalleryBatch> = {
   charts: { label: '图表/数据类', components: ['MetricCard', 'BarChart', 'LineChart', 'PieChart', 'DataTable'], operations: charts },
   content: { label: '内容类', components: ['Badge', 'Markdown', 'InsightCard', 'WarningCard', 'ActionButton'], operations: content },
   hitl: { label: 'HITL 确认卡片', components: ['WarningCard', 'ActionButton'], operations: hitl },
+  edge: { label: '边界/异常（vision-P4）', components: ['MetricCard', 'Text', 'Column'], operations: edge },
 }

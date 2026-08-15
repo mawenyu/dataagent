@@ -10,6 +10,8 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -256,6 +258,48 @@ public class A2UiBridgeService {
         return flat;
     }
 
+    /**
+     * vision-P4: 组件引用环检测（DFS 三色标记）。收集 children[]/child/trigger/
+     * content/tabs[].child 的 id 引用建图，任一节点可达自身即判环。
+     */
+    static boolean hasReferenceCycle(ArrayNode comps) {
+        Map<String, List<String>> edges = new LinkedHashMap<>();
+        for (JsonNode n : comps) {
+            if (!n.isObject()) continue;
+            String id = n.path("id").asText("");
+            if (id.isBlank()) continue;
+            List<String> refs = new ArrayList<>();
+            for (JsonNode ch : n.path("children")) {
+                if (ch.isTextual()) refs.add(ch.asText());
+            }
+            for (String field : List.of("child", "trigger", "content")) {
+                JsonNode v = n.get(field);
+                if (v != null && v.isTextual()) refs.add(v.asText());
+            }
+            for (JsonNode tab : n.path("tabs")) {
+                JsonNode child = tab.path("child");
+                if (child.isTextual()) refs.add(child.asText());
+            }
+            edges.put(id, refs);
+        }
+        Map<String, Integer> color = new HashMap<>(); // 0/缺省=白 1=灰 2=黑
+        for (String id : edges.keySet()) {
+            if (color.getOrDefault(id, 0) == 0 && dfsCycle(id, edges, color)) return true;
+        }
+        return false;
+    }
+
+    private static boolean dfsCycle(String id, Map<String, List<String>> edges, Map<String, Integer> color) {
+        color.put(id, 1);
+        for (String next : edges.getOrDefault(id, List.of())) {
+            int c = color.getOrDefault(next, 0);
+            if (c == 1) return true;
+            if (c == 0 && edges.containsKey(next) && dfsCycle(next, edges, color)) return true;
+        }
+        color.put(id, 2);
+        return false;
+    }
+
     /** Whether the client advertised A2UI capability for this run. */
     public boolean hasA2uiContext(List<Map<String, Object>> context) {
         if (context == null) return false;
@@ -349,6 +393,13 @@ public class A2UiBridgeService {
             return Optional.empty();
         }
         comps = normalizeComponents(flat);
+        ArrayNode compsArr = (ArrayNode) comps;
+        // vision-P4: children/child/trigger/content/tabs 引用环检测 ——
+        // 环会让前端递归渲染栈溢出（白屏），整体拒绝（前端另有渲染层防护）
+        if (hasReferenceCycle(compsArr)) {
+            log.warn("render_a2ui: rejected components (reference cycle detected)");
+            return Optional.empty();
+        }
         if (comps.size() > MAX_COMPONENTS || comps.toString().length() > MAX_PAYLOAD_CHARS) {
             log.warn("render_a2ui: payload too large ({} components, {} chars)",
                     comps.size(), comps.toString().length());

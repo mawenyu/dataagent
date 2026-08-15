@@ -281,4 +281,44 @@ class A2UiBridgeServiceTest {
         assertEquals("Column", col.path("component").asText());
         assertEquals(2, col.path("children").size());
     }
+
+    /** vision-P4: children id 环（A↔B）—— 整体拒绝（前端另有渲染层防护，双保险）。 */
+    @Test
+    void childrenCycleRejected() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["a","ok"]},
+                  {"component":"Column","id":"a","children":["b"]},
+                  {"component":"Column","id":"b","children":["a"]},
+                  {"component":"Text","id":"ok","text":"x"}
+                ]}""";
+        assertTrue(bridge.execute("run", "t", MAPPER.readTree(args)).isEmpty(),
+                "id 环必须拒绝（否则前端递归渲染栈溢出）");
+    }
+
+    /** 自引用（A children [A]）也是环。 */
+    @Test
+    void selfReferenceCycleRejected() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["root"]}
+                ]}""";
+        assertTrue(bridge.execute("run", "t", MAPPER.readTree(args)).isEmpty());
+    }
+
+    /** 无环的深层嵌套（8 层）正常放行。 */
+    @Test
+    void deepNestingWithoutCycleAccepted() throws Exception {
+        StringBuilder sb = new StringBuilder();
+        sb.append("root");
+        StringBuilder json = new StringBuilder("{\"surfaceId\":\"s1\",\"components\":[");
+        json.append("{\"component\":\"Column\",\"id\":\"root\",\"children\":[\"l1\"]}");
+        for (int i = 1; i <= 7; i++) {
+            String child = (i == 7) ? "deep" : "l" + (i + 1);
+            json.append(",{\"component\":\"Column\",\"id\":\"l").append(i)
+                    .append("\",\"children\":[\"").append(child).append("\"]}");
+        }
+        json.append(",{\"component\":\"Text\",\"id\":\"deep\",\"text\":\"x\"}]}");
+        assertTrue(bridge.execute("run", "t", MAPPER.readTree(json.toString())).isPresent());
+    }
 }

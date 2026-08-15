@@ -25,6 +25,8 @@ function collectComponents(ops: any[]): string[] {
 describe('gallery surfaces (vision-P2)', () => {
   it('每批 surface 的组件都在白名单内，且 root id = root', () => {
     for (const [key, b] of Object.entries(GALLERY_BATCHES)) {
+      // vision-P4: edge 批故意注入白名单外组件（Gauge）验证前端降级渲染，豁免
+      if (key === 'edge') continue
       const used = collectComponents(b.operations)
       for (const name of used) {
         expect(WHITELIST.has(name), `batch=${key} 组件 ${name} 不在白名单`).toBe(true)

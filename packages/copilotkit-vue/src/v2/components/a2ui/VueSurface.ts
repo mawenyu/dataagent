@@ -9,9 +9,12 @@ import {
   defineComponent,
   h,
   ref,
+  inject,
+  provide,
   onUnmounted,
   type PropType,
   type VNode,
+  type InjectionKey,
 } from "vue";
 import {
   ComponentContext,
@@ -25,6 +28,13 @@ import type { VueComponentImplementation } from "./adapter";
  * Subscribes to component create/delete events and renders the
  * appropriate catalog component via the GenericBinder adapter.
  */
+/**
+ * Ancestor id chain for cycle detection (dataagent fork fix, 2026-08-15):
+ * a children cycle (A↔B) previously recursed DeferredChild until
+ * "Maximum call stack size exceeded" and killed the whole surface.
+ */
+const ANCESTORS_KEY: InjectionKey<ReadonlySet<string>> = Symbol("a2ui-ancestors");
+
 const DeferredChild = defineComponent({
   name: "A2UIDeferredChild",
   props: {
@@ -36,6 +46,17 @@ const DeferredChild = defineComponent({
     basePath: { type: String, required: true },
   },
   setup(props) {
+    // Cycle guard: if this id already appears in the ancestor chain, stop
+    // recursing and render a visible placeholder instead of overflowing.
+    const ancestors = inject(ANCESTORS_KEY, new Set<string>());
+    const isCycle = ancestors.has(props.id);
+    if (isCycle) {
+      console.warn(
+        `[A2UI Vue] Cycle detected: component "${props.id}" references itself via children chain`,
+      );
+    }
+    provide(ANCESTORS_KEY, new Set([...ancestors, props.id]));
+
     // Reactive trigger — incremented when the component is created/deleted
     const version = ref(0);
 
@@ -73,6 +94,22 @@ const DeferredChild = defineComponent({
       // Touch version to ensure reactivity
       void version.value;
 
+      if (isCycle) {
+        return h(
+          "div",
+          {
+            style: {
+              padding: "8px 12px",
+              border: "1px dashed #f59e0b",
+              borderRadius: "8px",
+              color: "#b45309",
+              fontSize: "12px",
+            },
+          },
+          `Cycle detected: ${props.id}`,
+        );
+      }
+
       const componentModel = props.surface.componentsModel.get(props.id);
 
       if (!componentModel) {
@@ -96,6 +133,10 @@ const DeferredChild = defineComponent({
       );
 
       if (!compImpl) {
+        // 降级渲染占位（不白屏不抛错）+ console.warn 留痕（2026-08-15 vision-P4）
+        console.warn(
+          `[A2UI Vue] Unknown component: ${componentModel.type} (id=${props.id}) — rendering placeholder`,
+        );
         return h(
           "div",
           { style: { color: "red" } },
