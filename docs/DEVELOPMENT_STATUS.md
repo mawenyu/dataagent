@@ -19,7 +19,7 @@
 
 ### P2（排入后续循环）
 
-8. AguiEventTranslator.translate ~310 行单方法；全局/会话级文件端点复制粘贴；历史拉取两处重复。
+8. ~~translate 单方法 / 文件端点双套 / 历史拉取重复~~ ✅ d27c6ad（translate → 36 行编排 + 7 事件族）/ 6cff803（端点共享实现委托）/ 403b73a（拉取收敛 ThreadMessagesService）。
 9. 无统一错误映射；ChatThreadStore 磁盘故障 → 500；event loop 阻塞 IO（Files.write / store 全文件锁）。
 10. ~~每事件 `new ObjectMapper()`（AgUiProtocolService 3 处）~~ ✅ a8f4354。
 11. ~~死代码：WorkspaceFileService.sizeOf、A2UiActionHandler.parse、A2UiService.BASIC_CATALOG_ID~~ ✅ 2fb571d（parse/ParsedAction 连带清理，-43 行）。
@@ -41,7 +41,13 @@
 - [x] F3 补全：工具级失败结果渲染失败态（f972413，fork 目标文件 30/30 绿，FORK.md 条目 13）
 - [x] 验收 Test 4 补齐：`scripts/test-datasource-missing.sh` 真链路 5/5（509ee4b）—— 删 CSV → 工具失败前缀契约 + RUN_FINISHED
 - [x] 根 README 补建（abfb0ac）；前端 build + 245 绿 + 部署 /var/www/blog/agui 200
+- [x] P2-8 gateway 重构三件套（d27c6ad/6cff803/403b73a，每步 178 绿）
+- [x] 移动端验收（playwright 触屏仿真实锤）：
+  - 会话行点击被隐形 pin 按钮拦截 → pointer-events 随可见性（0d8acb4，ThreadSidebar 26/26）
+  - FilesPanel 同款（b869322）+ fork 图片下载按钮 touch-safe（8a2173c，FORK 条目 14）
+  - welcome 占位文案移动端截断 → 单行 + title 提示（794cfaa）
+  - 证据截图 docs/screenshots/2026-08-16-mobile-*.png；前端 248 绿
 
 ## 下一步（修完 P0/P1 后）
 
-P2-8/9 重构（避开 vision 在途文件）→ 移动端 UX 验收 → fork 既有失败清零（随并行线）。
+P2-9 错误映射 + event loop 阻塞 IO（boundedElastic + @RestControllerAdvice）→ fork 既有失败清零（随并行线）。
