@@ -1,0 +1,28 @@
+== P15 spreadsheetEdits 回写链 e2e（2026-08-16，生产实测）==
+
+回写链全链路（thread=vision-p15b）:
+1. 真实 run: agent 读 CSV 定位坐标 → applySpreadsheetEdits 工具调用
+   （37 处单元格变更，TOOL_CALL_START/ARGS/RUN_FINISHED 待浏览器执行）
+   —— 2026-08-16-p15-edits-toolcall.sse
+2. 浏览器侧回写（模拟 handler）：读文件 → 应用 37 处变更 →
+   PUT ?baseModified=<读取时 mtime> → 200 → 磁盘核验 37 处 388999 ✓
+3. 工具结果续跑 → agent 答"已把华北所有 37 行销售额改为 388999"
+   —— 2026-08-16-p15-edits-resume.sse
+
+并发冲突（乐观检测，P15 新增）:
+- PUT 携带过期 baseModified → 409 {"error":"conflict","currentModified":...}
+  文件未被覆盖（磁盘仍 37 处 388999）✓
+- 不带 baseModified → 兼容原覆盖语义（JUnit 锁定）
+
+非法坐标边界（vitest 锁定）:
+- 负数/非整数 → 抛错不落盘（task5 既有）
+- **row=1e9 无上限时 while 循环直接挂死（TDD 实测 5 分钟超时证实）** →
+  新增上限 MAX_ROW=10000/MAX_COL=200，超限快速抛错（<100ms）
+
+顺带修复的真 bug:
+1. SpreadsheetEditor 用 legacy 共享根 API 保存（useWorkspaceFiles() 无 threadId）
+   —— 编辑会话文件却写共享根。已改 thread 作用域（FilesPanel 传入）
+2. P-N 通配符映射 {*path} 与 @PathVariable name 不匹配 → 生产 500
+   （直接调用的单测发现不了）。统一变量名修复
+3. 运行纪律: gateway 必须从 jar 副本启动（/tmp/agui-gateway-run.jar），
+   并行构建重写 target jar 会把运行中进程弄 wedge（懒加载 ClassNotFound）

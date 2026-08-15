@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { parseCsvPreview, prettyJson, renderMarkdownLite } from '../composables/filePreview'
+import { trapTabKey } from '../composables/focusTrap'
 
 /**
  * P-C: 文件在线预览 modal（Teleport body / ESC·遮罩关闭）。
@@ -22,7 +23,19 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const overlayEl = ref<HTMLElement | null>(null)
+const cardEl = ref<HTMLElement | null>(null)
 onMounted(() => nextTick(() => overlayEl.value?.focus()))
+
+/** P-O: Esc 关闭 + Tab 焦点圈定。 */
+function onOverlayKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    emit('close')
+    return
+  }
+  if (e.key === 'Tab' && cardEl.value) {
+    trapTabKey(e, cardEl.value)
+  }
+}
 
 const ext = computed(() => {
   const i = props.name.lastIndexOf('.')
@@ -51,13 +64,18 @@ const markdownHtml = computed(() => (ext.value === 'md' ? renderMarkdownLite(pro
       ref="overlayEl"
       class="fpv-overlay"
       data-testid="file-preview-overlay"
-      role="dialog"
-      aria-modal="true"
       tabindex="-1"
       @click.self="emit('close')"
-      @keydown.esc="emit('close')"
+      @keydown="onOverlayKeydown"
     >
-      <div class="fpv-card" data-testid="file-preview-modal">
+      <div
+        ref="cardEl"
+        class="fpv-card"
+        data-testid="file-preview-modal"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="`预览文件 ${name}`"
+      >
         <div class="fpv-head">
           <strong class="fpv-name" :title="name">📄 {{ name }}</strong>
           <button class="fpv-close" data-testid="file-preview-close" aria-label="关闭预览" @click="emit('close')">×</button>

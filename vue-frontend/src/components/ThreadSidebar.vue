@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import type { ThreadMeta } from '../composables/useThreads'
+import { trapTabKey } from '../composables/focusTrap'
 
 /**
  * 需求1/F2: 会话侧边栏 —— 列表（标题取首条用户消息截断，gateway 侧生成）、
@@ -155,6 +156,24 @@ const dialog = ref<DialogState>(null)
 const renameDraft = ref('')
 const renameInput = ref<HTMLInputElement | null>(null)
 const overlayEl = ref<HTMLElement | null>(null)
+const dialogCardEl = ref<HTMLElement | null>(null)
+
+/** P-O: 弹窗键盘处理 —— Esc 关闭,Tab 焦点圈定在卡片内。 */
+function onDialogKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    closeDialog()
+    return
+  }
+  if (e.key === 'Tab' && dialogCardEl.value) {
+    trapTabKey(e, dialogCardEl.value)
+  }
+}
+
+const dialogAriaLabel = computed(() => {
+  const d = dialog.value
+  if (!d) return ''
+  return d.kind === 'remove' ? '删除会话' : d.kind === 'batch-remove' ? '批量删除会话' : '重命名会话'
+})
 
 function startRename(t: ThreadMeta) {
   renameDraft.value = t.title
@@ -361,13 +380,18 @@ const renameInvalid = () => !renameDraft.value.trim()
         ref="overlayEl"
         class="dlg-overlay"
         data-testid="dialog-overlay"
-        role="dialog"
-        aria-modal="true"
         tabindex="-1"
         @click.self="closeDialog"
-        @keydown.esc="closeDialog"
+        @keydown="onDialogKeydown"
       >
-        <div class="dlg-card" data-testid="thread-dialog">
+        <div
+          ref="dialogCardEl"
+          class="dlg-card"
+          data-testid="thread-dialog"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="dialogAriaLabel"
+        >
           <template v-if="dialog.kind === 'remove'">
             <h3 class="dlg-title">删除会话</h3>
             <p class="dlg-body">

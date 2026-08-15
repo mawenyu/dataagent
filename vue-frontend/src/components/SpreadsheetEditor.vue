@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { parseCsv, serializeCsv } from '../composables/spreadsheetEdits'
+import { toRef } from 'vue'
 import { useWorkspaceFiles } from '../composables/useWorkspaceFiles'
 
 /**
@@ -11,10 +12,12 @@ import { useWorkspaceFiles } from '../composables/useWorkspaceFiles'
  * （输入期间以 DOM 为准，避免重渲染重置光标）；保存经 PUT /files/{name}
  * 覆盖写回真实文件。
  */
-const props = defineProps<{ name: string; content: string }>()
+// P15: threadId —— 保存必须落会话隔离目录（此前用 legacy 共享根 API，
+// 编辑会话文件却写共享根，真实 bug）；baseModified 乐观并发检测
+const props = defineProps<{ name: string; content: string; threadId?: string; baseModified?: number }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved', name: string): void }>()
 
-const api = useWorkspaceFiles()
+const api = useWorkspaceFiles(toRef(props, 'threadId'))
 
 // 内部表格状态；baseline 用于脏标记比较（规范化末尾换行差异）
 const rows = ref<string[][]>(parseCsv(props.content))
@@ -48,10 +51,12 @@ async function save() {
   saving.value = true
   saveError.value = ''
   try {
-    await api.saveFile(props.name, serializeCsv(rows.value))
+    await api.saveFile(props.name, serializeCsv(rows.value), props.baseModified)
     emit('saved', props.name)
   } catch (err: any) {
-    saveError.value = err?.message ?? '保存失败'
+    saveError.value = String(err?.message ?? '').includes('409')
+      ? '保存冲突：文件在编辑期间已被修改（如 agent 写入），未覆盖。请关闭后重新打开再改'
+      : (err?.message ?? '保存失败')
   } finally {
     saving.value = false
   }

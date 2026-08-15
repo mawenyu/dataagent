@@ -10,6 +10,10 @@
 /** 一处单元格变更；row/col 从 0 开始（第 0 行是表头）。 */
 export interface CellEdit { row: number; col: number; value: string }
 
+/** P15: 坐标上限 —— 无上限时 row=1e9 会让 while 循环把内存撑爆（实测挂死）。 */
+export const MAX_ROW = 10_000
+export const MAX_COL = 200
+
 /** 解析 CSV 文本为二维数组；忽略末尾空行，兼容 CRLF。 */
 export function parseCsv(text: string): string[][] {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
@@ -35,6 +39,9 @@ export function applyEdits(csvText: string, cells: CellEdit[]): string {
     if (!Number.isInteger(c.row) || !Number.isInteger(c.col) || c.row < 0 || c.col < 0) {
       throw new Error(`非法单元格坐标 row=${c.row}, col=${c.col}`)
     }
+    if (c.row > MAX_ROW || c.col > MAX_COL) {
+      throw new Error(`坐标超出上限 row=${c.row}, col=${c.col}（最大 ${MAX_ROW} 行 / ${MAX_COL} 列）`)
+    }
     while (rows.length <= c.row) rows.push([])
     const r = rows[c.row]
     while (r.length <= c.col) r.push('')
@@ -49,8 +56,10 @@ export interface ApplyEditsArgs { file: string; cells: CellEdit[]; summary?: str
 export interface ApplyEditsDeps {
   /** 读 workspace 文件当前内容；读不到返回 null。 */
   readFile: (name: string) => Promise<string | null>
-  /** PUT 落盘（覆盖写）。 */
-  saveFile: (name: string, content: string) => Promise<void>
+  /** PUT 落盘（覆盖写）；baseModified 为读取时 mtime（乐观并发检测，P15）。 */
+  saveFile: (name: string, content: string, baseModified?: number) => Promise<void>
+  /** P15: 读取时文件 mtime（毫秒）；提供则落盘携带 baseModified 防并发丢改。 */
+  modifiedAtOf?: (name: string) => Promise<number | null>
   /** HITL 确认（浏览器 confirm 对话框）；返回 false = 用户取消。 */
   confirm: (message: string) => boolean
 }
@@ -61,6 +70,8 @@ export interface ApplyEditsDeps {
  */
 export async function applySpreadsheetEdits(args: ApplyEditsArgs, deps: ApplyEditsDeps): Promise<string> {
   if (!args.cells || args.cells.length === 0) return '没有任何变更需要应用'
+  // P15: 先取 mtime 再读内容 —— 落盘时携带，服务端检测到第三方改动则 409
+  const baseModified = deps.modifiedAtOf ? await deps.modifiedAtOf(args.file) : null
   const current = await deps.readFile(args.file)
   if (current == null) return `读取文件 ${args.file} 失败，未做任何修改`
   let next: string
@@ -73,6 +84,14 @@ export async function applySpreadsheetEdits(args: ApplyEditsArgs, deps: ApplyEdi
     `agent 要修改 ${args.file}：${args.cells.length} 处变更。${args.summary ? args.summary + ' ' : ''}确认应用？`,
   )
   if (!ok) return '用户取消了变更'
-  await deps.saveFile(args.file, next)
+  try {
+    await deps.saveFile(args.file, next, baseModified ?? undefined)
+  } catch (e: any) {
+    // P15: 409 = 乐观并发冲突（读取后被改动）—— 不得静默覆盖
+    if (String(e?.message ?? '').includes('409')) {
+      return `保存冲突：${args.file} 在编辑期间已被其他来源修改，未落盘。请重新读取后再试`
+    }
+    throw e
+  }
   return `已应用 ${args.cells.length} 处变更到 ${args.file}`
 }

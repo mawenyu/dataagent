@@ -59,7 +59,7 @@ describe('applySpreadsheetEdits（agent frontend tool handler）', () => {
     expect(d.confirm.mock.calls[0][0]).toContain('sales.csv')
     expect(d.confirm.mock.calls[0][0]).toContain('1 处变更')
     expect(d.confirm.mock.calls[0][0]).toContain('修正华北数据')
-    expect(d.saveFile).toHaveBeenCalledWith('sales.csv', '区域,销售额\n华北,150\n')
+    expect(d.saveFile).toHaveBeenCalledWith('sales.csv', '区域,销售额\n华北,150\n', undefined)
     expect(msg).toBe('已应用 1 处变更到 sales.csv')
   })
 
@@ -90,5 +90,30 @@ describe('applySpreadsheetEdits（agent frontend tool handler）', () => {
     const msg = await applySpreadsheetEdits({ file: 'f.csv', cells: [] }, d)
     expect(d.readFile).not.toHaveBeenCalled()
     expect(msg).toContain('没有')
+  })
+})
+
+describe('P15 边界：坐标上限与并发冲突', () => {
+  it('超大坐标快速拒绝（row=1e9 不得内存爆胀）', () => {
+    const t0 = performance.now()
+    expect(() => applyEdits('a,b\n1,2\n', [{ row: 1_000_000_000, col: 0, value: 'x' }])).toThrow(/上限|超出/)
+    expect(() => applyEdits('a,b\n', [{ row: 0, col: 10_000, value: 'x' }])).toThrow(/上限|超出/)
+    expect(performance.now() - t0).toBeLessThan(100)
+  })
+
+  it('上限边界内仍可用（row=9999/col=199）', () => {
+    const next = applyEdits('a,b\n1,2\n', [{ row: 9999, col: 199, value: 'ok' }])
+    expect(parseCsv(next)[9999][199]).toBe('ok')
+  })
+
+  it('handler 落盘遇 409 冲突 → 返回冲突说明且文件未被覆盖', async () => {
+    const saveFile = vi.fn().mockRejectedValue(new Error('HTTP 409'))
+    const d = {
+      readFile: vi.fn().mockResolvedValue('a,b\n1,2\n'),
+      saveFile,
+      confirm: vi.fn().mockReturnValue(true),
+    }
+    const out = await applySpreadsheetEdits({ file: 'g.csv', cells: [{ row: 1, col: 1, value: '9' }] }, d)
+    expect(out).toMatch(/冲突|已被.*修改|409/)
   })
 })

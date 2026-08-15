@@ -393,3 +393,36 @@ describe('ThreadSidebar P-H（多选批量操作）', () => {
     expect(w.find('[data-testid="bulk-count"]').text()).toContain('0')
   })
 })
+
+describe('ThreadSidebar P-O（modal 可达性）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    localStorage.clear()
+  })
+
+  const two = [
+    { id: 'a', title: '销售分析', sessionId: null, createdAt: '', updatedAt: '' },
+  ]
+
+  it('dialog 有 role/aria-modal/aria-label;Tab 焦点圈定在弹窗内循环', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: two, currentId: 'a' }, attachTo: document.body })
+    await w.find('[data-testid="del-a"]').trigger('click')
+    await nextTick()
+    const overlay = document.body.querySelector('[data-testid="dialog-overlay"]') as HTMLElement
+    const dlg = document.body.querySelector('[data-testid="thread-dialog"]') as HTMLElement
+    expect(dlg.getAttribute('role')).toBe('dialog')
+    expect(dlg.getAttribute('aria-modal')).toBe('true')
+    expect(dlg.getAttribute('aria-label')).toBeTruthy()
+
+    // 焦点在最后一个按钮上按 Tab → 回卷到第一个(取消)
+    const cancel = dlg.querySelector('[data-testid="dialog-cancel"]') as HTMLElement
+    const confirm = dlg.querySelector('[data-testid="dialog-confirm"]') as HTMLElement
+    confirm.focus()
+    overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(cancel)
+    // Shift+Tab 从第一个回卷到最后
+    overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(confirm)
+    w.unmount()
+  })
+})

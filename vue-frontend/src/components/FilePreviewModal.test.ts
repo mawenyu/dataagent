@@ -97,3 +97,24 @@ describe('FilePreviewModal 大文件 (P-N)', () => {
     w.unmount()
   })
 })
+
+describe('FilePreviewModal P-O（可达性）', () => {
+  it('role/aria-modal/aria-label 齐全;Tab 圈定', async () => {
+    const w = mount(FilePreviewModal, {
+      props: { name: 'a.txt', content: 'x' },
+      attachTo: document.body,
+    })
+    await nextTick()
+    const dlg = modal()!
+    expect(dlg.getAttribute('role')).toBe('dialog')
+    expect(dlg.getAttribute('aria-modal')).toBe('true')
+    expect(dlg.getAttribute('aria-label')).toContain('a.txt')
+    // 只有一个可聚焦元素(×): Tab 回卷到它自己
+    const overlay = document.body.querySelector('[data-testid="file-preview-overlay"]') as HTMLElement
+    const closeBtn = dlg.querySelector('[data-testid="file-preview-close"]') as HTMLElement
+    closeBtn.focus()
+    overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(closeBtn)
+    w.unmount()
+  })
+})

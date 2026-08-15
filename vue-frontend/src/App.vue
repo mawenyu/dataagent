@@ -14,6 +14,7 @@ import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
 import { buildThreadJson, buildThreadMarkdown, downloadJson, downloadMarkdown, exportFilename } from './composables/exportThread'
 import { useRunErrorRecovery, isAbortError, parseRunError } from './composables/runErrorRecovery'
 import { useNetworkStatus } from './composables/networkStatus'
+import { useGlobalShortcuts } from './composables/useGlobalShortcuts'
 import RunErrorCard from './components/RunErrorCard.vue'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
@@ -145,7 +146,12 @@ const frontendTools = [
         readFile: async (name) => {
           try { return await workspaceFilesApi.readFile(name) } catch { return null }
         },
-        saveFile: (name, content) => workspaceFilesApi.saveFile(name, content),
+        // P15: 落盘携带读取时 mtime → gateway 乐观并发检测（409 不静默覆盖）
+        saveFile: (name, content, baseModified) => workspaceFilesApi.saveFile(name, content, baseModified),
+        modifiedAtOf: async (name) => {
+          await workspaceFilesApi.refresh()
+          return workspaceFilesApi.statOf(name)
+        },
         confirm: (msg) => window.confirm(msg),
       })
     },
@@ -161,6 +167,19 @@ function closeSidebarOnMobile() {
   if (window.innerWidth <= 720) sidebarOpen.value = false
 }
 onMounted(() => { if (window.innerWidth <= 720) sidebarOpen.value = false })
+
+// P-O: 全局快捷键 —— Ctrl/Cmd+K 聚焦会话搜索(自动展开侧边栏+会话 Tab);
+// Ctrl/Cmd+N 新建会话。Esc 关 modal 由各弹窗自身处理(焦点圈定内生效)
+useGlobalShortcuts({
+  onFocusSearch: () => {
+    sidebarOpen.value = true
+    sidebarTab.value = 'threads'
+    void nextTick(() => {
+      document.querySelector<HTMLInputElement>('[data-testid="thread-search"]')?.focus()
+    })
+  },
+  onNewThread: () => { void threadsApi.createNew() },
+})
 
 // P-D: 空会话欢迎页的场景模板卡 —— 点击填充输入框(可编辑后再发送,非直接提交)
 const promptTemplates = [

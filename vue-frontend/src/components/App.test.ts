@@ -349,3 +349,34 @@ describe('App UI (需求4)', () => {
     expect(runs().length).toBe(1)
   })
 })
+
+describe('App P-O（全局快捷键）', () => {
+  it('Ctrl+K 聚焦会话搜索框(自动展开侧边栏+切到会话 Tab)', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App, { attachTo: document.body })
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true }))
+    for (let i = 0; i < 4; i++) await nextTick()
+    const search = w.find('[data-testid="thread-search"]')
+    expect(search.exists()).toBe(true)
+    expect(document.activeElement).toBe(search.element)
+    w.unmount()
+  })
+
+  it('Ctrl+N 新建会话(调 POST /chat/threads)', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App, { attachTo: document.body })
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, cancelable: true }))
+    for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    expect(
+      fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/chat/threads') && init?.method === 'POST'),
+      'Ctrl+N 应新建会话',
+    ).toBe(true)
+    w.unmount()
+  })
+})
