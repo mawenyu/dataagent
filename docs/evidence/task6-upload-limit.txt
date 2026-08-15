@@ -1,0 +1,8 @@
+== 插队修复实测: 上传 413（2026-08-15）==
+application.yml: agui.files.max-upload-size 5MB→50MB；新增 spring.codec.max-in-memory-size: 50MB
+（WebFlux codec 默认 256KB，限制 PUT byte[] body 与 multipart 内存缓冲）
+前端 chatAttachments.ATTACH_MAX_SIZE 同步 50MB
+本地 6MB 上传: {"name":"t6-big.csv","size":6291456} 200 ✓（旧上限下 413）
+公网 6MB 上传 /agui-api/chat/threads/task6-big2/files: 200 ✓（nginx 50m + gateway 50MB 全链路）
+gateway mvn test: 108 全绿；前端 chatAttachments vitest 3 全绿
+注: 502/000 假象为本人重启 gateway 窗口期（nginx error.log: Connection refused upstream），非配置问题

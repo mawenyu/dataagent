@@ -26,10 +26,10 @@ describe('buildAttachmentsConfig (task6 ChatGPT 式上传)', () => {
     expect(result.metadata?.filename).toBe('sales.csv')
   })
 
-  it('上限与 accept 与 gateway 一致（5MB）', () => {
+  it('上限与 accept 与 gateway 一致（50MB）', () => {
     const config = buildAttachmentsConfig({ upload: async () => {}, downloadUrl: (n) => n, onFailed: () => {} })
     expect(config.enabled).toBe(true)
-    expect(config.maxSize).toBe(5 * 1024 * 1024)
+    expect(config.maxSize).toBe(50 * 1024 * 1024)
     expect(config.accept).toContain('.csv')
   })
 

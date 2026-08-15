@@ -32,8 +32,8 @@ export interface AttachmentsConfigLike {
 /** 数据分析场景常见类型；与 gateway 文件名白名单（扩展名部分）兼容。 */
 export const ATTACH_ACCEPT = '.csv,.json,.txt,.md,.tsv,.log,.xlsx,.png,.jpg,.jpeg,.webp'
 
-/** 与 gateway agui.files.max-upload-size 默认值一致。 */
-export const ATTACH_MAX_SIZE = 5 * 1024 * 1024
+/** 与 gateway agui.files.max-upload-size 一致（2026-08-15 同步 5MB → 50MB）。 */
+export const ATTACH_MAX_SIZE = 50 * 1024 * 1024
 
 export function buildAttachmentsConfig(deps: {
   /** 上传到当前会话工作目录（抛错 = 上传失败，fork 会移除该附件并回调 onUploadFailed）。 */

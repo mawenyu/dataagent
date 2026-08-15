@@ -21,12 +21,18 @@ agui:
   # 数据工作区：默认相对应用工作目录的 workspace/，可用 AGUI_DATA_WORKSPACE 覆盖
   files:
     # workspace 文件上传上限（spec: docs/spec/workspace-files.md）
-    max-upload-size: 5MB
+    # 2026-08-15 插队修复：5MB → 50MB，用户需传较大数据文件做分析；nginx 层
+    # client_max_body_size 已同步 50m，此处与前端 chatAttachments.ATTACH_MAX_SIZE 对齐
+    max-upload-size: 50MB
   data-workspace: ${AGUI_DATA_WORKSPACE:workspace}
 
 spring:
   application:
     name: opencode-agui-gateway
+  # 插队修复（同上）：WebFlux codec 默认 max-in-memory-size 仅 256KB，
+  # PUT /files/{name}（byte[] body）和 multipart 内存缓冲都受它限制，同步放到 50MB
+  codec:
+    max-in-memory-size: 50MB
   cloud:
     gateway:
       # Preserve the original host header so the backend sees localhost:4096 traffic as-is.

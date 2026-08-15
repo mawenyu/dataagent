@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>文件名白名单 {@code [A-Za-z0-9._-]}（拒绝路径分隔符/中文/../隐藏文件）</li>
  *   <li>解析后 canonical 路径必须位于 workspace 根内（双保险）</li>
- *   <li>上传大小上限（agui.files.max-upload-size，默认 5MB）</li>
+ *   <li>上传大小上限（agui.files.max-upload-size，默认 50MB —— 2026-08-15 从 5MB 上调，数据分析大文件场景）</li>
  *   <li>只操作顶层普通文件，不递归</li>
  * </ul>
  */
@@ -47,7 +47,7 @@ public class WorkspaceFileService {
     @org.springframework.beans.factory.annotation.Autowired
     public WorkspaceFileService(
             @org.springframework.beans.factory.annotation.Value("${agui.data-workspace:workspace}") String workspace,
-            @org.springframework.beans.factory.annotation.Value("${agui.files.max-upload-size:5MB}") org.springframework.util.unit.DataSize maxUpload) {
+            @org.springframework.beans.factory.annotation.Value("${agui.files.max-upload-size:50MB}") org.springframework.util.unit.DataSize maxUpload) {
         this(Path.of(workspace).toAbsolutePath().normalize(), maxUpload.toBytes());
     }
 
