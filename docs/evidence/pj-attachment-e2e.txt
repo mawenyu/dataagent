@@ -1,0 +1,13 @@
+PASS: 附件上传成功
+PASS: 文件在会话工作目录可见
+TERMINAL=RUN_FINISHED
+TOOLS=2
+TEXT=销售额最高的区域是**华东**，销售额为 **920,417**。
+PASS: run 正常结束
+PASS: agent 用了工具(读文件)
+PASS: 回答含 CSV 独特数值 920417(agent 真读到了内容)
+PASS: 回答提到最高区域 华东
+oversize: HTTP 413 {"error":"file too large"}
+PASS: 超限返回 413
+PASS: 413 带结构化错误体
+== RESULT: 8 passed, 0 failed ==

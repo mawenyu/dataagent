@@ -17,6 +17,8 @@ export interface WelcomeAttachment {
   name: string
   size: number
   status: 'uploading' | 'ready' | 'error'
+  /** P-J: 上传失败原因(chip 悬停展示,报错不静默) */
+  errorMessage?: string
 }
 
 /** 与 gateway WorkspaceFileService NAME_PATTERN 对齐（[A-Za-z0-9][A-Za-z0-9._-]{0,127}）。 */
@@ -50,6 +52,10 @@ export function useWelcomeAttachments(deps: {
     if (!ALLOWED_EXTS.has(ext)) {
       return `「${file.name}」类型不支持，允许：${ATTACH_ACCEPT}`
     }
+    // P-J: 0 字节文件 gateway 也会拒("empty file"),前端提前明确拦截
+    if (file.size === 0) {
+      return `「${file.name}」是空文件，没有可分析的内容`
+    }
     if (file.size > ATTACH_MAX_SIZE) {
       return `「${file.name}」超过 50MB 上限`
     }
@@ -74,8 +80,11 @@ export function useWelcomeAttachments(deps: {
         await deps.upload(file)
         items.value = items.value.map((i) => (i.id === item.id ? { ...i, status: 'ready' } : i))
       } catch (e: any) {
-        items.value = items.value.map((i) => (i.id === item.id ? { ...i, status: 'error' } : i))
-        deps.onFailed(`「${file.name}」上传失败：${e?.message ?? '未知错误'}`)
+        const reason = e?.message ?? '未知错误'
+        items.value = items.value.map((i) =>
+          i.id === item.id ? { ...i, status: 'error', errorMessage: reason } : i,
+        )
+        deps.onFailed(`「${file.name}」上传失败：${reason}`)
       }
     }
   }

@@ -111,3 +111,31 @@ describe('useWelcomeAttachments (F1b)', () => {
     expect(api.items.value).toHaveLength(0)
   })
 })
+
+describe('P-J: 限制提示补强', () => {
+  it('0 字节空文件拒绝并明确提示,不上传', async () => {
+    const onFailed = vi.fn()
+    const { api, upload } = setup({ onFailed })
+    await api.addFiles([makeFile('empty.csv', 0)])
+    expect(upload).not.toHaveBeenCalled()
+    expect(api.items.value).toHaveLength(0)
+    expect(onFailed).toHaveBeenCalledWith(expect.stringContaining('空文件'))
+  })
+
+  it('超限文件报错消息含 50MB 上限说明(非静默)', async () => {
+    const onFailed = vi.fn()
+    const { api, upload } = setup({ onFailed })
+    const big = makeFile('big.csv')
+    Object.defineProperty(big, 'size', { value: 51 * 1024 * 1024 })
+    await api.addFiles([big])
+    expect(upload).not.toHaveBeenCalled()
+    expect(onFailed).toHaveBeenCalledWith(expect.stringContaining('50MB'))
+  })
+
+  it('上传失败的 chip 携带错误原因(errorMessage 供悬停/展示)', async () => {
+    const { api } = setup({ upload: vi.fn(async () => { throw new Error('HTTP 413') }) })
+    await api.addFiles([makeFile('a.csv')])
+    expect(api.items.value[0].status).toBe('error')
+    expect(api.items.value[0].errorMessage).toContain('413')
+  })
+})

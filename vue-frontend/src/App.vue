@@ -401,7 +401,11 @@ async function exportThread(id: string) {
                       >
                         📄 {{ a.name }}
                         <span v-if="a.status === 'uploading'" class="chip-status">上传中…</span>
-                        <span v-else-if="a.status === 'error'" class="chip-status err">失败</span>
+                        <span
+                          v-else-if="a.status === 'error'"
+                          class="chip-status err"
+                          :title="a.errorMessage ? `失败原因：${a.errorMessage}` : '上传失败'"
+                        >失败ⓘ</span>
                         <button
                           class="chip-remove"
                           :aria-label="`移除附件 ${a.name}`"
