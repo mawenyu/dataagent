@@ -131,3 +131,69 @@ describe('ThreadSidebar (需求1/F2)', () => {
     expect(w.text()).toContain('暂无会话')
   })
 })
+
+describe('ThreadSidebar P7（搜索过滤 + 置顶）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    localStorage.clear()
+  })
+
+  const many = [
+    { id: 'a', title: '销售分析', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'b', title: '库存盘点', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'c', title: '销售周报', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'd', title: '客户清单', sessionId: null, createdAt: '', updatedAt: '' },
+  ]
+
+  it('搜索框按标题模糊过滤（子序列匹配），清空恢复', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    const box = w.find('[data-testid="thread-search"]')
+    expect(box.exists()).toBe(true)
+
+    await box.setValue('销售')
+    expect(w.findAll('.thread-item')).toHaveLength(2) // 销售分析/销售周报
+
+    await box.setValue('销分') // 子序列模糊：销…分
+    expect(w.findAll('.thread-item')).toHaveLength(1)
+    expect(w.text()).toContain('销售分析')
+
+    await box.setValue('不存在的东西')
+    expect(w.findAll('.thread-item')).toHaveLength(0)
+    expect(w.text()).toContain('无匹配会话')
+
+    await box.setValue('')
+    expect(w.findAll('.thread-item')).toHaveLength(4)
+  })
+
+  it('置顶：点击 pin 排最前，localStorage 持久化，重挂载仍在', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    await w.find('[data-testid="pin-c"]').trigger('click')
+    let items = w.findAll('.thread-item')
+    expect(items[0].text()).toContain('销售周报')
+    expect(items[0].classes()).toContain('pinned')
+    // 不触发切换
+    expect(w.emitted('switch')).toBeUndefined()
+    // 持久化
+    expect(JSON.parse(localStorage.getItem('dataagent.pinnedThreads') ?? '[]')).toContain('c')
+
+    // 重新挂载（模拟刷新）→ 仍置顶
+    const w2 = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    items = w2.findAll('.thread-item')
+    expect(items[0].text()).toContain('销售周报')
+
+    // 再点取消置顶
+    await w2.find('[data-testid="pin-c"]').trigger('click')
+    expect(w2.findAll('.thread-item')[0].text()).toContain('销售分析')
+    expect(JSON.parse(localStorage.getItem('dataagent.pinnedThreads') ?? '[]')).not.toContain('c')
+  })
+
+  it('置顶与搜索叠加：置顶项在过滤结果里仍排最前', async () => {
+    localStorage.setItem('dataagent.pinnedThreads', JSON.stringify(['c']))
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    await w.find('[data-testid="thread-search"]').setValue('销售')
+    const items = w.findAll('.thread-item')
+    expect(items).toHaveLength(2)
+    expect(items[0].text()).toContain('销售周报') // pinned 在前
+    expect(items[0].classes()).toContain('pinned')
+  })
+})

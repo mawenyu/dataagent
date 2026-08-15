@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import type { ThreadMeta } from '../composables/useThreads'
 
 /**
@@ -7,11 +7,57 @@ import type { ThreadMeta } from '../composables/useThreads'
  * 新建、切换、删除、重命名（双击标题）。
  * F2: 删除确认 / 重命名均为自绘 modal（Teleported 到 body），ESC/遮罩关闭，
  * 不再使用原生 confirm/prompt。
+ * P7: 搜索过滤（标题子序列模糊匹配）+ 置顶（pin 排最前，localStorage 持久化，
+ * 纯表现层状态 —— 与网关线程数据无关，故不入库）。
  */
-defineProps<{
+const props = defineProps<{
   threads: ThreadMeta[]
   currentId: string
 }>()
+
+// ---- P7: 搜索过滤 ----
+const search = ref('')
+
+/** 子序列模糊匹配（大小写不敏感；中文字符逐字匹配）。 */
+function fuzzyMatch(title: string, query: string): boolean {
+  const t = title.toLowerCase()
+  const q = query.toLowerCase()
+  let i = 0
+  for (const ch of t) {
+    if (ch === q[i]) i++
+    if (i >= q.length) return true
+  }
+  return q.length === 0
+}
+
+// ---- P7: 置顶（localStorage 持久化）----
+const PIN_KEY = 'dataagent.pinnedThreads'
+function loadPinned(): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PIN_KEY) ?? '[]')
+    return new Set(Array.isArray(raw) ? raw : [])
+  } catch {
+    return new Set()
+  }
+}
+const pinned = ref<Set<string>>(loadPinned())
+
+function togglePin(t: ThreadMeta) {
+  const next = new Set(pinned.value)
+  if (next.has(t.id)) next.delete(t.id)
+  else next.add(t.id)
+  pinned.value = next
+  try {
+    localStorage.setItem(PIN_KEY, JSON.stringify([...next]))
+  } catch { /* localStorage 不可用时静默降级为会话内状态 */ }
+}
+
+/** 过滤 + 置顶排序后的可见列表（sort 稳定，同级保持原相对顺序）。 */
+const visibleThreads = computed(() => {
+  const q = search.value.trim()
+  const filtered = q ? props.threads.filter((t) => fuzzyMatch(t.title, q)) : props.threads
+  return [...filtered].sort((a, b) => Number(pinned.value.has(b.id)) - Number(pinned.value.has(a.id)))
+})
 
 const emit = defineEmits<{
   (e: 'new'): void
@@ -73,17 +119,33 @@ const renameInvalid = () => !renameDraft.value.trim()
       <span class="sidebar-title">会话</span>
       <button class="new-btn" data-testid="new-thread" title="新建会话" @click="emit('new')">+ 新建</button>
     </div>
+    <!-- P7: 搜索过滤 -->
+    <div class="search-wrap">
+      <input
+        v-model="search"
+        class="search-input"
+        data-testid="thread-search"
+        placeholder="搜索会话标题…"
+      />
+    </div>
     <div class="thread-list">
       <div
-        v-for="t in threads"
+        v-for="t in visibleThreads"
         :key="t.id"
         class="thread-item"
-        :class="{ active: t.id === currentId }"
+        :class="{ active: t.id === currentId, pinned: pinned.has(t.id) }"
         :data-thread-id="t.id"
         @click="emit('switch', t.id)"
         @dblclick="startRename(t)"
       >
         <span class="thread-title" :title="t.title">{{ t.title }}</span>
+        <button
+          class="icon-btn pin-btn"
+          :class="{ on: pinned.has(t.id) }"
+          :data-testid="`pin-${t.id}`"
+          :title="pinned.has(t.id) ? '取消置顶' : '置顶'"
+          @click.stop="togglePin(t)"
+        >📌</button>
         <button
           class="icon-btn export-btn"
           :data-testid="`export-${t.id}`"
@@ -98,6 +160,7 @@ const renameInvalid = () => !renameDraft.value.trim()
         >×</button>
       </div>
       <div v-if="threads.length === 0" class="empty">暂无会话</div>
+      <div v-else-if="visibleThreads.length === 0" class="empty">无匹配会话</div>
     </div>
 
     <Teleport to="body">
@@ -209,6 +272,23 @@ const renameInvalid = () => !renameDraft.value.trim()
   line-height: 1.4;
 }
 .thread-item:hover .icon-btn { opacity: 1; }
+/* P7: 搜索框 + 置顶 */
+.search-wrap { padding: 0 14px 8px; }
+.search-input {
+  width: 100%;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  outline: none;
+  color: #374151;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+.search-input:focus { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18); background: #fff; }
+.pin-btn { font-size: 12px; }
+.pin-btn.on { opacity: 1; color: #6366f1; }
+.thread-item.pinned .thread-title { font-weight: 600; }
 .export-btn { font-size: 13px; }
 .export-btn:hover { color: #6366f1; background: #eef2ff; }
 .del-btn:hover { color: #ef4444; background: #fef2f2; }
