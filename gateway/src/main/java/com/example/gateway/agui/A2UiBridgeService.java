@@ -63,8 +63,8 @@ public class A2UiBridgeService {
             "Row", "Column", "List", "Card", "Tabs", "Divider", "Modal",
             "Button", "TextField", "CheckBox", "ChoicePicker", "Slider", "DateTimeInput",
             // DataAgent custom catalog (TASK §15)
-            "MetricCard", "DataTable", "BarChart", "LineChart",
-            "InsightCard", "WarningCard", "ActionButton");
+            "MetricCard", "DataTable", "BarChart", "LineChart", "PieChart",
+            "InsightCard", "WarningCard", "ActionButton", "Badge", "Markdown");
 
     // Loose caps (TASK §16 — validation only, no auth)
     private static final int MAX_COMPONENTS = 100;

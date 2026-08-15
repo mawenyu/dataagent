@@ -1,0 +1,38 @@
+[layout attempt 1] COMPONENTS= TERMINAL=RUN_FINISHED LEAK=True 
+[layout attempt 2] COMPONENTS=Badge,Card,Column,Row,Tabs,Text TERMINAL=RUN_FINISHED LEAK=False 
+PASS: [layout] Card 渲染
+PASS: [layout] Column 渲染
+PASS: [layout] Row 渲染
+PASS: [layout] Tabs 渲染
+PASS: [layout] Text 渲染
+PASS: [layout] Badge 渲染
+PASS: [layout] run 正常结束
+PASS: [layout] 无泄漏
+/home/ubuntu/dataagent/scripts/test-a2ui-all-components.sh: line 55: 行内代码: command not found
+[display attempt 1] COMPONENTS=Badge,Column,Divider,Image,Markdown,Text TERMINAL=RUN_FINISHED LEAK=False 
+PASS: [display] Text 渲染
+PASS: [display] Badge 渲染
+PASS: [display] Divider 渲染
+PASS: [display] Markdown 渲染
+PASS: [display] Image 渲染
+PASS: [display] run 正常结束
+PASS: [display] 无泄漏
+[charts attempt 1] COMPONENTS=BarChart,Column,DataTable,LineChart,MetricCard,PieChart,Row TERMINAL=RUN_FINISHED LEAK=False 
+PASS: [charts] MetricCard 渲染
+PASS: [charts] BarChart 渲染
+PASS: [charts] LineChart 渲染
+PASS: [charts] PieChart 渲染
+PASS: [charts] DataTable 渲染
+PASS: [charts] run 正常结束
+PASS: [charts] 无泄漏
+[form attempt 1] COMPONENTS=ActionButton,Card,CheckBox,ChoicePicker,Column,DateTimeInput,Slider,TextField TERMINAL=RUN_FINISHED LEAK=False 
+PASS: [form] Card 渲染
+PASS: [form] TextField 渲染
+PASS: [form] ChoicePicker 渲染
+PASS: [form] CheckBox 渲染
+PASS: [form] DateTimeInput 渲染
+PASS: [form] Slider 渲染
+PASS: [form] ActionButton 渲染
+PASS: [form] run 正常结束
+PASS: [form] 无泄漏
+== RESULT: 31 passed, 0 failed ==

@@ -135,6 +135,19 @@ class A2UiBridgeServiceTest {
         }
     }
 
+    /** task4 组件全量：PieChart/Badge/Markdown 在白名单内。 */
+    @Test
+    void pieBadgeMarkdownAreWhitelisted() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["p","b","m"]},
+                  {"component":"PieChart","id":"p","labelField":"k","valueField":"v","data":[{"k":"a","v":1}]},
+                  {"component":"Badge","id":"b","text":"ok","variant":"success"},
+                  {"component":"Markdown","id":"m","text":"# 标题"}
+                ]}""";
+        assertTrue(bridge.execute("run", "thread", MAPPER.readTree(args)).isPresent());
+    }
+
     @Test
     void nestedNonWhitelistedComponentIsRejected() throws Exception {
         String args = """

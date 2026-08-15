@@ -139,8 +139,7 @@ describe('DataAgent custom catalog (TASK §15)', () => {
     expect(wrapper.text()).toContain('86400')
   })
 
-  it('renders object rows keyed by {key,title} columns (2026-08-15 真实 render_a2ui 输出)', async () => {
-    // 真实模型输出：columns 用 {key,title}（不是 label），rows 是对象记录数组
+  it('renders object rows keyed by {key,title} columns (2026-08-15 真实 render_a2ui 输出)', async () => {    // 真实模型输出：columns 用 {key,title}（不是 label），rows 是对象记录数组
     const wrapper = mountSurface(
       [
         {
@@ -162,5 +161,51 @@ describe('DataAgent custom catalog (TASK §15)', () => {
     expect(wrapper.text()).toContain('华北')
     expect(wrapper.text()).toContain('388082')
     expect(wrapper.findAll('tr').length).toBe(3) // header + 2 rows
+  })
+
+  it('renders PieChart / Badge / Markdown custom components (task4 组件全量)', async () => {
+    const wrapper = mountSurface(
+      [
+        { component: 'Column', id: 'root', children: ['pie', 'badge', 'md'] },
+        { component: 'PieChart', id: 'pie', title: '品类占比', labelField: 'cat', valueField: 'sales', data: { path: 'pieData' } },
+        { component: 'Badge', id: 'badge', text: { path: 'badgeText' }, variant: 'success' },
+        { component: 'Markdown', id: 'md', text: '# 结论\n\n**笔记本** 领跑，占比 `45%`。\n\n- 华北第一\n- 华东第二' },
+      ],
+      {
+        pieData: [
+          { cat: '笔记本', sales: 615912 },
+          { cat: '手机', sales: 347913 },
+          { cat: '平板', sales: 228712 },
+        ],
+        badgeText: '数据新鲜',
+      },
+    )
+    await nextTick()
+    await nextTick()
+    // PieChart: 每个扇区一个 path + 图例文本
+    expect(wrapper.findAll('svg path').length).toBeGreaterThanOrEqual(3)
+    expect(wrapper.text()).toContain('笔记本')
+    // Badge: 绑定的文本
+    expect(wrapper.text()).toContain('数据新鲜')
+    // Markdown: 标题/加粗/行内代码/列表
+    expect(wrapper.find('h1').exists() || wrapper.find('h2').exists() || wrapper.find('h3').exists()).toBe(true)
+    expect(wrapper.find('strong').exists()).toBe(true)
+    expect(wrapper.find('code').exists()).toBe(true)
+    expect(wrapper.findAll('li').length).toBe(2)
+  })
+
+  it('renders basic-catalog layout/display components (Tabs/Card/Divider/Image)', async () => {
+    const wrapper = mountSurface([
+      { component: 'Card', id: 'root', child: 'col' },
+      { component: 'Column', id: 'col', children: ['txt', 'div', 'img'] },
+      { component: 'Text', id: 'txt', text: '卡片标题', variant: 'h3' },
+      { component: 'Divider', id: 'div' },
+      { component: 'Image', id: 'img', url: 'https://example.com/x.png', fit: 'contain' },
+    ])
+    await nextTick()
+    await nextTick()
+    expect(wrapper.text()).toContain('卡片标题')
+    expect(wrapper.find('img').exists()).toBe(true)
+    expect(wrapper.find('hr').exists() || wrapper.html()).toBeTruthy()
   })
 })

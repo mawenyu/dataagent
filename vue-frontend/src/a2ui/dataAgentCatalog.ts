@@ -210,6 +210,145 @@ const WarningCard = createVueComponent(
     ]),
 )
 
+
+// ------------------------------------------------------------- PieChart ---
+/** 饼图（SVG 扇区 + 图例），data 支持 {path} 绑定（task4 组件全量） */
+const PieChart = createVueComponent(
+  {
+    name: 'PieChart',
+    schema: z.object({
+      title: boundString.optional(),
+      labelField: z.string(),
+      valueField: z.string(),
+      data: bindable(rowData),
+    }),
+  } as any,
+  ({ props }: any) => {
+    const data: Record<string, any>[] = props.data ?? []
+    const total = data.reduce((sum, d) => sum + (Number(d[props.valueField]) || 0), 0) || 1
+    const CX = 90
+    const CY = 90
+    const R = 70
+    let angle = -Math.PI / 2
+    const slices: VNode[] = []
+    const legend: VNode[] = []
+    data.forEach((d, i) => {
+      const v = Number(d[props.valueField]) || 0
+      const frac = v / total
+      const a0 = angle
+      angle += frac * Math.PI * 2
+      const a1 = angle
+      const large = frac > 0.5 ? 1 : 0
+      const x0 = CX + R * Math.cos(a0)
+      const y0 = CY + R * Math.sin(a0)
+      const x1 = CX + R * Math.cos(a1)
+      const y1 = CY + R * Math.sin(a1)
+      const color = CHART_PALETTE[i % CHART_PALETTE.length]
+      slices.push(h('path', {
+        key: 's' + i,
+        d: frac >= 0.9999
+          ? `M ${CX} ${CY - R} A ${R} ${R} 0 1 1 ${CX - 0.01} ${CY - R} Z`
+          : `M ${CX} ${CY} L ${x0} ${y0} A ${R} ${R} 0 ${large} 1 ${x1} ${y1} Z`,
+        fill: color,
+      }))
+      legend.push(h('div', { key: 'lg' + i, style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#374151' } }, [
+        h('span', { style: { width: '10px', height: '10px', borderRadius: '2px', background: color, flex: 'none' } }),
+        h('span', `${String(d[props.labelField] ?? '')} (${Math.round(frac * 100)}%)`),
+      ]))
+    })
+    return h('div', { class: 'da-card', style: cardStyle }, [
+      props.title ? h('p', { style: titleStyle }, props.title) : null,
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' } }, [
+        h('svg', { viewBox: '0 0 180 180', style: { width: '160px', flex: 'none' } }, slices),
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } }, legend),
+      ]),
+    ])
+  },
+)
+
+// ---------------------------------------------------------------- Badge ---
+const BADGE_VARIANTS: Record<string, { bg: string; fg: string }> = {
+  default: { bg: '#f1f5f9', fg: '#475569' },
+  success: { bg: '#ecfdf5', fg: '#047857' },
+  warning: { bg: '#fffbeb', fg: '#b45309' },
+  danger: { bg: '#fef2f2', fg: '#b91c1c' },
+  info: { bg: '#eef2ff', fg: '#4338ca' },
+}
+const Badge = createVueComponent(
+  {
+    name: 'Badge',
+    schema: z.object({
+      text: boundString,
+      variant: z.enum(['default', 'success', 'warning', 'danger', 'info']).optional(),
+    }),
+  } as any,
+  ({ props }: any) => {
+    const v = BADGE_VARIANTS[props.variant ?? 'default'] ?? BADGE_VARIANTS.default
+    return h('span', {
+      style: {
+        display: 'inline-block', fontSize: '12px', fontWeight: 600, padding: '3px 10px',
+        borderRadius: '999px', background: v.bg, color: v.fg, margin: '4px',
+      },
+    }, String(props.text ?? ''))
+  },
+)
+
+// ------------------------------------------------------------- Markdown ---
+/** 极简 Markdown 渲染（标题/加粗/斜体/行内代码/无序列表/段落）——声明式文本，无 HTML 注入 */
+function inlineMd(text: string, keyPrefix: string): VNode[] {
+  const out: VNode[] = []
+  const re = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let k = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(h('span', { key: `${keyPrefix}-t${k++}` }, text.slice(last, m.index)))
+    if (m[2] != null) out.push(h('strong', { key: `${keyPrefix}-b${k++}` }, m[2]))
+    else if (m[3] != null) out.push(h('em', { key: `${keyPrefix}-e${k++}` }, m[3]))
+    else if (m[4] != null) {
+      out.push(h('code', {
+        key: `${keyPrefix}-c${k++}`,
+        style: { background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px', fontSize: '12px' },
+      }, m[4]))
+    }
+    last = m.index + m[0].length
+  }
+  if (last < text.length) out.push(h('span', { key: `${keyPrefix}-t${k++}` }, text.slice(last)))
+  return out
+}
+
+function renderMarkdown(md: string): VNode[] {
+  const lines = String(md ?? '').split('\n')
+  const out: VNode[] = []
+  let list: VNode[] = []
+  const flushList = () => {
+    if (list.length) {
+      out.push(h('ul', { key: 'ul' + out.length, style: { margin: '4px 0', paddingLeft: '20px' } }, list))
+      list = []
+    }
+  }
+  lines.forEach((line, i) => {
+    const t = line.trimEnd()
+    if (t.startsWith('### ')) { flushList(); out.push(h('h3', { key: 'l' + i, style: { margin: '8px 0 4px', fontSize: '15px', color: '#111827' } }, inlineMd(t.slice(4), 'h3' + i))) }
+    else if (t.startsWith('## ')) { flushList(); out.push(h('h2', { key: 'l' + i, style: { margin: '10px 0 4px', fontSize: '16px', color: '#111827' } }, inlineMd(t.slice(3), 'h2' + i))) }
+    else if (t.startsWith('# ')) { flushList(); out.push(h('h1', { key: 'l' + i, style: { margin: '10px 0 6px', fontSize: '18px', color: '#111827' } }, inlineMd(t.slice(2), 'h1' + i))) }
+    else if (t.startsWith('- ') || t.startsWith('* ')) { list.push(h('li', { key: 'li' + i, style: { fontSize: '13px', color: '#374151' } }, inlineMd(t.slice(2), 'li' + i))) }
+    else if (t === '') { flushList() }
+    else { flushList(); out.push(h('p', { key: 'l' + i, style: { margin: '4px 0', fontSize: '13px', color: '#374151', lineHeight: 1.6 } }, inlineMd(t, 'p' + i))) }
+  })
+  flushList()
+  return out
+}
+
+const Markdown = createVueComponent(
+  {
+    name: 'Markdown',
+    schema: z.object({ text: boundString }),
+  } as any,
+  ({ props }: any) =>
+    h('div', { class: 'da-card', style: cardStyle }, renderMarkdown(String(props.text ?? ''))),
+)
+
 // ---------------------------------------------------------- ActionButton ---
 const ActionButton = createVueComponent(
   {
@@ -255,6 +394,9 @@ export const dataAgentCatalog = new Catalog(
     InsightCard,
     WarningCard,
     ActionButton,
+    PieChart,
+    Badge,
+    Markdown,
   ] as any,
   BASIC_FUNCTIONS as any,
 )
@@ -268,4 +410,7 @@ export const DATA_AGENT_CUSTOM_COMPONENTS = [
   'InsightCard',
   'WarningCard',
   'ActionButton',
+  'PieChart',
+  'Badge',
+  'Markdown',
 ]
