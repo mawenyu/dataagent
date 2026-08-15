@@ -21,7 +21,7 @@
 | 1 | "分析最近30天销售趋势"：run/plan/工具/流式/A2UI 渲染 | test-multi-turn R1-R2 + test-a2ui-all-components 覆盖 |
 | 2 | "哪个区域最差？"（用上一轮上下文） | test-multi-turn R3-R4 |
 | 3 | "为什么？"（drill down） | test-multi-turn R4；深化追问可补一轮 |
-| 4 | 数据源不可用 → 友好错误 UI | **缺**：删 workspace CSV 后提问 → 期望工具卡失败态✗(F3) + 错误卡(P-B)。补脚本 test-datasource-missing.sh |
+| 4 | 数据源不可用 → 友好错误 UI | ✅ `scripts/test-datasource-missing.sh`（5/5：删会话内 CSV → 提问 → TOOL_CALL_RESULT「工具执行失败: 」前缀契约 + RUN_FINISHED 正常收尾）；前端工具卡失败态由 fork F3 补全渲染（complete+前缀 → ✗失败，use-default-render-tool 30/30 绿） |
 | 5 | SQL/查询失败 → agent 修复或明确错误 | 部分：RUN_ERROR→错误卡重试已验收(P-I)；agent 自愈靠模型能力，抽查式验收 |
 
 ## 本轮新增验收项（P0/P1 修复后必须通过）
