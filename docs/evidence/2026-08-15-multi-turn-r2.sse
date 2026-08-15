@@ -1,0 +1,92 @@
+data:{"type":"RUN_STARTED","runId":"r2","threadId":"vision-mt","timestamp":1786786612068}
+
+data:{"type":"STATE_SNAPSHOT","runId":"r2","threadId":"vision-mt","timestamp":1786786612068,"snapshot":{"workspace":"workspace","model":"deepseek-reasoner","contextSize":0,"threadId":"vision-mt","provider":"deepseek"}}
+
+data:{"type":"STEP_STARTED","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"stepName":"step-msg_004c8047d001WGj1RJbuRhKu64"}
+
+data:{"type":"REASONING_START","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1"}
+
+data:{"type":"REASONING_MESSAGE_START","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","role":"reasoning"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"The"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" user"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" is"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" asking"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" what"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" the"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" pass"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"phrase"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" I"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" memor"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"ized"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614363,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" earlier"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614364,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" was"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614364,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614365,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" It"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614365,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"'s"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614365,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" "}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614366,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"紫"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614367,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"电"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614367,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"清"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614368,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"霜"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614368,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614368,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" I"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614369,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" should"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614369,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" respond"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614369,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" with"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614369,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":" it"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614369,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_END","runId":"r2","threadId":"vision-mt","timestamp":1786786614369,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1"}
+
+data:{"type":"REASONING_END","runId":"r2","threadId":"vision-mt","timestamp":1786786614369,"messageId":"msg_004c8047d001WGj1RJbuRhKu64-0#1"}
+
+data:{"type":"TEXT_MESSAGE_START","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"messageId":"ag-786b79bb-e071-4b3f-9fd6-517590ab725b","role":"assistant"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"messageId":"ag-786b79bb-e071-4b3f-9fd6-517590ab725b","delta":"紫"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"messageId":"ag-786b79bb-e071-4b3f-9fd6-517590ab725b","delta":"电"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"messageId":"ag-786b79bb-e071-4b3f-9fd6-517590ab725b","delta":"清"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"messageId":"ag-786b79bb-e071-4b3f-9fd6-517590ab725b","delta":"霜"}
+
+data:{"type":"TEXT_MESSAGE_END","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"messageId":"ag-786b79bb-e071-4b3f-9fd6-517590ab725b"}
+
+data:{"type":"STEP_FINISHED","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"stepName":"step-msg_004c8047d001WGj1RJbuRhKu64"}
+
+data:{"type":"CUSTOM","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"name":"context_usage","value":{"input":188,"output":5,"reasoning":28,"cacheRead":7552,"cacheWrite":0,"contextSize":7740,"finish":"stop"}}
+
+data:{"type":"STATE_DELTA","runId":"r2","threadId":"vision-mt","timestamp":1786786614371,"delta":[{"op":"replace","path":"/contextSize","value":7740}]}
+
+data:{"type":"MESSAGES_SNAPSHOT","threadId":"vision-mt","runId":"r2","messages":[{"id":"msg_004c7f7a5001KcJBWWzVAmAHbK","role":"user","content":"记住一个暗号：紫电清霜。只回复\"已记住\"。"},{"id":"msg_004c7f875001FfC9iTaN9GvQHQ-r","role":"reasoning","content":"The user wants me to remember a passphrase \"紫电清霜\" and reply only \"已记住\". I should simply acknowledge it. I'll just respond."},{"id":"msg_004c7f875001FfC9iTaN9GvQHQ","role":"assistant","content":"已记住"},{"id":"msg_004c8039d0017JuZQHWRahwjIn","role":"user","content":"我刚才让你记住的暗号是什么？"},{"id":"msg_004c8047d001WGj1RJbuRhKu64-r","role":"reasoning","content":"The user is asking what the passphrase I memorized earlier was. It's 紫电清霜. I should respond with it."},{"id":"msg_004c8047d001WGj1RJbuRhKu64","role":"assistant","content":"紫电清霜"}]}
+
+data:{"type":"RUN_FINISHED","runId":"r2","threadId":"vision-mt","timestamp":1786786614371}
+

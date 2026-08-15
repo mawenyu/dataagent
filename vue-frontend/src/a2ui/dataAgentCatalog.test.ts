@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
 import { A2UISurfaceActivityRenderer, CopilotKitProvider } from '@copilotkit/vue'
@@ -20,9 +20,10 @@ function mountSurface(components: any[], data?: Record<string, any>) {
   }
   // the renderer needs the provider context (useCopilotKit); no run is
   // started, so the dummy direct agent never touches the network
+  const agent = new HttpAgent({ url: '/unused-in-test' })
   return mount(CopilotKitProvider as any, {
     props: {
-      directAgents: { default: new HttpAgent({ url: '/unused-in-test' }) },
+      directAgents: { default: agent },
       a2ui: { catalog: dataAgentCatalog, includeSchema: true },
     },
     slots: {
@@ -38,6 +39,9 @@ function mountSurface(components: any[], data?: Record<string, any>) {
           },
           catalog: dataAgentCatalog,
           theme: {},
+          // 与生产一致（use-render-activity-message 会传 agent）——
+          // 缺 agent 时 handleAction 静默丢弃点击（HITL bug 复现条件之一）
+          agent,
         }),
     },
   })
@@ -207,5 +211,60 @@ describe('DataAgent custom catalog (TASK §15)', () => {
     expect(wrapper.text()).toContain('卡片标题')
     expect(wrapper.find('img').exists()).toBe(true)
     expect(wrapper.find('hr').exists() || wrapper.html()).toBeTruthy()
+  })
+})
+
+describe('ActionButton action 回传（HITL bug 修复 · 2026-08-15）', () => {
+  it('点击 ActionButton 触发 a2uiAction 回传续跑（点击前 schema 必须被 binder 识别为 ACTION）', async () => {
+    // 模拟 gateway：收到 run 即回一个最小 RUN_FINISHED SSE 流
+    const sseBody = 'data: {"type":"RUN_STARTED","threadId":"t","runId":"r"}\n\n' +
+      'data: {"type":"RUN_FINISHED","threadId":"t","runId":"r"}\n\n'
+    const fetchMock = vi.fn().mockResolvedValue(new Response(sseBody, {
+      status: 200, headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountSurface([
+      { component: 'Column', id: 'root', children: ['confirm'] },
+      {
+        component: 'ActionButton', id: 'confirm', label: '确认删除', variant: 'primary',
+        action: { event: { name: 'hitl_confirm', context: { actionId: 'del-1' } } },
+      },
+    ])
+    await nextTick(); await nextTick()
+
+    const btn = wrapper.find('button')
+    expect(btn.exists()).toBe(true)
+    expect(btn.text()).toContain('确认删除')
+    await btn.trigger('click')
+    // 等 runAgent 发出 HTTP
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(fetchMock, '点击必须触发一次 agent run（action 回传）').toHaveBeenCalled()
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body)
+    const action = body?.forwardedProps?.a2uiAction
+    expect(action, 'forwardedProps.a2uiAction 携带点击事件').toBeTruthy()
+    const name = action?.action?.name ?? action?.name
+    expect(name).toBe('hitl_confirm')
+  })
+
+  it('点击后按钮进入 disabled/loading 态（防重复提交）', async () => {
+    const sseBody = 'data: {"type":"RUN_STARTED"}\n\ndata: {"type":"RUN_FINISHED"}\n\n'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(sseBody, {
+      status: 200, headers: { 'Content-Type': 'text/event-stream' },
+    })))
+    const wrapper = mountSurface([
+      { component: 'Column', id: 'root', children: ['confirm'] },
+      {
+        component: 'ActionButton', id: 'confirm', label: '确认',
+        action: { event: { name: 'hitl_confirm', context: { actionId: 'a1' } } },
+      },
+    ])
+    await nextTick(); await nextTick()
+    const btn = wrapper.find('button')
+    await btn.trigger('click')
+    await nextTick()
+    expect(btn.attributes('disabled')).toBeDefined()
+    expect(btn.text()).toMatch(/处理中|…/)
   })
 })

@@ -1,0 +1,98 @@
+data:{"type":"RUN_STARTED","runId":"r1","threadId":"vision-mt","timestamp":1786786608522}
+
+data:{"type":"STATE_SNAPSHOT","runId":"r1","threadId":"vision-mt","timestamp":1786786608522,"snapshot":{"workspace":"workspace","model":"deepseek-reasoner","contextSize":0,"threadId":"vision-mt","provider":"deepseek"}}
+
+data:{"type":"STEP_STARTED","runId":"r1","threadId":"vision-mt","timestamp":1786786611425,"stepName":"step-msg_004c7f875001FfC9iTaN9GvQHQ"}
+
+data:{"type":"REASONING_START","runId":"r1","threadId":"vision-mt","timestamp":1786786611428,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1"}
+
+data:{"type":"REASONING_MESSAGE_START","runId":"r1","threadId":"vision-mt","timestamp":1786786611428,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","role":"reasoning"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611428,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"The"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611428,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" user"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611429,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" wants"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611429,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" me"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611429,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" to"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611429,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" remember"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611429,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" a"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611429,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" pass"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611450,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"phrase"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611450,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" \""}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611450,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"紫"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611452,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"电"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611452,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"清"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611453,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"霜"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611453,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"\""}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611453,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" and"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611454,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" reply"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611454,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" only"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611455,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" \""}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611456,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"已"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611456,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"记住"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611456,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"\"."}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611456,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" I"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611456,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" should"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611469,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" simply"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611469,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" acknowledge"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611471,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" it"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611471,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611472,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" I"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611472,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"'ll"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611472,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" just"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611472,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":" respond"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611473,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_END","runId":"r1","threadId":"vision-mt","timestamp":1786786611702,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1"}
+
+data:{"type":"REASONING_END","runId":"r1","threadId":"vision-mt","timestamp":1786786611702,"messageId":"msg_004c7f875001FfC9iTaN9GvQHQ-0#1"}
+
+data:{"type":"TEXT_MESSAGE_START","runId":"r1","threadId":"vision-mt","timestamp":1786786611712,"messageId":"ag-71f96084-ced9-4172-bfbd-d1a470e1887b","role":"assistant"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611712,"messageId":"ag-71f96084-ced9-4172-bfbd-d1a470e1887b","delta":"已"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-mt","timestamp":1786786611715,"messageId":"ag-71f96084-ced9-4172-bfbd-d1a470e1887b","delta":"记住"}
+
+data:{"type":"TEXT_MESSAGE_END","runId":"r1","threadId":"vision-mt","timestamp":1786786611717,"messageId":"ag-71f96084-ced9-4172-bfbd-d1a470e1887b"}
+
+data:{"type":"STEP_FINISHED","runId":"r1","threadId":"vision-mt","timestamp":1786786611908,"stepName":"step-msg_004c7f875001FfC9iTaN9GvQHQ"}
+
+data:{"type":"CUSTOM","runId":"r1","threadId":"vision-mt","timestamp":1786786611908,"name":"context_usage","value":{"input":5721,"output":3,"reasoning":33,"cacheRead":1920,"cacheWrite":0,"contextSize":7641,"finish":"stop"}}
+
+data:{"type":"STATE_DELTA","runId":"r1","threadId":"vision-mt","timestamp":1786786611908,"delta":[{"op":"replace","path":"/contextSize","value":7641}]}
+
+data:{"type":"MESSAGES_SNAPSHOT","threadId":"vision-mt","runId":"r1","messages":[{"id":"msg_004c7f7a5001KcJBWWzVAmAHbK","role":"user","content":"记住一个暗号：紫电清霜。只回复\"已记住\"。"},{"id":"msg_004c7f875001FfC9iTaN9GvQHQ-r","role":"reasoning","content":"The user wants me to remember a passphrase \"紫电清霜\" and reply only \"已记住\". I should simply acknowledge it. I'll just respond."},{"id":"msg_004c7f875001FfC9iTaN9GvQHQ","role":"assistant","content":"已记住"}]}
+
+data:{"type":"RUN_FINISHED","runId":"r1","threadId":"vision-mt","timestamp":1786786611909}
+

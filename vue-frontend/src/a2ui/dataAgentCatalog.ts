@@ -7,7 +7,7 @@
  * Charts take { title, xField, yField, data } and render hand-rolled SVG;
  * the LLM never produces chart library options.
  */
-import { h, type VNode } from 'vue'
+import { h, ref, type VNode } from 'vue'
 import { z } from 'zod'
 import { Catalog } from '@a2ui/web_core/v0_9'
 import { BASIC_FUNCTIONS } from '@a2ui/web_core/v0_9/basic_catalog'
@@ -350,36 +350,52 @@ const Markdown = createVueComponent(
 )
 
 // ---------------------------------------------------------- ActionButton ---
+// 2026-08-15 HITL bug 修复：action schema 必须是「含 event 对象的 ZodUnion」——
+// GenericBinder.getFieldBehavior 只认这个形态为 ACTION（包成 dispatcher 闭包）；
+// 之前写纯 z.object 被当静态对象透传，onClick 绑了个普通对象 → 点击零反应。
 const ActionButton = createVueComponent(
   {
     name: 'ActionButton',
     schema: z.object({
       label: boundString,
       variant: z.enum(['default', 'primary', 'borderless']).optional(),
-      action: z.object({
-        event: z.object({
-          name: z.string(),
-          context: z.record(z.string(), z.any()).optional(),
+      action: z.union([
+        z.object({
+          event: z.object({
+            name: z.string(),
+            context: z.record(z.string(), z.any()).optional(),
+          }),
         }),
-      }),
+      ]),
     }),
   } as any,
-  ({ props }: any) =>
+  ({ props, state }: any) =>
     h(
       'button',
       {
         style: {
-          margin: '8px', padding: '8px 16px', cursor: 'pointer',
+          margin: '8px', padding: '8px 16px',
+          cursor: state.busy.value ? 'not-allowed' : 'pointer',
+          opacity: state.busy.value ? 0.6 : 1,
           border: props.variant === 'borderless' ? 'none' : '1px solid #e5e7eb',
           backgroundColor: props.variant === 'primary' ? '#6366f1' : '#ffffff',
           color: props.variant === 'primary' ? '#ffffff' : '#374151',
           borderRadius: '8px', fontSize: '13px',
+          transition: 'opacity 0.15s ease',
         },
-        // resolved by the A2UI binder into the action dispatcher
-        onClick: props.action,
+        disabled: state.busy.value,
+        // binder（ACTION 行为）把 action 包成 dispatcher 闭包：点击即回传
+        // a2uiAction 续跑 agent；busy 态防重复提交，6s 兜底恢复
+        onClick: () => {
+          if (state.busy.value) return
+          state.busy.value = true
+          setTimeout(() => { state.busy.value = false }, 6000)
+          props.action?.()
+        },
       },
-      String(props.label ?? 'Action'),
+      state.busy.value ? `${String(props.label ?? 'Action')}…` : String(props.label ?? 'Action'),
     ),
+  () => ({ busy: ref(false) }),
 )
 
 // -------------------------------------------------------------- catalog ---

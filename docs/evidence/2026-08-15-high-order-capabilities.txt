@@ -1,0 +1,40 @@
+== 高阶能力补测（2026-08-15，全部真实 DeepSeek run，curl SSE 实测）==
+
+1. 连续多轮对话 ✅
+   证据: 2026-08-15-multi-turn-r1/r2/r3.sse（thread=vision-mt）
+   - r1 教暗号"紫电清霜" → 答"已记住"，snapshot 3 条
+   - r2 追问暗号 → 答"紫电清霜"（上下文连贯），snapshot 6 条
+   - r3 逆序+轮数 → 答"霜清电紫"+正确报 3 轮，snapshot 9 条
+   - MESSAGES_SNAPSHOT 每轮权威对齐，消息数 3→6→9 正确累积
+
+2. 工具调用可见 ✅
+   证据: 2026-08-15-tool-visibility.sse（thread=vision-tools）
+   - shell 工具完整序列 TOOL_CALL_START(shell)/ARGS/END/RESULT
+   - RESULT 含真实 ls 输出；前端 DefaultToolRender 测试佐证渲染
+   - agent 据工具结果答对文件数（4 个）
+
+3. 子 agent（subagent）✅
+   证据: 2026-08-15-subagent.sse（thread=vision-subagent）
+   - 模型调用 subagent 工具派生子代理统计 CSV 行数
+   - TOOL_CALL_START(subagent)/END/RESULT 完整透传；RESULT 含子代理结论
+     （138 行含表头/137 数据行）
+   - 注：OpenCode 架构下子 agent 在独立 session 执行，其内部 step 事件
+     不进入父流（协议层面无 AGENT_* 事件），结论经 TOOL_CALL_RESULT 回传 ——
+     前端工具卡片可见完整调用与结果
+   - 前端消费: DefaultToolRender 通用工具卡片（vitest 覆盖）
+
+4. 异步长任务 ✅
+   证据: 2026-08-15-async-multistep.sse（thread=vision-async）
+   - 4 步独立 shell 计算 run：STEP_STARTED/FINISHED 严格配对 ×6（含首尾步骤）
+   - 5 次工具调用全程流式不卡死（无 idle timeout）
+   - STATE_DELTA contextSize 单调增长 7702→7858→8210→8423→8625→8782
+     （前端 useContextUsage 顶栏徽章实时可见）
+
+附: HITL 修复实测（任务1）
+- 根因: 自定义 ActionButton 的 action schema 是纯 ZodObject，GenericBinder
+  只把「含 event 对象的 ZodUnion」识别为 ACTION 包成 dispatcher 闭包；
+  纯对象被静态透传 → onClick 绑了普通对象 → 点击零反应
+- 修复: schema union 化 + busy 防重复态（vitest: 点击触发 a2uiAction 回传
+  hitl_confirm + disabled/loading 态，8/8 绿）
+- 全链路: hitl_confirm 回传 → agent 真实执行删除并更新卡片
+  （2026-08-15-vision-hitl-confirm.sse，文件系统核实已删）

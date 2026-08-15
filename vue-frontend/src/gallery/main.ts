@@ -31,3 +31,12 @@ const app = createApp({
   },
 })
 app.mount('#app')
+
+// 截图留证钩子：?autoclick=1 自动点击第一个 ActionButton，
+// 截图可看到点击后的 disabled/loading 态（HITL 按钮可点性证据，2026-08-15）
+if (params.get('autoclick') === '1') {
+  setTimeout(() => {
+    const btn = document.querySelector('.a2ui-surface button') as HTMLButtonElement | null
+    btn?.click()
+  }, 800)
+}
