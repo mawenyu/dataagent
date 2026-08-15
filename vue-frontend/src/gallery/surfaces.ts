@@ -178,6 +178,46 @@ for (let i = 0; i < 99; i++) {
 }
 const perf = ops('g-perf', perfComps)
 
+
+// ⑨ P6-A 表单校验错误卡（初始空值即显示错误态 + 提交按钮 disabled）
+const formcheck = ops('g-formcheck', [
+  { component: 'Column', id: 'root', children: ['fc-title', 'fc-kw', 'fc-slider', 'fc-submit'] },
+  { component: 'Text', id: 'fc-title', text: '销售筛选（含前端即时校验）', variant: 'h3' },
+  {
+    component: 'TextField', id: 'fc-kw', label: '品类关键词', value: { path: 'keyword' },
+    checks: [
+      { call: 'required', args: { value: { path: 'keyword' } }, message: '关键词必填' },
+      { call: 'regex', args: { value: { path: 'keyword' }, pattern: '^.{2,}$' }, message: '至少 2 个字符' },
+    ],
+  },
+  {
+    component: 'Slider', id: 'fc-slider', label: '销售额阈值（万元）', min: 0, max: 50, value: { path: 'threshold' },
+  },
+  {
+    component: 'Button', id: 'fc-submit', child: 'fc-submit-t', variant: 'primary',
+    checks: [{ call: 'required', args: { value: { path: 'keyword' } }, message: '关键词必填' }],
+    action: { event: { name: 'apply_filter', context: { keyword: { path: 'keyword' }, threshold: { path: 'threshold' } } } },
+  },
+  { component: 'Text', id: 'fc-submit-t', text: '应用筛选' },
+], { keyword: '', threshold: 20 })
+
+
+// ⑩ P6-B 多步确认向导（step1 / step2 双 surface 同框）
+const wizard1 = ops('g-wiz1', [
+  { component: 'Column', id: 'root', children: ['w1-warn', 'w1-next'] },
+  { component: 'WarningCard', id: 'w1-warn', title: '删除确认 · 第 1/2 步', text: '将归档删除 region-sales-2026-08-result.csv（87 字节，5 行）。' },
+  { component: 'ActionButton', id: 'w1-next', label: '下一步', variant: 'primary', action: { event: { name: 'wizard_next', context: { step: 1 } } } },
+])
+const wizard2 = ops('g-wiz2', [
+  { component: 'Column', id: 'root', children: ['w2-info', 'w2-actions'] },
+  { component: 'Card', id: 'w2-info', child: 'w2-md' },
+  { component: 'Markdown', id: 'w2-md', text: '**待删除文件**\n- 名称：region-sales-2026-08-result.csv\n- 大小：87 字节 / 5 行\n- ⚠️ 删除不可恢复' },
+  { component: 'Row', id: 'w2-actions', children: ['w2-back', 'w2-confirm'] },
+  { component: 'ActionButton', id: 'w2-back', label: '上一步', action: { event: { name: 'wizard_back', context: { step: 2 } } } },
+  { component: 'ActionButton', id: 'w2-confirm', label: '确认删除', variant: 'primary', action: { event: { name: 'wizard_confirm_delete', context: { step: 2 } } } },
+])
+const wizard = [...wizard1, ...wizard2]
+
 export const GALLERY_BATCHES: Record<string, GalleryBatch> = {
   layout: { label: '布局容器类', components: ['Card', 'Row', 'Column', 'List', 'Tabs', 'Divider', 'Modal'], operations: layout },
   form: { label: '表单交互类', components: ['TextField', 'CheckBox', 'ChoicePicker', 'Slider', 'DateTimeInput', 'Button'], operations: form },
@@ -187,4 +227,6 @@ export const GALLERY_BATCHES: Record<string, GalleryBatch> = {
   hitl: { label: 'HITL 确认卡片', components: ['WarningCard', 'ActionButton'], operations: hitl },
   edge: { label: '边界/异常（vision-P4）', components: ['MetricCard', 'Text', 'Column'], operations: edge },
   perf: { label: '性能规模（100 组件）', components: ['MetricCard', 'Column'], operations: perf },
+  formcheck: { label: 'P6-A 表单校验错误卡', components: ['TextField', 'Slider', 'Button'], operations: formcheck },
+  wizard: { label: 'P6-B 多步确认向导（双步同框）', components: ['WarningCard', 'ActionButton', 'Card', 'Markdown'], operations: wizard },
 }

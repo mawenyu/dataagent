@@ -71,3 +71,28 @@ AG-UI 的 HITL 模式（interrupt → 用户决策 → resume 为新 run）落�
 - 新 CUSTOM 事件：translator 内 emit + 前端 composable 订阅（参照 useContextUsage）
 - 新 catalog 组件：dataAgentCatalog.ts（createVueComponent + zod schema）+
   gateway ALLOWED_COMPONENTS + 插件 CATALOG_COMPONENTS 三处同源（galleryGuard 测试守护）
+
+## 五、场景模式（vision-P6，2026-08-15 实测）
+
+### 场景 A：表单校验错误卡（A2UI checks 协议）
+- 能力：表单组件 schema 原生 `checks:[{call,args,message}]`（strict），binder
+  CHECKABLE 行为逐条求值并注入 isValid/validationErrors —— **前端即时校验，
+  零网络往返**；可用函数 required/regex/length/numeric/email/greaterThan 等；
+  Button 带 checks 时校验不过自动 disabled（无视觉弱化，fork 已知样式边界）
+- 插件 render_a2ui 契约已补 checks 用法（模型可正确产出，实测见证据）
+- 实测：2026-08-15-p6-form-checks.sse（TextField required+regex 双规则 +
+  Button 关联校验）；截图 READY-VISION-p6-formcheck.png（初始空值红框+
+  "关键词必填"错误文案）；vitest formChecks.test.ts 3 例（输入合法值错误
+  消除/按钮解禁/清空回归）
+- 顺带修复：真实 run 发现模型偶发漏 root 容器（前端永远 shimmer）——
+  gateway validate/execute 收口统一并新增 root 必填校验，拒绝原因经 P5-1
+  通道回执模型自纠
+
+### 场景 B：多步确认向导（wizard）
+- 模式：step1（WarningCard + "下一步" ActionButton）→ a2uiAction resume →
+  同 surfaceId replace 为 step2（文件明细 Card + 上一步/确认删除）→ 确认
+  触发 request_user_confirm HITL 卡 → hitl_confirm resume → 执行删除 +
+  "向导流程完成"。**agent 自主组合了向导 + HITL 两种模式**
+- 实测 4 段真实 run：2026-08-15-p6-wizard-{step1,step2,hitl,done}.sse；
+  截图 READY-VISION-p6-wizard.png（双步同框画廊 batch=wizard）
+- 无新增代码 —— 纯既有协议能力组合（action 回传 + surface replace + HITL）

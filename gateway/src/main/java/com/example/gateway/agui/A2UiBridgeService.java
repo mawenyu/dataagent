@@ -397,6 +397,13 @@ public class A2UiBridgeService {
             }
         }
         if (!rejected.isEmpty()) return "not in whitelist or missing id: " + rejected;
+        // P6-A 实测驱动：模型偶发漏掉根容器 —— 无 id="root" 的 surface 前端
+        // 永远 shimmer（渲染器从 root 入口递归），必须拒绝并让模型补正重试
+        boolean hasRoot = false;
+        for (JsonNode c : normalized) {
+            if ("root".equals(c.path("id").asText(""))) { hasRoot = true; break; }
+        }
+        if (!hasRoot) return "missing root component (a component with id=\"root\" is required)";
         return null;
     }
 
@@ -407,53 +414,18 @@ public class A2UiBridgeService {
      * (TASK §14) so later updates/actions reuse its activity messageId.
      */
     public Optional<ServerSentEvent<String>> execute(String userId, String runId, String threadId, JsonNode args) {
-        if (args == null || !args.isObject()) {
-            log.warn("render_a2ui: arguments missing/not an object");
+        // P5-1 起校验统一收口在 validate()（含 root 必填/白名单/环/规模）
+        String invalid = validate(args);
+        if (invalid != null) {
+            log.warn("render_a2ui: rejected — {}", invalid);
             return Optional.empty();
         }
         String surfaceId = args.path("surfaceId").asText("");
-        if (surfaceId.isBlank() || !surfaceId.matches("[A-Za-z0-9_\\-]{1,64}")) {
-            log.warn("render_a2ui: invalid surfaceId '{}'", surfaceId);
-            return Optional.empty();
-        }
-        JsonNode comps = args.path("components");
-        if (!comps.isArray() || comps.isEmpty()) {
-            log.warn("render_a2ui: components missing/empty");
-            return Optional.empty();
-        }
         // 2026-08-15 实测：模型常把子组件对象嵌进 children 数组（v0.9 约定是
         // 扁平列表 + children 为 id 数组），还带显式 null 属性。先拍平 + 剥 null，
         // 再校验白名单 —— 嵌套组件因此同样过白名单，不能绕过。
-        ArrayNode flat = flattenComponents((ArrayNode) comps);
-        if (flat == null) {
-            log.warn("render_a2ui: components malformed (child without id)");
-            return Optional.empty();
-        }
-        comps = normalizeComponents(flat);
-        ArrayNode compsArr = (ArrayNode) comps;
-        // vision-P4: children/child/trigger/content/tabs 引用环检测 ——
-        // 环会让前端递归渲染栈溢出（白屏），整体拒绝（前端另有渲染层防护）
-        if (hasReferenceCycle(compsArr)) {
-            log.warn("render_a2ui: rejected components (reference cycle detected)");
-            return Optional.empty();
-        }
-        if (comps.size() > MAX_COMPONENTS || comps.toString().length() > MAX_PAYLOAD_CHARS) {
-            log.warn("render_a2ui: payload too large ({} components, {} chars)",
-                    comps.size(), comps.toString().length());
-            return Optional.empty();
-        }
-        List<String> rejected = new ArrayList<>();
-        for (JsonNode c : comps) {
-            String type = c.path("component").asText("");
-            String id = c.path("id").asText("");
-            if (id.isBlank() || !ALLOWED_COMPONENTS.contains(type)) {
-                rejected.add(type + "#" + id);
-            }
-        }
-        if (!rejected.isEmpty()) {
-            log.warn("render_a2ui: rejected components (not in whitelist or missing id): {}", rejected);
-            return Optional.empty();
-        }
+        ArrayNode flat = flattenComponents((ArrayNode) args.path("components"));
+        JsonNode comps = normalizeComponents(flat);
         String catalogId = args.path("catalogId").asText("");
         // 前端只注册了 DataAgent catalog（basic 超集）——任何空值/基础 catalog id/
         // 模型编的短别名（实测 "data-agent"，2026-08-15）都归一化到它；

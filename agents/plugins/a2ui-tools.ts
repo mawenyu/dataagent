@@ -57,7 +57,13 @@ export default Plugin.define({
           `MetricCard{title,value,delta?,trend?}; DataTable{columns:[{key,label}],rows}; ` +
           `BarChart/LineChart{title,xField,yField,data}; PieChart{title,labelField,valueField,data}; ` +
           `Badge{text,variant?}; Markdown{text}; InsightCard{title,text,variant?}; WarningCard{title,text}; ` +
-          `ActionButton{label,variant?,action:{event:{name,context?}}}。`,
+          `ActionButton{label,variant?,action:{event:{name,context?}}}。` +
+          ` 表单校验：表单组件（TextField/CheckBox/ChoicePicker/Slider/DateTimeInput/Button）支持 ` +
+          `checks:[{call,args,message}] 声明前端即时校验规则（无需回传服务端）——` +
+          `call 可用 required/regex/length/numeric/email/greaterThan/lessThan/contains 等，` +
+          `args 里用 {path} 引用 data 字段，例：` +
+          `checks:[{call:"required",args:{value:{path:"keyword"}},message:"关键词必填"}]；` +
+          `校验失败字段红框+错误文案，带 checks 的 Button 自动 disabled。`,
         input: {
           type: "object",
           properties: {

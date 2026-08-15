@@ -385,4 +385,30 @@ class A2UiBridgeServiceTest {
         assertFalse(bad.path("ok").asBoolean());
         assertTrue(bad.path("reason").asText().contains("Gauge"));
     }
+
+    /** P6-A 实测驱动：缺 root 组件（id=root）→ validate 报告 + execute 拒绝。 */
+    @Test
+    void missingRootRejected() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"TextField","id":"kw","label":"x"},
+                  {"component":"Button","id":"b","child":"t"}
+                ]}""";
+        String reason = bridge.validate(MAPPER.readTree(args));
+        assertNotNull(reason);
+        assertTrue(reason.contains("root"), reason);
+        assertTrue(bridge.execute("run", "t", MAPPER.readTree(args)).isEmpty(),
+                "无 root 的 surface 前端永远 shimmer，必须拒绝");
+    }
+
+    /** root 存在但 id 大小写/拼写不同（"Root"/"main"）同样算缺 root。 */
+    @Test
+    void rootMustBeExactId() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"Root","children":["t"]},
+                  {"component":"Text","id":"t","text":"x"}
+                ]}""";
+        assertNotNull(bridge.validate(MAPPER.readTree(args)));
+    }
 }
