@@ -331,8 +331,12 @@ function formatTime(iso: string) {
 }
 .dir-chev:hover { color: #4338ca; }
 .file-meta { font-size: 11px; color: #9ca3af; white-space: nowrap; }
-.file-actions { display: flex; gap: 2px; opacity: 0; align-items: center; }
-.file-item:hover .file-actions { opacity: 1; }
+/* 隐形即不可点(同 ThreadSidebar 实测 bug: opacity:0 仍拦截点击) */
+.file-actions { display: flex; gap: 2px; opacity: 0; pointer-events: none; align-items: center; }
+.file-item:hover .file-actions, .file-item:focus-within .file-actions { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .file-actions { opacity: 0.65; pointer-events: auto; }
+}
 .act {
   border: none; background: transparent; color: #9ca3af; font-size: 14px;
   cursor: pointer; border-radius: 6px; padding: 0 5px; text-decoration: none; line-height: 1.4;

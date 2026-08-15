@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
@@ -312,5 +313,20 @@ describe('FilesPanel P-R（友好空态）', () => {
     const clickSpy = vi.spyOn(input, 'click').mockImplementation(() => {})
     await btn.trigger('click')
     expect(clickSpy).toHaveBeenCalled()
+  })
+})
+
+describe('FilesPanel 移动端点击穿透（与 ThreadSidebar 同款守卫）', () => {
+  // vitest(jsdom) 不注入 SFC <style>，直接守卫源码 CSS 规则。
+  const css = readFileSync('src/components/FilesPanel.vue', 'utf-8')
+
+  it('.file-actions 隐形时 pointer-events:none，hover 揭示/触屏常显时 auto', () => {
+    const base = css.match(/\.file-actions \{[^}]*\}/)?.[0] ?? ''
+    expect(base).toContain('opacity: 0')
+    expect(base).toContain('pointer-events: none')
+    const reveal = css.match(/\.file-item:hover \.file-actions[^{]*\{[^}]*\}/)?.[0] ?? ''
+    expect(reveal).toContain('pointer-events: auto')
+    const touch = css.match(/@media \(hover:\s*none\)[^}]*\{[^}]*\.file-actions[^}]*\}/)?.[0] ?? ''
+    expect(touch).toContain('pointer-events: auto')
   })
 })
