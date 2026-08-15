@@ -40,5 +40,6 @@ F1 主链路 / F2 功能项 / F4 全部在 task6 及之前已完成；本次补�
 | `1011ce1` | **P-C 文件预览 modal**：csv 表格（引号感知解析、首行 sticky、500 行截断）/ json 美化 / md 轻量渲染（先转义后变换，XSS 安全）/ txt·log 原文；Teleport + ESC/遮罩关闭；顺手清掉 FilesPanel 的 alert/confirm（内联 notice + 删除两段确认） |
 | `b81e809` | **P-D Prompt 模板**：欢迎页 4 模板卡（销售分析/可视化看板/周报生成/数据清洗），点击填充输入框（非直接发送）+ 聚焦，可编辑后回车发出 |
 | `a5c6c69` | **P-E 模板库/输入增强**：模板卡点击后高亮（card-active，编辑/清空自动移除）+ 一键清空按钮（✕，复位高度并聚焦）；欢迎页输入框自适应高度（下限 40px、超 3 行 82px 封顶出滚动条）+ Enter 发送 / Shift+Enter 换行 |
+| `7dd674d` | **P-F 主输入框核验+patch**：排查确认 fork 主输入框 Enter 发送/Shift+Enter 换行/IME 守卫/自适应增高均为 upstream 既有（有测试）；真实缺口=maxRows 默认 5 → 改 3 行封顶（inline `FORK-PATCH(P-F)` 注释），FORK.md 补条目 10/11 + 升级 re-apply 流程修正；新增 2 用例钉住 auto-grow 封顶防升级回退 |
 
-**验证**：vue-frontend vitest 24 文件 147 全绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
+**验证**：vue-frontend vitest 24 文件 147 全绿;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
