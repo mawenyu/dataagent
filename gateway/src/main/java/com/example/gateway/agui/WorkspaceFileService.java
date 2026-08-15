@@ -233,16 +233,6 @@ public class WorkspaceFileService {
         return resolvePath(name).filter(Files::isRegularFile).map(FileSystemResource::new);
     }
 
-    public Optional<Long> sizeOf(String name) {
-        return resolve(name).filter(Files::isRegularFile).map(p -> {
-            try {
-                return Files.size(p);
-            } catch (IOException e) {
-                return null;
-            }
-        });
-    }
-
     /** 上传（覆盖同名）。返回写入字节数；非法名/超限/写失败 → empty。 */
     public Optional<FileInfo> store(String name, byte[] content) {
         if (content == null || content.length == 0) return Optional.empty();

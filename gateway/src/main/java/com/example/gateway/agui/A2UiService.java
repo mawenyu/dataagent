@@ -33,8 +33,6 @@ public class A2UiService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public static final String VERSION = "v0.9";
-    /** Matches the id of CopilotKit Vue's vueBasicCatalog. */
-    public static final String BASIC_CATALOG_ID = "https://a2ui.org/specification/v0_9/basic_catalog.json";
     /**
      * DataAgent catalog (TASK §15) — the frontend's registered catalog:
      * basic catalog + whitelisted custom components (MetricCard / DataTable /
