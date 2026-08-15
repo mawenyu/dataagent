@@ -44,7 +44,19 @@ export default Plugin.define({
           `在用户聊天中渲染一个 A2UI UI surface（看板/表单/卡片等）。` +
           `组件只能用 catalog 白名单: ${CATALOG_COMPONENTS}。` +
           `components 是扁平数组（每个含 component+id，children 用 id 引用，root 的 id 必须是 "root"），` +
-          `数据尽量放 data 并用 {path} 绑定。数字报告类需求优先用 render_report。`,
+          `数据尽量放 data 并用 {path} 绑定。数字报告类需求优先用 render_report。` +
+          ` 关键 props 契约（严格遵守，不要自创字段名）：` +
+          `Text{text,variant?}; Image{url,description?}; Icon{name}; Video/AudioPlayer{url}; ` +
+          `Row/Column/List{children:[id],justify?,align?}; Card{child:id 单个}; ` +
+          `Tabs{tabs:[{title,child:id}]}; Modal{trigger:id,content:id}; ` +
+          `Button{child:文本组件id,variant?,action:{event:{name,context?}}}; ` +
+          `TextField{label,value:{path}}; CheckBox{label,value:{path}}; ` +
+          `ChoicePicker{label,options:[{value,label}],value:{path}}; Slider{label,min,max,value:{path}}; ` +
+          `DateTimeInput{label,enableDate,enableTime,value:{path}}; ` +
+          `MetricCard{title,value,delta?,trend?}; DataTable{columns:[{key,label}],rows}; ` +
+          `BarChart/LineChart{title,xField,yField,data}; PieChart{title,labelField,valueField,data}; ` +
+          `Badge{text,variant?}; Markdown{text}; InsightCard{title,text,variant?}; WarningCard{title,text}; ` +
+          `ActionButton{label,variant?,action:{event:{name,context?}}}。`,
         input: {
           type: "object",
           properties: {

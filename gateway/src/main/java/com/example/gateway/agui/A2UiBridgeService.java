@@ -111,10 +111,14 @@ public class A2UiBridgeService {
         // 先收集子组件引用（父条目先入库，保持 root 在前的自然顺序），再递归拍平。
         // 实测模型用三种容器字段装嵌套子组件：children（v0.9 约定）/ child（单个）/
         // items（2026-08-15 实测变体，统一改写为 children）。
+        // vision-P2 修正：items 首元素没有 id/component 时不是嵌套组件（如 Tabs 的
+        // items:[{label,value}] 是页签元数据），保留原样交给 normalizeComponents。
         List<JsonNode> nested = new ArrayList<>();
         JsonNode items = c.get("items");
         if (items != null && items.isArray()
-                && items.iterator().hasNext() && items.iterator().next().isObject()) {
+                && items.iterator().hasNext() && items.iterator().next().isObject()
+                && (items.iterator().next().has("id") || items.iterator().next().has("component"))
+                && !c.has("children")) {
             c.remove("items");
             c.set("children", items);
         }
@@ -146,6 +150,110 @@ public class A2UiBridgeService {
             if (!flattenOne(n, out)) return false;
         }
         return true;
+    }
+
+    /**
+     * vision-P2: 模型常见"自创契约"的确定性归一（2026-08-15 layout 批次实测驱动 ——
+     * 模型按直觉猜 props，与 fork catalog 真实实现有系统性偏差）：
+     * <ul>
+     *   <li>Text: value → text（仅 Text；TextField/Slider 等原生用 value，不动）</li>
+     *   <li>Row/Column/List: justifyContent→justify, alignItems→align</li>
+     *   <li>Tabs: items[{label,value}] + children[id...] → tabs[{title,child}]（按序配对）</li>
+     *   <li>Modal: children[t,c] → trigger=t, content=c</li>
+     *   <li>Button: label 字符串 → 合成 Text 子组件（id=btnId-label）作 child</li>
+     *   <li>Card: children 单元素 → child；多元素 → 合成 Column 包裹作 child</li>
+     * </ul>
+     * 全部只在目标属性缺失时生效（模型给对了就不动）。
+     */
+    static ArrayNode normalizeComponents(ArrayNode flat) {
+        ArrayNode extra = MAPPER.createArrayNode();
+        for (JsonNode n : flat) {
+            if (!(n instanceof ObjectNode c)) continue;
+            String type = c.path("component").asText("");
+            String id = c.path("id").asText("");
+            switch (type) {
+                case "Text" -> {
+                    if (!c.has("text") && c.has("value")) {
+                        c.set("text", c.get("value"));
+                        c.remove("value");
+                    }
+                }
+                case "Row", "Column", "List" -> {
+                    if (!c.has("justify") && c.has("justifyContent")) {
+                        c.set("justify", c.get("justifyContent"));
+                        c.remove("justifyContent");
+                    }
+                    if (!c.has("align") && c.has("alignItems")) {
+                        c.set("align", c.get("alignItems"));
+                        c.remove("alignItems");
+                    }
+                }
+                case "Tabs" -> {
+                    JsonNode items = c.get("items");
+                    JsonNode children = c.get("children");
+                    if (!c.has("tabs") && items != null && items.isArray()
+                            && children != null && children.isArray()) {
+                        ArrayNode tabs = MAPPER.createArrayNode();
+                        int i = 0;
+                        for (JsonNode item : items) {
+                            ObjectNode tab = MAPPER.createObjectNode();
+                            tab.put("title", item.path("label").asText(
+                                    item.path("title").asText("")));
+                            // value 指向页签内容组件 id；缺省按序取 children[i]
+                            String child = item.path("value").asText("");
+                            if (child.isBlank() && i < children.size()) child = children.get(i).asText();
+                            tab.put("child", child);
+                            tabs.add(tab);
+                            i++;
+                        }
+                        c.remove("items");
+                        c.remove("children");
+                        c.set("tabs", tabs);
+                    }
+                }
+                case "Modal" -> {
+                    JsonNode children = c.get("children");
+                    if (!c.has("trigger") && !c.has("content")
+                            && children != null && children.isArray() && children.size() >= 2) {
+                        c.put("trigger", children.get(0).asText());
+                        c.put("content", children.get(1).asText());
+                        c.remove("children");
+                    }
+                }
+                case "Button" -> {
+                    if (!c.has("child") && c.has("label") && c.get("label").isTextual()) {
+                        String labelId = id + "-label";
+                        ObjectNode labelText = MAPPER.createObjectNode();
+                        labelText.put("component", "Text");
+                        labelText.put("id", labelId);
+                        labelText.put("text", c.get("label").asText());
+                        extra.add(labelText);
+                        c.put("child", labelId);
+                        c.remove("label");
+                    }
+                }
+                case "Card" -> {
+                    JsonNode children = c.get("children");
+                    if (!c.has("child") && children != null && children.isArray() && !children.isEmpty()) {
+                        if (children.size() == 1) {
+                            c.put("child", children.get(0).asText());
+                        } else {
+                            String colId = id + "-col";
+                            ObjectNode col = MAPPER.createObjectNode();
+                            col.put("component", "Column");
+                            col.put("id", colId);
+                            col.set("children", children.deepCopy());
+                            extra.add(col);
+                            c.put("child", colId);
+                        }
+                        c.remove("children");
+                    }
+                }
+                default -> { }
+            }
+        }
+        for (JsonNode e : extra) flat.add(e);
+        return flat;
     }
 
     /** Whether the client advertised A2UI capability for this run. */
@@ -240,7 +348,7 @@ public class A2UiBridgeService {
             log.warn("render_a2ui: components malformed (child without id)");
             return Optional.empty();
         }
-        comps = flat;
+        comps = normalizeComponents(flat);
         if (comps.size() > MAX_COMPONENTS || comps.toString().length() > MAX_PAYLOAD_CHARS) {
             log.warn("render_a2ui: payload too large ({} components, {} chars)",
                     comps.size(), comps.toString().length());

@@ -159,4 +159,126 @@ class A2UiBridgeServiceTest {
         assertTrue(bridge.execute("run", "thread", MAPPER.readTree(args)).isEmpty(),
                 "non-whitelisted nested component must still be rejected after flattening");
     }
+
+    // ---- vision-P2: 模型常见"自创契约"的确定性归一（2026-08-15 layout 批次实测驱动）----
+
+    private JsonNode flatComponents(Optional<ServerSentEvent<String>> out) throws Exception {
+        JsonNode ops = snapshotOps(out.get());
+        for (JsonNode op : ops) {
+            if (op.has("updateComponents")) return op.path("updateComponents").path("components");
+        }
+        return null;
+    }
+
+    private JsonNode byId(JsonNode comps, String id) {
+        for (JsonNode c : comps) if (id.equals(c.path("id").asText())) return c;
+        return null;
+    }
+
+    @Test
+    void tabsItemsPlusChildrenNormalizedToTabsProp() throws Exception {
+        // 实测模型输出：Tabs 用 items[{label,value}] + children[id...] ——
+        // items 不是嵌套组件（无 id），不得误判拍平；归一为契约 tabs[{title,child}]
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["tabs"]},
+                  {"component":"Tabs","id":"tabs","children":["tab-a","tab-b"],
+                    "items":[{"label":"页签一","value":"tab-a"},{"label":"页签二","value":"tab-b"}]},
+                  {"component":"Text","id":"tab-a","text":"A"},
+                  {"component":"Text","id":"tab-b","text":"B"}
+                ]}""";
+        Optional<ServerSentEvent<String>> out = bridge.execute("run", "t", MAPPER.readTree(args));
+        assertTrue(out.isPresent(), "Tabs items+children 必须被接受（2026-08-15 实测曾整面拒渲染）");
+        JsonNode tabs = byId(flatComponents(out), "tabs");
+        assertFalse(tabs.has("items"), "items 已消费");
+        assertFalse(tabs.has("children"), "children 已消费");
+        assertEquals(2, tabs.path("tabs").size());
+        assertEquals("页签一", tabs.path("tabs").get(0).path("title").asText());
+        assertEquals("tab-a", tabs.path("tabs").get(0).path("child").asText());
+    }
+
+    @Test
+    void textValueAliasedToText() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["t1"]},
+                  {"component":"Text","id":"t1","value":"模型爱用 value"}
+                ]}""";
+        JsonNode t1 = byId(flatComponents(bridge.execute("run", "t", MAPPER.readTree(args))), "t1");
+        assertEquals("模型爱用 value", t1.path("text").asText(), "Text.value → text");
+        assertFalse(t1.has("value"));
+    }
+
+    @Test
+    void rowJustifyAlignAliased() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Row","id":"root","children":[],"justifyContent":"spaceBetween","alignItems":"center"}
+                ]}""";
+        JsonNode row = byId(flatComponents(bridge.execute("run", "t", MAPPER.readTree(args))), "root");
+        assertEquals("spaceBetween", row.path("justify").asText());
+        assertEquals("center", row.path("align").asText());
+        assertFalse(row.has("justifyContent"));
+        assertFalse(row.has("alignItems"));
+    }
+
+    @Test
+    void modalChildrenSplitToTriggerAndContent() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["m"]},
+                  {"component":"Modal","id":"m","children":["trg","body"]},
+                  {"component":"Button","id":"trg","child":"trg-t","action":{"event":{"name":"open"}}},
+                  {"component":"Text","id":"trg-t","text":"打开"},
+                  {"component":"Text","id":"body","text":"弹层内容"}
+                ]}""";
+        JsonNode modal = byId(flatComponents(bridge.execute("run", "t", MAPPER.readTree(args))), "m");
+        assertEquals("trg", modal.path("trigger").asText());
+        assertEquals("body", modal.path("content").asText());
+        assertFalse(modal.has("children"));
+    }
+
+    @Test
+    void buttonLabelWrappedIntoTextChild() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","children":["b"]},
+                  {"component":"Button","id":"b","label":"提交","action":{"event":{"name":"go"}}}
+                ]}""";
+        JsonNode comps = flatComponents(bridge.execute("run", "t", MAPPER.readTree(args)));
+        JsonNode btn = byId(comps, "b");
+        assertEquals("b-label", btn.path("child").asText(), "label 合成 Text 子组件");
+        JsonNode label = byId(comps, "b-label");
+        assertNotNull(label);
+        assertEquals("Text", label.path("component").asText());
+        assertEquals("提交", label.path("text").asText());
+    }
+
+    @Test
+    void cardSingleChildrenBecomesChild() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Card","id":"root","children":["inner"]},
+                  {"component":"Text","id":"inner","text":"x"}
+                ]}""";
+        JsonNode card = byId(flatComponents(bridge.execute("run", "t", MAPPER.readTree(args))), "root");
+        assertEquals("inner", card.path("child").asText());
+        assertFalse(card.has("children"));
+    }
+
+    @Test
+    void cardMultiChildrenWrappedInColumn() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Card","id":"root","children":["a","b"]},
+                  {"component":"Text","id":"a","text":"A"},
+                  {"component":"Text","id":"b","text":"B"}
+                ]}""";
+        JsonNode comps = flatComponents(bridge.execute("run", "t", MAPPER.readTree(args)));
+        JsonNode card = byId(comps, "root");
+        assertEquals("root-col", card.path("child").asText());
+        JsonNode col = byId(comps, "root-col");
+        assertEquals("Column", col.path("component").asText());
+        assertEquals(2, col.path("children").size());
+    }
 }
