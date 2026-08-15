@@ -93,4 +93,25 @@ describe('FilesPanel (task5-A workspace 文件管理)', () => {
     const link = wrapper.find('a.act')
     expect(link.attributes('href')).toBe('/agui-api/files/sales-2026-08.csv')
   })
+
+  // task5-B4: CSV 文件行有"编辑"入口，点击后读内容并打开表格编辑器
+  it('csv rows offer an edit button that opens the spreadsheet editor', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(FILE_LIST) }) // initial list
+      .mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new TextEncoder().encode('区域,销售额\n华北,100').buffer),
+      }) // readFile for editor
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel)
+    await nextTick(); await nextTick(); await nextTick()
+    // .csv 行有编辑按钮，.md 行没有
+    expect(wrapper.find('[data-testid="edit-sales-2026-08.csv"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-notes.md"]').exists()).toBe(false)
+    await wrapper.find('[data-testid="edit-sales-2026-08.csv"]').trigger('click')
+    await nextTick(); await nextTick()
+    expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/files/sales-2026-08.csv')
+    expect(wrapper.find('[data-testid="spreadsheet-editor"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="spreadsheet-editor"]').text()).toContain('华北')
+  })
 })

@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
@@ -89,6 +91,31 @@ public class WorkspaceFilesController {
                             .orElse(ResponseEntity.badRequest().body(err("empty file or store failed")));
                 })
                 .defaultIfEmpty(ResponseEntity.badRequest().body(err("empty file")));
+    }
+
+    /**
+     * PUT /files/{name} — 文本 body 覆盖写（task5-B4 spreadsheet 编辑器保存通道）。
+     * 复用 POST 同款防护：文件名白名单 / 大小上限 / 空内容拒绝；文件不存在时新建。
+     */
+    @PutMapping(value = "/files/{name}", consumes = {MediaType.TEXT_PLAIN_VALUE, MediaType.ALL_VALUE})
+    public ResponseEntity<ObjectNode> put(@PathVariable String name, @RequestBody(required = false) byte[] body) {
+        if (files.resolve(name).isEmpty()) {
+            return ResponseEntity.badRequest().body(err("invalid file name"));
+        }
+        if (body == null || body.length == 0) {
+            return ResponseEntity.badRequest().body(err("empty file"));
+        }
+        if (body.length > files.maxUploadBytes()) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
+        }
+        return files.store(name, body)
+                .map(info -> {
+                    ObjectNode ok = MAPPER.createObjectNode();
+                    ok.put("name", info.name());
+                    ok.put("size", info.size());
+                    return ResponseEntity.ok(ok);
+                })
+                .orElse(ResponseEntity.badRequest().body(err("store failed")));
     }
 
     /** DELETE /files/{name} — 删除。 */

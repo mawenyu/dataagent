@@ -70,6 +70,29 @@ export function useWorkspaceFiles() {
     return `${API}/${encodeURIComponent(name)}`
   }
 
+  /** 读取完整文件文本（task5-B4：表格编辑器打开 / agent handler 读当前内容用）。 */
+  async function readFile(name: string): Promise<string> {
+    const res = await fetch(`${API}/${encodeURIComponent(name)}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return new TextDecoder('utf-8', { fatal: false }).decode(await res.arrayBuffer())
+  }
+
+  /** task5-B4：PUT 覆盖写（raw text body），保存后刷新列表并同步预览内容。 */
+  async function saveFile(name: string, content: string) {
+    error.value = ''
+    const res = await fetch(`${API}/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: content,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body?.error ?? `HTTP ${res.status}`)
+    }
+    if (preview.value?.name === name) preview.value = { name, content, truncated: false }
+    await refresh()
+  }
+
   async function remove(name: string) {
     error.value = ''
     const res = await fetch(`${API}/${encodeURIComponent(name)}`, { method: 'DELETE' })
@@ -78,5 +101,5 @@ export function useWorkspaceFiles() {
     await refresh()
   }
 
-  return { files, loading, error, preview, refresh, previewFile, closePreview, upload, downloadUrl, remove }
+  return { files, loading, error, preview, refresh, previewFile, closePreview, upload, downloadUrl, remove, readFile, saveFile }
 }
