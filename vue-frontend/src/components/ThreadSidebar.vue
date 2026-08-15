@@ -522,6 +522,9 @@ const renameInvalid = () => !renameDraft.value.trim()
 }
 .icon-btn {
   opacity: 0;
+  /* 隐形即不可点：否则移动端(无 hover)点会话行中央会落在隐形按钮上,
+     切换会话被拦截（实测 elementFromPoint 命中 pin-btn） */
+  pointer-events: none;
   border: none;
   background: transparent;
   color: #9ca3af;
@@ -531,7 +534,12 @@ const renameInvalid = () => !renameDraft.value.trim()
   padding: 0 5px;
   line-height: 1.4;
 }
-.thread-item:hover .icon-btn { opacity: 1; }
+.thread-item:hover .icon-btn,
+.thread-item:focus-within .icon-btn { opacity: 1; pointer-events: auto; }
+/* 触屏设备无 hover：按钮常显(淡色)且可点,行左侧标题区仍可点切换 */
+@media (hover: none) {
+  .icon-btn { opacity: 0.55; pointer-events: auto; }
+}
 /* P7: 搜索框 + 置顶 */
 .search-wrap { padding: 0 14px 8px; }
 .search-input {
@@ -547,7 +555,7 @@ const renameInvalid = () => !renameDraft.value.trim()
 }
 .search-input:focus { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18); background: #fff; }
 .pin-btn { font-size: 12px; }
-.pin-btn.on { opacity: 1; color: #6366f1; }
+.pin-btn.on { opacity: 1; pointer-events: auto; color: #6366f1; }
 .thread-item.pinned .thread-title { font-weight: 600; }
 .export-btn { font-size: 13px; }
 .export-btn:hover { color: #6366f1; background: #eef2ff; }

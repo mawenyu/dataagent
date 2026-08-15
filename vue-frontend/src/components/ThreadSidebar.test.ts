@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
@@ -439,5 +440,25 @@ describe('ThreadSidebar P-Q（分支来源标记）', () => {
     const mark = items[1].find('[data-testid="branch-mark"]')
     expect(mark.exists()).toBe(true)
     expect(mark.attributes('title')).toContain('a1234567')
+  })
+})
+
+describe('ThreadSidebar 移动端点击穿透（hover 隐藏的行内按钮不得拦截点击）', () => {
+  // 实测 bug：.icon-btn 仅 opacity:0 隐藏但仍可命中，移动端无 hover →
+  // 点会话行中央落在隐形 pin 按钮上，切换会话失效（playwright elementFromPoint 实锤）。
+  // 注：vitest(jsdom) 不注入 SFC <style>，无法 document.styleSheets 断言，
+  // 故直接守卫源码 CSS 规则（防回归足够）。
+  const css = readFileSync('src/components/ThreadSidebar.vue', 'utf-8') // vitest cwd = vue-frontend
+
+  it('.icon-btn 默认 pointer-events:none，hover/focus 才 auto；触屏(hover:none)常显可点', () => {
+    const base = css.match(/\.icon-btn \{[^}]*\}/)?.[0] ?? ''
+    expect(base).toContain('opacity: 0')
+    expect(base).toContain('pointer-events: none')
+    const reveal = css.match(/\.thread-item:(?:hover|focus-within)[^{]*\.icon-btn[^{]*\{[^}]*\}/)?.[0] ?? ''
+    expect(reveal).toContain('pointer-events: auto')
+    const touch = css.match(/@media \(hover:\s*none\)[^}]*\{[^}]*\.icon-btn[^}]*\}/)?.[0] ?? ''
+    expect(touch).toContain('pointer-events: auto')
+    const pinned = css.match(/\.pin-btn\.on \{[^}]*\}/)?.[0] ?? ''
+    expect(pinned).toContain('pointer-events: auto')
   })
 })
