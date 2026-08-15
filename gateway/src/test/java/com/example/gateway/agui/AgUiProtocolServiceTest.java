@@ -590,7 +590,9 @@ class AgUiProtocolServiceTest {
                 java.time.Duration.ofSeconds(10), "/tmp/ws", "deepseek-reasoner", "deepseek",
                 new ChatThreadStore(storeDir),
                 new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
-                new RunMetricsService(storeDir.resolve("m-unused.log")));
+                new RunMetricsService(storeDir.resolve("m-unused.log")),
+                new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry(),
+                        new RunMetricsService(storeDir.resolve("m2.log"))));
         stub.eventStreams.add(textStep("m1", "ok"));
         custom.run(userMsg("t-model", "hi")).collectList().block(java.time.Duration.ofSeconds(10));
         assertEquals(1, stub.modelSets.size());
@@ -853,7 +855,8 @@ class AgUiProtocolServiceTest {
                 "deepseek-chat", "deepseek",
                 new ChatThreadStore(storeDir),
                 new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
-                metrics);
+                metrics,
+                new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry(), metrics));
         String stream =
                 ocEvent("session.step.started", "{\"assistantMessageID\":\"m1\"}")
                 + ocEvent("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"bash\"}")
@@ -898,7 +901,8 @@ class AgUiProtocolServiceTest {
                 "deepseek-chat", "deepseek",
                 new ChatThreadStore(storeDir),
                 new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
-                metrics);
+                metrics,
+                new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry(), metrics));
         stub.eventStreams.add(textStep("m1", "好的，已确认"));
         RunAgentInput input = new RunAgentInput("t-hitl-m", "run-hitl", null,
                 List.of(Map.of("role", "user", "content", "(clicked)")), null, null,
@@ -935,5 +939,27 @@ class AgUiProtocolServiceTest {
         deadline = System.currentTimeMillis() + 5000;
         while (stub.aborts.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(20);
         assertFalse(stub.aborts.isEmpty(), "客户端取消必须触发 OpenCode session abort");
+    }
+
+    /** P21: hitl_confirm resume → 流首个 ACTIVITY_SNAPSHOT 是结果徽章（原位更新确认卡）。 */
+    @Test
+    void hitlResumePrependsResultBadge() {
+        stub.eventStreams.add(textStep("m1", "已执行"));
+        RunAgentInput input = new RunAgentInput("t-badge", "run-badge", null,
+                List.of(Map.of("role", "user", "content", "(clicked)")), null, null,
+                Map.of("a2uiAction", Map.of("action", Map.of(
+                        "name", "hitl_cancel",
+                        "surfaceId", "hitl-act-7",
+                        "context", Map.of("actionId", "act-7", "reason", "先别删")))));
+        List<JsonNode> events = run(input);
+        JsonNode badge = events.stream()
+                .filter(e -> "ACTIVITY_SNAPSHOT".equals(e.path("type").asText()))
+                .findFirst().orElseThrow(() -> new AssertionError("缺结果徽章快照: " + types(events)));
+        assertEquals("a2ui-hitl-act-7", badge.path("messageId").asText());
+        String content = badge.path("content").toString();
+        assertTrue(content.contains("已拒绝"), content);
+        assertTrue(content.contains("先别删"), "附言入卡: " + content);
+        // agent 续跑照常
+        assertTrue(types(events).contains("RUN_FINISHED"));
     }
 }

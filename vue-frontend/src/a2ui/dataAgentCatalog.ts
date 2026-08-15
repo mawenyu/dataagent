@@ -384,6 +384,7 @@ const ActionButton = createVueComponent(
           transition: 'opacity 0.15s ease',
         },
         disabled: state.busy.value,
+        'aria-busy': state.busy.value ? 'true' : undefined,
         // binder（ACTION 行为）把 action 包成 dispatcher 闭包：点击即回传
         // a2uiAction 续跑 agent；busy 态防重复提交，6s 兜底恢复
         onClick: () => {
@@ -393,7 +394,7 @@ const ActionButton = createVueComponent(
           props.action?.()
         },
       },
-      state.busy.value ? `${String(props.label ?? 'Action')}…` : String(props.label ?? 'Action'),
+      state.busy.value ? `⏳ ${String(props.label ?? 'Action')}…` : String(props.label ?? 'Action'),
     ),
   () => ({ busy: ref(false) }),
 )

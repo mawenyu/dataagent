@@ -65,6 +65,7 @@ public class AgUiProtocolService {
     private final ChatThreadStore threadStore;
     private final WorkspaceFileService workspaceFiles;
     private final RunMetricsService metrics;
+    private final HitlConfirmHandler hitlConfirmHandler;
     /** vision-P1: MESSAGES_SNAPSHOT 转换器（无状态，直接实例化）。 */
     private final ThreadMessagesService messagesService = new ThreadMessagesService();
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -75,7 +76,7 @@ public class AgUiProtocolService {
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
                                ThreadAccessPolicy threadAccessPolicy) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics(), throwawayHitl());
     }
 
     /** Convenience constructor for tests — custom idle timeout. */
@@ -85,7 +86,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, runIdleTimeout, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics(), throwawayHitl());
     }
 
     /** Convenience constructor for tests — store given (需求1 persistence assertions). */
@@ -95,7 +96,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                ChatThreadStore threadStore) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore, throwawayWorkspace(), throwawayMetrics());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore, throwawayWorkspace(), throwawayMetrics(), throwawayHitl());
     }
 
     /** Convenience constructor for tests — custom timeout + workspace, default model. */
@@ -105,7 +106,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout, String dataWorkspace) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, runIdleTimeout, dataWorkspace,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics(), throwawayHitl());
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -123,7 +124,8 @@ public class AgUiProtocolService {
                                String providerId,
                                ChatThreadStore threadStore,
                                WorkspaceFileService workspaceFiles,
-                               RunMetricsService metrics) {
+                               RunMetricsService metrics,
+                               HitlConfirmHandler hitlConfirmHandler) {
         this.webClient = opencodeWebClient;
         this.translator = translator;
         this.toolBridge = toolBridge;
@@ -137,6 +139,7 @@ public class AgUiProtocolService {
         this.threadStore = threadStore;
         this.workspaceFiles = workspaceFiles;
         this.metrics = metrics;
+        this.hitlConfirmHandler = hitlConfirmHandler;
     }
 
     private static ChatThreadStore throwawayStore() {
@@ -145,6 +148,11 @@ public class AgUiProtocolService {
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);
         }
+    }
+
+    /** 测试便捷构造用：轻量 HITL handler。 */
+    private static HitlConfirmHandler throwawayHitl() {
+        return new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry(), throwawayMetrics());
     }
 
     /** 测试便捷构造用：临时文件 metrics。 */
@@ -265,7 +273,11 @@ public class AgUiProtocolService {
             p.append("<environment>\n数据工作目录: ").append(threadWorkspace)
                     .append("\n用户的数据文件（如销售 CSV）放在该目录；分析数据问题时先在此目录查找，回答用中文。\n</environment>\n\n");
             p.append(actionHandler.buildAgentPrompt(rawAction));
-            return runAgent(input, uid, threadId, runId, p.toString());
+            var runStream = runAgent(input, uid, threadId, runId, p.toString());
+            // P21: hitl_* 裁决 → 先把确认卡原位更新为结果徽章（approved/rejected
+            // 附言可见），再续跑 agent；快照落盘，历史回放同样显示结果态
+            var badge = hitlResultSnapshot(runId, threadId, rawAction);
+            return badge.map(sse -> Flux.concat(Flux.just(sse), runStream)).orElse(runStream);
         }
 
         // AG-UI frontend-tool contract (see FrontendToolBridge):
@@ -423,6 +435,23 @@ public class AgUiProtocolService {
             }
         } catch (Exception ex) {
             log.debug("metrics tap skipped: {}", ex.getMessage());
+        }
+    }
+
+    /** P21: hitl_* action → 结果徽章 ACTIVITY_SNAPSHOT（非 hitl 动作返回 empty）。 */
+    private java.util.Optional<ServerSentEvent<String>> hitlResultSnapshot(String runId, String threadId, Object rawAction) {
+        try {
+            JsonNode ev = MAPPER.valueToTree(rawAction).path("action");
+            String name = ev.path("name").asText("");
+            if (!"hitl_confirm".equals(name) && !"hitl_cancel".equals(name)) return java.util.Optional.empty();
+            String actionId = ev.path("context").path("actionId").asText("");
+            if (actionId.isBlank()) return java.util.Optional.empty();
+            String reason = ev.path("context").path("reason").asText(null);
+            return hitlConfirmHandler.buildResultSnapshot(runId, threadId, actionId,
+                    "hitl_confirm".equals(name) ? "approved" : "rejected", reason);
+        } catch (Exception ex) {
+            log.debug("hitl result snapshot skipped: {}", ex.getMessage());
+            return java.util.Optional.empty();
         }
     }
 

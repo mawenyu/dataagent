@@ -128,4 +128,58 @@ class HitlConfirmHandlerTest {
         assertTrue(componentsOf(c2.get()).stream().anyMatch(c ->
                 "第二次".equals(c.path("title").asText())));
     }
+
+    // ---- P21: 审批 UI 质感 ----
+
+    /** 卡片含拒绝原因输入框（TextField 绑定 reason），取消按钮 context 带 {path} 引用。 */
+    @Test
+    void cardIncludesRejectReasonInput() throws Exception {
+        var out = handler.execute("r", "t", MAPPER.readTree(
+                "{\"actionId\":\"a1\",\"title\":\"t\",\"message\":\"m\"}"));
+        List<JsonNode> comps = componentsOf(out.get());
+        JsonNode reason = comps.stream().filter(c -> "TextField".equals(c.path("component").asText()))
+                .findFirst().orElseThrow(() -> new AssertionError("缺拒绝原因输入框"));
+        assertEquals("reason", reason.path("value").path("path").asText());
+        JsonNode cancel = comps.stream()
+                .filter(c -> "ActionButton".equals(c.path("component").asText())
+                        && "hitl_cancel".equals(c.path("action").path("event").path("name").asText()))
+                .findFirst().orElseThrow();
+        assertEquals("reason",
+                cancel.path("action").path("event").path("context").path("reason").path("path").asText(),
+                        "取消携带 {path:reason} 绑定（点击时由 binder 求值）");
+        // 确认按钮也带（批准也可以附言）
+        JsonNode confirm = comps.stream()
+                .filter(c -> "ActionButton".equals(c.path("component").asText())
+                        && "hitl_confirm".equals(c.path("action").path("event").path("name").asText()))
+                .findFirst().orElseThrow();
+        assertEquals("reason",
+                confirm.path("action").path("event").path("context").path("reason").path("path").asText());
+    }
+
+    /** 裁决结果 surface 更新（approved/rejected 徽章持久展示）。 */
+    @Test
+    void resultSnapshotShowsDecisionBadge() throws Exception {
+        var out = handler.buildResultSnapshot("run-2", "t1", "act-1", "rejected", "数据还在用");
+        assertTrue(out.isPresent());
+        JsonNode root = MAPPER.readTree(out.get().data());
+        assertEquals("ACTIVITY_SNAPSHOT", root.path("type").asText());
+        assertEquals("a2ui-hitl-act-1", root.path("messageId").asText(), "同 messageId 原位更新");
+        List<JsonNode> comps = componentsOf(out.get());
+        JsonNode badge = comps.stream().filter(c -> "Badge".equals(c.path("component").asText()))
+                .findFirst().orElseThrow();
+        assertEquals("danger", badge.path("variant").asText());
+        assertTrue(badge.path("text").asText().contains("已拒绝"));
+        // 原因可见
+        assertTrue(comps.stream().anyMatch(c -> c.path("text").asText().contains("数据还在用")));
+    }
+
+    @Test
+    void resultSnapshotApprovedWithoutReason() throws Exception {
+        var out = handler.buildResultSnapshot("run-2", "t1", "act-1", "approved", null);
+        List<JsonNode> comps = componentsOf(out.get());
+        JsonNode badge = comps.stream().filter(c -> "Badge".equals(c.path("component").asText()))
+                .findFirst().orElseThrow();
+        assertEquals("success", badge.path("variant").asText());
+        assertTrue(badge.path("text").asText().contains("已批准"));
+    }
 }

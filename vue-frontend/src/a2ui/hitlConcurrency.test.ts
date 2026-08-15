@@ -88,3 +88,68 @@ describe('P14 HITL 并发卡片（前端一致性）', () => {
     expect(confirms[0].attributes('disabled')).toBeDefined()
   })
 })
+
+describe('P21 HITL 审批 UI（拒绝原因 + 结果徽章）', () => {
+  it('取消按钮派发 binder 求值后的拒绝原因', async () => {
+    const sseBody = 'data: {"type":"RUN_STARTED"}\n\ndata: {"type":"RUN_FINISHED"}\n\n'
+    const fetchMock = vi.fn().mockResolvedValue(new Response(sseBody, {
+      status: 200, headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const operations = [
+      { version: 'v0.9', createSurface: { surfaceId: 'hitl-r9', catalogId: DATA_AGENT_CATALOG_ID } },
+      {
+        version: 'v0.9',
+        updateComponents: {
+          surfaceId: 'hitl-r9',
+          components: [
+            { component: 'Column', id: 'root', children: ['warn', 'reason', 'actions'] },
+            { component: 'WarningCard', id: 'warn', title: '删除确认', text: '将删除 x.csv' },
+            { component: 'TextField', id: 'reason', label: '附言（可选）', value: { path: 'reason' } },
+            { component: 'Row', id: 'actions', children: ['confirm', 'cancel'] },
+            {
+              component: 'ActionButton', id: 'confirm', label: '确认', variant: 'primary',
+              action: { event: { name: 'hitl_confirm', context: { actionId: 'r9', reason: { path: 'reason' } } } },
+            },
+            {
+              component: 'ActionButton', id: 'cancel', label: '取消',
+              action: { event: { name: 'hitl_cancel', context: { actionId: 'r9', reason: { path: 'reason' } } } },
+            },
+          ],
+        },
+      },
+      { version: 'v0.9', updateDataModel: { surfaceId: 'hitl-r9', path: '/', value: { reason: '' } } },
+    ]
+    const agent = new HttpAgent({ url: '/unused-in-test' })
+    const wrapper = mount(CopilotKitProvider as any, {
+      props: { directAgents: { default: agent }, a2ui: { catalog: dataAgentCatalog, includeSchema: true } },
+      slots: {
+        default: () =>
+          h(A2UISurfaceActivityRenderer as any, {
+            activityType: 'a2ui-surface',
+            content: { operations },
+            message: { id: 'a2ui-hitl-r9', role: 'activity', activityType: 'a2ui-surface', content: { operations } },
+            catalog: dataAgentCatalog, theme: {}, agent,
+          }),
+      },
+    })
+    await nextTick(); await nextTick(); await nextTick()
+
+    // 填入拒绝原因再点取消
+    const input = wrapper.find('input')
+    expect(input.exists()).toBe(true)
+    await input.setValue('数据还在用')
+    await nextTick(); await nextTick()
+    const cancelBtn = wrapper.findAll('button').find((b) => b.text().includes('取消'))!
+    await cancelBtn.trigger('click')
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(fetchMock).toHaveBeenCalled()
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body)
+    const action = body?.forwardedProps?.a2uiAction
+    const s = JSON.stringify(action)
+    expect(s).toContain('hitl_cancel')
+    expect(s).toContain('数据还在用')
+  })
+})

@@ -265,6 +265,7 @@ describe('ActionButton action 回传（HITL bug 修复 · 2026-08-15）', () => 
     await btn.trigger('click')
     await nextTick()
     expect(btn.attributes('disabled')).toBeDefined()
-    expect(btn.text()).toMatch(/处理中|…/)
+    expect(btn.text()).toMatch(/处理中|…|⏳/)
+    expect(btn.attributes('aria-busy')).toBe('true')
   })
 })

@@ -63,21 +63,27 @@ public class HitlConfirmHandler implements AguiEventTranslator.ServerToolHandler
         String confirmLabel = args.path("confirmLabel").asText("确认");
         String cancelLabel = args.path("cancelLabel").asText("取消");
 
+        // P21: 拒绝/批准可附言 —— TextField 绑定 data.reason，两个按钮的
+        // action context 带 {path:reason} 引用（binder ACTION 行为点击时求值）
+        Map<String, Object> reasonRef = Map.of("path", "reason");
         List<ObjectNode> comps = List.of(
-                a2Ui.component("Column", "root", Map.of("children", List.of("warn", "actions"))),
+                a2Ui.component("Column", "root", Map.of("children", List.of("warn", "reason", "actions"))),
                 a2Ui.component("WarningCard", "warn", Map.of("title", title, "text", message)),
+                a2Ui.component("TextField", "reason", Map.of(
+                        "label", "附言（可选）",
+                        "value", reasonRef)),
                 a2Ui.component("Row", "actions", Map.of("children", List.of("confirm", "cancel"))),
                 a2Ui.component("ActionButton", "confirm", Map.of(
                         "label", confirmLabel,
                         "variant", "primary",
                         "action", Map.of("event", Map.of(
                                 "name", "hitl_confirm",
-                                "context", Map.of("actionId", actionId))))),
+                                "context", Map.of("actionId", actionId, "reason", reasonRef))))),
                 a2Ui.component("ActionButton", "cancel", Map.of(
                         "label", cancelLabel,
                         "action", Map.of("event", Map.of(
                                 "name", "hitl_cancel",
-                                "context", Map.of("actionId", actionId))))));
+                                "context", Map.of("actionId", actionId, "reason", reasonRef))))));
 
         String surfaceId = "hitl-" + actionId;
         ArrayNode arr = MAPPER.createArrayNode();
@@ -91,5 +97,34 @@ public class HitlConfirmHandler implements AguiEventTranslator.ServerToolHandler
         metrics.hitlInterrupted(threadId, actionId);
         log.info("request_user_confirm: surface={} actionId={} (interrupt, await user)", surfaceId, actionId);
         return Optional.of(a2Ui.activitySnapshot(runId, threadId, state.activityMessageId(), ops));
+    }
+
+    /**
+     * P21: 裁决结果持久展示 —— 裁决到达时把确认卡原位更新为结果徽章
+     * （approved=绿色"已批准" / rejected=红色"已拒绝"，附言可见），
+     * 按钮消失防二次裁决；快照落盘 → 历史回放也显示结果态。
+     */
+    public Optional<ServerSentEvent<String>> buildResultSnapshot(String runId, String threadId,
+                                                                 String actionId, String decision,
+                                                                 String reason) {
+        if (!actionId.matches("[A-Za-z0-9_\\-]{1,64}")) return Optional.empty();
+        boolean approved = "approved".equals(decision);
+        List<ObjectNode> comps = new java.util.ArrayList<>(List.of(
+                a2Ui.component("Column", "root", Map.of("children",
+                        approved || reason == null || reason.isBlank()
+                                ? List.of("badge") : List.of("badge", "reasonText"))),
+                a2Ui.component("Badge", "badge", Map.of(
+                        "text", approved ? "✓ 已批准" : "✗ 已拒绝",
+                        "variant", approved ? "success" : "danger"))));
+        if (reason != null && !reason.isBlank()) {
+            comps.add(a2Ui.component("Text", "reasonText",
+                    Map.of("text", "附言：" + reason, "variant", "caption")));
+        }
+        String surfaceId = "hitl-" + actionId;
+        ArrayNode arr = MAPPER.createArrayNode();
+        comps.forEach(arr::add);
+        List<ObjectNode> ops = List.of(a2Ui.updateComponents(surfaceId, arr));
+        log.info("hitl decision: surface={} decision={}", surfaceId, decision);
+        return Optional.of(a2Ui.activitySnapshot(runId, threadId, "a2ui-" + surfaceId, ops));
     }
 }
