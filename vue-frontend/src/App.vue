@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, nextTick } from 'vue'
+import { onMounted, ref, nextTick, watch } from 'vue'
 import { z } from 'zod'
 import { CopilotKitProvider, CopilotChat, getThreadClone } from '@copilotkit/vue'
 import { dataAgent } from './agents/dataAgent'
@@ -32,8 +32,31 @@ onMounted(() => threadsApi.init())
 // run 结束后 gateway 用首条消息命名 → 刷新侧边栏列表
 dataAgent.subscribe({ onRunFinalized: () => { void threadsApi.refresh() } })
 
-// 需求7-5: context 用量徽章（gateway 在每个 step 结束发 CUSTOM context_usage）
-const { contextSize, label: contextLabel } = useContextUsage(dataAgent)
+// 需求7-5 + P-K: context 用量徽章 + 累计 token(每会话分桶) + 接近上限提示
+const {
+  contextSize,
+  label: contextLabel,
+  totalTokens,
+  tokenLabel,
+  tokenTitle,
+  warningLevel: contextWarning,
+} = useContextUsage(dataAgent, threadsApi.currentId)
+// P-K: 提示级别升级时一次性 toast(降级不打扰;同级不重复)
+watch(contextWarning, (level, prev) => {
+  if (level === 'amber' && prev === 'none') {
+    pushToast({
+      title: '上下文用量较高',
+      message: '当前会话上下文已超过 80%，继续长对话可能触发截断，建议适时新建会话',
+      type: 'warning',
+    })
+  } else if (level === 'red' && prev !== 'red') {
+    pushToast({
+      title: '上下文接近上限',
+      message: '已超过 95%，下一步回答可能被截断 —— 强烈建议新建会话并导出当前会话',
+      type: 'error',
+    })
+  }
+})
 // AG-UI shared state（task4）: STATE_SNAPSHOT 的 model 显示为顶栏徽章
 const { state: agentState } = useAgentState(dataAgent)
 
@@ -298,8 +321,15 @@ async function exportThread(id: string) {
         <span
           v-if="contextSize > 0"
           class="badge context-badge"
+          :class="`level-${contextWarning}`"
           :title="`当前会话上下文占用 ${contextSize} tokens`"
         >{{ contextLabel }}</span>
+        <span
+          v-if="totalTokens > 0"
+          class="badge tokens-badge"
+          data-testid="tokens-badge"
+          :title="tokenTitle"
+        >{{ tokenLabel }}</span>
         <span class="badge">Vue + CopilotKit · No Node Runtime · DeepSeek via OpenCode</span>
       </div>
     </header>
@@ -579,6 +609,15 @@ body {
   color: #047857;
   background: #ecfdf5;
   border-color: #a7f3d0;
+  font-variant-numeric: tabular-nums;
+}
+/* P-K: 接近上限的级别色 */
+.context-badge.level-amber { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+.context-badge.level-red { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+.tokens-badge {
+  color: #0369a1;
+  background: #f0f9ff;
+  border-color: #bae6fd;
   font-variant-numeric: tabular-nums;
 }
 /* P-I: 离线徽章(琥珀呼吸点) */
