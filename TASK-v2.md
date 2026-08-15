@@ -178,3 +178,11 @@
 http://101.34.246.179/agui/ 200（新 bundle index-DHB_MSen.js）；公网
 /agui-api/agent/run SSE 实测 RUN_FINISHED + 46 text delta；debug 页 200；
 docs/design.md 已重写为现行架构。
+
+**[追加 DONE] 2026-08-15（commit ecae6b4）DSML 伪 tool_call 泄漏修复**：
+用户实测"随便显示个图表"时 DeepSeek 把结束标签输出成 `</｜｜DSML｜｜parameter> </｜｜DSML｜｜invoke>`
+伪标签，parseToolCall 的 endsWith(</tool_call>) 校验失败 → 整段原始 JSON 泄漏为聊天文本。
+修复：MARKER 前缀后在 END_MARKER 或 DSML 尾巴（半/全角竖线变体）处截断取 JSON；
+流式路径同步（DSML 尾巴到达即派发，残余剥 DSML 标签）。同批实测驱动修复：
+catalogId 短别名归一化（不再拒绝）、嵌套子组件 items 容器变体拍平。
+gateway 73 全绿；实测 8 组件扁平看板、文本零泄漏（docs/evidence/2026-08-15-dsml-fix-live.sse）。
