@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, nextTick, watch } from 'vue'
+import { onMounted, ref, nextTick, watch, computed } from 'vue'
 import { z } from 'zod'
 import { CopilotKitProvider, CopilotChat, getThreadClone } from '@copilotkit/vue'
 import { dataAgent } from './agents/dataAgent'
@@ -16,6 +16,7 @@ import { useRunErrorRecovery, isAbortError, parseRunError } from './composables/
 import { useNetworkStatus } from './composables/networkStatus'
 import { useGlobalShortcuts } from './composables/useGlobalShortcuts'
 import RunErrorCard from './components/RunErrorCard.vue'
+import BranchDialog from './components/BranchDialog.vue'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
 import FilesPanel from './components/FilesPanel.vue'
@@ -250,6 +251,67 @@ function clearWelcome(onUpdate: (v: string) => void) {
   })
 }
 
+// P-Q: 会话分叉 —— 顶栏入口,弹窗选分叉点,gateway 建档后切到新会话
+const branchDialogOpen = ref(false)
+const branchBusy = ref(false)
+
+// agent.messages 非响应式 —— 用 tick 驱动 computed 重算(clone 事件会冒泡到 registry 订阅)
+const messagesTick = ref(0)
+dataAgent.subscribe({
+  onMessagesChanged: () => { messagesTick.value += 1 },
+  onRunFinishedEvent: () => { messagesTick.value += 1 },
+  onRunErrorEvent: () => { messagesTick.value += 1 },
+})
+
+/** 当前会话可分叉的消息(user/assistant 文本;reasoning/tool 不作分叉点)。 */
+const branchMessages = computed(() => {
+  void messagesTick.value
+  void threadsApi.currentId.value
+  const target = (getThreadClone(dataAgent, threadsApi.currentId.value) ?? dataAgent) as any
+  const msgs = (target?.messages ?? []) as any[]
+  return msgs
+    .filter((m) => m?.role === 'user' || m?.role === 'assistant')
+    .map((m) => ({ id: String(m.id), role: m.role as string, text: messageText(m.content) }))
+    .filter((m) => m.text.trim().length > 0)
+})
+
+function messageText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    const parts: string[] = []
+    for (const p of content) {
+      if (p && typeof p === 'object' && (p as any).type === 'text' && typeof (p as any).text === 'string') {
+        parts.push((p as any).text)
+      }
+    }
+    return parts.join('\n')
+  }
+  return ''
+}
+
+async function branchFrom(messageId: string) {
+  if (branchBusy.value) return
+  branchBusy.value = true
+  try {
+    const parentId = threadsApi.currentId.value
+    const newId = crypto.randomUUID()
+    const res = await fetch(`/agui-api/chat/threads/${encodeURIComponent(parentId)}/branch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId, newThreadId: newId }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    await threadsApi.refresh()
+    await threadsApi.switchTo(newId)
+    branchDialogOpen.value = false
+    pushToast({ title: '已创建分支', message: '分叉点之前的上下文已复制到新会话', type: 'success' })
+  } catch (e: any) {
+    pushToast({ title: '创建分支失败', message: e?.message ?? '未知错误', type: 'error' })
+  } finally {
+    branchBusy.value = false
+  }
+}
+
 // 需求7-6 + P-B: run 超时/失败 → 内联错误卡（原因+重试）+ toast；
 // 用户主动停止(abort)不算失败，两者都不弹
 const errorRecovery = useRunErrorRecovery({
@@ -329,6 +391,13 @@ async function exportThread(id: string, format: 'md' | 'json') {
         </div>
       </div>
       <div class="topbar-right">
+        <button
+          class="branch-open"
+          data-testid="branch-open"
+          :disabled="branchMessages.length === 0"
+          title="从任意历史消息分叉新会话"
+          @click="branchDialogOpen = true"
+        >⑂ 分支</button>
         <span
           v-if="!online"
           class="badge offline-badge"
@@ -524,6 +593,14 @@ async function exportThread(id: string, format: 'md' | 'json') {
         </CopilotKitProvider>
       </div>
     </main>
+    <!-- P-Q: 分叉弹窗 -->
+    <BranchDialog
+      v-if="branchDialogOpen"
+      :messages="branchMessages"
+      :busy="branchBusy"
+      @select="branchFrom"
+      @close="branchDialogOpen = false"
+    />
     <!-- toast stack for the showNotification frontend tool -->
     <div class="toast-stack" aria-live="polite">
       <div v-for="t in toasts" :key="t.id" class="toast" :class="`toast-${t.type}`">
@@ -628,6 +705,20 @@ body {
 }
 @media (max-width: 720px) { .badge { display: none; } }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
+.branch-open {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #6d28d9;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.branch-open:hover:not(:disabled) { background: #ede9fe; }
+.branch-open:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 720px) { .branch-open { display: none; } }
 .context-badge {
   color: #047857;
   background: #ecfdf5;

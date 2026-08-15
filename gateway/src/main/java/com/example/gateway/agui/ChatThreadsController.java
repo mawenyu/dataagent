@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -93,19 +94,71 @@ public class ChatThreadsController {
         return ResponseEntity.ok(res);
     }
 
+    /**
+     * P-Q: POST /chat/threads/{id}/branch {messageId, newThreadId?} ——
+     * 从任意历史消息分叉:复制该消息之前(user/assistant 文本)的上下文为
+     * 新会话前缀(快照落盘),首个 run 一次性注入 <forked_context>。
+     */
+    @PostMapping("/{id}/branch")
+    public Mono<ResponseEntity<JsonNode>> branch(@PathVariable String id,
+                                                 @RequestBody Map<String, String> body) {
+        String messageId = body.get("messageId");
+        String newId = body.getOrDefault("newThreadId", UUID.randomUUID().toString());
+        var parent = store.getThread(id);
+        if (parent.isEmpty()) return Mono.just(ResponseEntity.notFound().build());
+        if (messageId == null || messageId.isBlank()) {
+            ObjectNode err = MAPPER.createObjectNode();
+            err.put("error", "messageId required");
+            return Mono.just(ResponseEntity.badRequest().body(err));
+        }
+        // 有效消息序列 = 父会话自身前缀(分叉链)+ 其 session 消息
+        List<JsonNode> parentPrefix = store.forkPrefixMessages(id);
+        String sessionId = store.resolveSession(id);
+        Mono<List<JsonNode>> ownMessages = sessionId == null
+                ? Mono.just(List.of())
+                : webClient.get()
+                        .uri("/api/session/{sid}/message", sessionId)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .map(b -> (List<JsonNode>) messagesService.toAguiMessages(b))
+                        .onErrorReturn(List.of());
+        return ownMessages.map(own -> {
+            List<JsonNode> all = new ArrayList<>(parentPrefix);
+            all.addAll(own);
+            boolean found = all.stream().anyMatch(m -> m.path("id").asText().equals(messageId));
+            if (!found) {
+                ObjectNode err = MAPPER.createObjectNode();
+                err.put("error", "messageId not found in thread history");
+                return ResponseEntity.badRequest().body((JsonNode) err);
+            }
+            var prefix = messagesService.simplifyForFork(all, messageId);
+            var created = store.createBranch(newId, id, parent.get().title(), messageId, prefix);
+            ObjectNode res = MAPPER.createObjectNode();
+            res.set("data", created.toJson());
+            return ResponseEntity.ok((JsonNode) res);
+        });
+    }
+
     @GetMapping("/{id}/messages")
     public Mono<JsonNode> messages(@PathVariable String id) {
         String sessionId = store.resolveSession(id);
         List<ChatThreadStore.SurfaceRecord> surfaces = store.listSurfaces(id);
+        // P-Q: 分叉前缀(若有)始终并入历史头部
+        List<JsonNode> prefix = store.forkPrefixMessages(id);
         if (sessionId == null) {
-            return Mono.just(messagesResponse(List.of(), surfaces));
+            return Mono.just(messagesResponse(prefix, surfaces));
         }
         return webClient.get()
                 .uri("/api/session/{sid}/message", sessionId)
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
                 .bodyToMono(String.class)
-                .map(body -> messagesResponse(messagesService.toAguiMessages(body), surfaces))
+                .map(body -> {
+                    List<JsonNode> merged = new ArrayList<>(prefix);
+                    merged.addAll(messagesService.toAguiMessages(body));
+                    return messagesResponse(merged, surfaces);
+                })
                 .onErrorResume(e -> {
                     log.warn("failed to load history for thread {} (session {}): {}", id, sessionId, e.getMessage());
                     return Mono.just(messagesResponse(List.of(), surfaces));

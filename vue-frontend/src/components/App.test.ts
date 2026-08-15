@@ -380,3 +380,50 @@ describe('App P-O（全局快捷键）', () => {
     w.unmount()
   })
 })
+
+describe('App P-Q（会话分叉）', () => {
+  it('顶栏分支入口 → 弹窗选消息 → POST branch → 切换新会话 + toast', async () => {
+    const fetchMock = vi.fn(async (input: any, init?: any) => {
+      const url = String(input)
+      if (url.includes('/branch')) {
+        return { ok: true, json: async () => ({ data: { id: JSON.parse(init.body).newThreadId, title: '⑂ 新会话', sessionId: null, branchedFrom: { threadId: 'x', messageId: 'u1' } } }) }
+      }
+      return { ok: true, json: async () => ({ data: [] }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App, { attachTo: document.body })
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+
+    // 无消息时入口禁用
+    expect((w.find('[data-testid="branch-open"]').element as HTMLButtonElement).disabled).toBe(true)
+
+    // 发一条消息(run 会失败,但用户消息留在 clone 里)
+    await w.find('.welcome-input textarea').setValue('分析本月销售')
+    await w.find('.welcome-send').trigger('click')
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+
+    const openBtn = w.find('[data-testid="branch-open"]').element as HTMLButtonElement
+    expect(openBtn.disabled).toBe(false)
+    await w.find('[data-testid="branch-open"]').trigger('click')
+    await nextTick()
+
+    const dlg = document.body.querySelector('[data-testid="branch-dialog"]')
+    expect(dlg, '分支弹窗应打开').toBeTruthy()
+    expect(dlg!.textContent).toContain('分析本月销售')
+
+    const item = dlg!.querySelector('.br-item') as HTMLButtonElement
+    const msgId = item.getAttribute('data-testid')!.replace('branch-at-', '')
+    item.click()
+    for (let i = 0; i < 8; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+
+    const branchCall = fetchMock.mock.calls.find(([url, init]) => String(url).includes('/branch') && init?.method === 'POST')
+    expect(branchCall, '应调 branch API').toBeDefined()
+    const body = JSON.parse(String(branchCall![1].body))
+    expect(body.messageId).toBe(msgId)
+    expect(body.newThreadId).toBeTruthy()
+    expect(w.find('.toast-stack').text()).toContain('已创建分支')
+    // 弹窗关闭
+    expect(document.body.querySelector('[data-testid="branch-dialog"]')).toBeNull()
+    w.unmount()
+  })
+})

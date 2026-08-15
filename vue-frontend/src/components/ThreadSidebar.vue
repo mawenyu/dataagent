@@ -286,6 +286,12 @@ const renameInvalid = () => !renameDraft.value.trim()
           :checked="selected.has(t.id)"
           @click.stop="toggleSelect(t.id)"
         />
+        <span
+          v-if="t.branchedFrom"
+          class="branch-mark"
+          :title="`分叉自会话 ${t.branchedFrom.threadId.slice(0, 8)}`"
+          data-testid="branch-mark"
+        >⑂</span>
         <span class="thread-title" :title="t.title">{{ t.title }}</span>
         <template v-if="!selectMode">
           <button
@@ -547,6 +553,8 @@ const renameInvalid = () => !renameDraft.value.trim()
 .export-btn:hover { color: #6366f1; background: #eef2ff; }
 .del-btn:hover { color: #ef4444; background: #fef2f2; }
 .empty { padding: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; }
+
+.branch-mark { flex: none; font-size: 11px; color: #8b5cf6; }
 
 /* ---- P-M: 导出格式菜单 ---- */
 .export-wrap { position: relative; display: inline-flex; }

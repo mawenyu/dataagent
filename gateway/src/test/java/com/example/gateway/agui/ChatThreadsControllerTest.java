@@ -103,4 +103,51 @@ class ChatThreadsControllerTest {
         assertFalse(java.nio.file.Files.exists(dir.resolve("workspace/threads/t-ws-del")),
                 "会话目录随会话删除");
     }
+
+    @org.junit.jupiter.api.Test
+    void branchCreatesForkWithPrefixAndMessagesMerge() {
+        // P-Q: POST /{id}/branch —— 截断分叉点之前的上下文为新会话前缀
+        controller.create(Map.of("id", "p1", "title", "销售分析"));
+        store.bindSession("p1", "ses_x");
+        stub.sessionHistory.add("""
+            {"data":[
+              {"id":"a2","type":"assistant","content":[{"type":"text","text":"回答2"}]},
+              {"id":"u2","type":"user","content":[{"type":"text","text":"问题2"}]},
+              {"id":"a1","type":"assistant","content":[{"type":"text","text":"回答1"}]},
+              {"id":"u1","type":"user","content":[{"type":"text","text":"问题1"}]}
+            ]}
+            """); // OpenCode 返回最新在前
+        var res = controller.branch("p1", Map.of("messageId", "u2", "newThreadId", "b1")).block();
+        assertNotNull(res);
+        assertTrue(res.getStatusCode().is2xxSuccessful());
+        JsonNode data = res.getBody().path("data");
+        assertEquals("b1", data.path("id").asText());
+        assertTrue(data.path("title").asText().contains("销售分析"));
+        assertEquals("p1", data.path("branchedFrom").path("threadId").asText());
+
+        // 分叉会话 messages = 前缀(u2 之前,不含 u2/回答2)
+        JsonNode msgs = controller.messages("b1").block();
+        var arr = msgs.path("data");
+        assertEquals(2, arr.size());
+        assertEquals("问题1", arr.get(0).path("content").asText());
+        assertEquals("回答1", arr.get(1).path("content").asText());
+
+        // list 带分支来源(侧边栏标记)
+        JsonNode list = controller.list();
+        JsonNode b1Json = null;
+        for (JsonNode t : list.path("data")) if ("b1".equals(t.path("id").asText())) b1Json = t;
+        assertNotNull(b1Json);
+        assertEquals("p1", b1Json.path("branchedFrom").path("threadId").asText());
+    }
+
+    @org.junit.jupiter.api.Test
+    void branchRejectsUnknownMessageId() {
+        controller.create(Map.of("id", "p1"));
+        store.bindSession("p1", "ses_x");
+        stub.sessionHistory.add("{\"data\":[]}");
+        var res = controller.branch("p1", Map.of("messageId", "ghost", "newThreadId", "b1")).block();
+        assertNotNull(res);
+        assertTrue(res.getStatusCode().is4xxClientError());
+        assertTrue(store.getThread("b1").isEmpty(), "失败不建档");
+    }
 }

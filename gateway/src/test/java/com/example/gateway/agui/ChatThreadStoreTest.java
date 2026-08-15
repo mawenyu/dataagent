@@ -94,4 +94,31 @@ class ChatThreadStoreTest {
         ChatThreadStore s2 = new ChatThreadStore(dir);
         assertTrue(s2.listThreads().isEmpty());
     }
+
+    @org.junit.jupiter.api.Test
+    void branchLifecycle() {
+        // P-Q: 分叉建档 → 前缀读取 → 一次性上文注入
+        store.createThread("p1", "销售分析");
+        var prefix = java.util.List.of(
+                java.util.Map.of("id", "u1", "role", "user", "content", "问题1"),
+                java.util.Map.of("id", "a1", "role", "assistant", "content", "回答1"));
+        var t = store.createBranch("b1", "p1", "销售分析", "u2", prefix);
+        assertEquals("b1", t.id());
+        assertTrue(t.title().contains("销售分析"), "分叉标题含源会话名: " + t.title());
+        assertEquals("p1", t.toJson().path("branchedFrom").path("threadId").asText());
+        assertEquals("u2", t.toJson().path("branchedFrom").path("messageId").asText());
+
+        // 前缀可读(供 messages API 合并)
+        var fp = store.forkPrefixMessages("b1");
+        assertEquals(2, fp.size());
+        assertEquals("问题1", fp.get(0).path("content").asText());
+
+        // 上文注入一次性
+        String ctx = store.consumeForkContext("b1");
+        assertNotNull(ctx);
+        assertTrue(ctx.contains("<forked_context>") && ctx.contains("问题1") && ctx.contains("回答1"));
+        assertNull(store.consumeForkContext("b1"), "只能注入一次");
+        // 普通会话无上文
+        assertNull(store.consumeForkContext("p1"));
+    }
 }

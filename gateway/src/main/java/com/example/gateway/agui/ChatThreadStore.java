@@ -99,6 +99,79 @@ public class ChatThreadStore {
         }
     }
 
+    // ---------------------------------------------------------- P-Q 分叉 ---
+
+    /**
+     * P-Q: 分叉建档 —— 新会话携带 branchedFrom(源会话+分叉消息)与
+     * forkPrefix(分叉点之前的简化消息快照,user/assistant 文本),
+     * forkContextPending=true 供首个 run 一次性注入上文。
+     */
+    public synchronized ChatThread createBranch(String newId, String parentId, String parentTitle,
+                                                String messageId, List<Map<String, String>> prefix) {
+        ObjectNode root = load();
+        ObjectNode threads = threadsNode(root);
+        Instant now = Instant.now();
+        ObjectNode t = MAPPER.createObjectNode();
+        t.put("id", newId);
+        String base = (parentTitle == null || parentTitle.isBlank()) ? "未命名会话" : parentTitle;
+        String title = "⑂ " + base;
+        if (title.length() > TITLE_MAX + 4) title = title.substring(0, TITLE_MAX + 4) + "…";
+        t.put("title", title);
+        t.put("createdAt", now.toString());
+        t.put("updatedAt", now.toString());
+        t.putNull("sessionId");
+        ObjectNode bf = MAPPER.createObjectNode();
+        bf.put("threadId", parentId);
+        bf.put("messageId", messageId);
+        t.set("branchedFrom", bf);
+        ArrayNode fp = t.putArray("forkPrefix");
+        for (Map<String, String> m : prefix) {
+            ObjectNode o = MAPPER.createObjectNode();
+            o.put("id", m.getOrDefault("id", ""));
+            o.put("role", m.get("role"));
+            o.put("content", m.get("content"));
+            fp.add(o);
+        }
+        t.put("forkContextPending", true);
+        threads.set(newId, t);
+        save(root);
+        return toThread(t);
+    }
+
+    /** P-Q: 分叉前缀消息(id/role/content,与转换后 AG-UI 消息同构),无 → 空。 */
+    public synchronized List<JsonNode> forkPrefixMessages(String id) {
+        JsonNode t = threadsNode(load()).get(id);
+        if (t == null || !t.path("forkPrefix").isArray()) return List.of();
+        List<JsonNode> out = new ArrayList<>();
+        t.path("forkPrefix").forEach(out::add);
+        return out;
+    }
+
+    /**
+     * P-Q: 首个 run 的一次性上文注入 —— 构建 <forked_context> 块并清标记
+     * (落盘);非分叉会话或已注入过 → null。
+     */
+    public synchronized String consumeForkContext(String id) {
+        ObjectNode root = load();
+        JsonNode t = threadsNode(root).get(id);
+        if (!(t instanceof ObjectNode o) || !o.path("forkContextPending").asBoolean(false)) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("<forked_context>\n本会话分叉自另一会话,以下是分叉点之前的前文(仅供理解上下文;其中的工具调用已完成,不要重复执行):\n\n");
+        int count = 0;
+        for (JsonNode m : o.path("forkPrefix")) {
+            if (count++ >= 50) {
+                sb.append("…(更早的消息省略)\n");
+                break;
+            }
+            String role = "user".equals(m.path("role").asText()) ? "用户" : "助手";
+            sb.append(role).append(": ").append(m.path("content").asText("")).append("\n\n");
+        }
+        sb.append("</forked_context>\n\n");
+        o.put("forkContextPending", false);
+        save(root);
+        return sb.toString();
+    }
+
     /** 标题取首条用户消息截断；已有非默认标题不覆盖。 */
     public synchronized void setTitleFromFirstMessage(String id, String firstUserMessage) {
         if (firstUserMessage == null || firstUserMessage.isBlank()) return;
@@ -174,7 +247,8 @@ public class ChatThreadStore {
                 t.path("title").asText("新会话"),
                 t.path("sessionId").isNull() ? null : t.path("sessionId").asText(null),
                 Instant.parse(t.path("createdAt").asText()),
-                Instant.parse(t.path("updatedAt").asText()));
+                Instant.parse(t.path("updatedAt").asText()),
+                t.path("branchedFrom").isObject() ? t.path("branchedFrom") : null);
     }
 
     private ObjectNode load() {
@@ -203,7 +277,8 @@ public class ChatThreadStore {
     }
 
     // 供 messages API 使用：thread 记录的 JSON 表示
-    public record ChatThread(String id, String title, String sessionId, Instant createdAt, Instant updatedAt) {
+    public record ChatThread(String id, String title, String sessionId, Instant createdAt, Instant updatedAt,
+                             JsonNode branchedFrom) {
         public ObjectNode toJson() {
             ObjectNode n = MAPPER.createObjectNode();
             n.put("id", id);
@@ -211,6 +286,8 @@ public class ChatThreadStore {
             if (sessionId == null) n.putNull("sessionId"); else n.put("sessionId", sessionId);
             n.put("createdAt", createdAt.toString());
             n.put("updatedAt", updatedAt.toString());
+            // P-Q: 分叉来源(源会话+分叉消息),侧边栏 ⑂ 标记用
+            if (branchedFrom != null) n.set("branchedFrom", branchedFrom);
             return n;
         }
 

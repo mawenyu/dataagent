@@ -16,6 +16,8 @@ export interface ThreadMeta {
   sessionId: string | null
   createdAt: string
   updatedAt: string
+  /** P-Q: 分叉来源(源会话 + 分叉消息),非分叉会话缺省 */
+  branchedFrom?: { threadId: string; messageId: string } | null
 }
 
 const CACHE_KEY = 'dataagent.threads'

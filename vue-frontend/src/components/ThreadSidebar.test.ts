@@ -426,3 +426,18 @@ describe('ThreadSidebar P-O（modal 可达性）', () => {
     w.unmount()
   })
 })
+
+describe('ThreadSidebar P-Q（分支来源标记）', () => {
+  it('branchedFrom 会话显示 ⑂ 标记(悬停见源会话)', () => {
+    const list = [
+      { id: 'a', title: '销售分析', sessionId: null, createdAt: '', updatedAt: '' },
+      { id: 'b', title: '⑂ 销售分析', sessionId: null, createdAt: '', updatedAt: '', branchedFrom: { threadId: 'a123456789', messageId: 'u2' } },
+    ]
+    const w = mount(ThreadSidebar, { props: { threads: list as any, currentId: 'b' } })
+    const items = w.findAll('.thread-item')
+    expect(items[0].find('[data-testid="branch-mark"]').exists()).toBe(false)
+    const mark = items[1].find('[data-testid="branch-mark"]')
+    expect(mark.exists()).toBe(true)
+    expect(mark.attributes('title')).toContain('a1234567')
+  })
+})

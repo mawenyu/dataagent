@@ -316,6 +316,13 @@ public class AgUiProtocolService {
             promptText = p.toString();
         }
 
+        // P-Q: 分叉会话首个 run —— 一次性注入分叉点之前的上文(快照已在
+        // 建档时落盘,此处消费后清标记;OpenCode session 自此持有该上下文)
+        String forkContext = threadStore.consumeForkContext(threadId);
+        if (forkContext != null) {
+            promptText = forkContext + promptText;
+            log.info("fork context injected for thread {} (first run after branch)", threadId);
+        }
         return runAgent(input, uid, threadId, runId, promptText);
     }
 
