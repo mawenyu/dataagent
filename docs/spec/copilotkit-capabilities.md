@@ -65,20 +65,29 @@ append 追加）。a2uiAction（如 approve_section）→ agent 续跑更新 can
 - 单测：sections 展开 / append 语义 / 同名更新
 - curl 实测两轮：生成研究报告 canvas → a2uiAction 追加一节 → surface 更新
 
-## B4. spreadsheet（spreadsheet 模式）
+## B4. spreadsheet（spreadsheet 模式）✅ 已完成（2026-08-15）
 
 前端"文件"面板增强：CSV 文件可"表格编辑"打开 —— 可编辑网格（contenteditable
-单元格），保存经 PUT /files/{name}（新增 gateway 端点，raw body 覆盖写，同白名单
-防护）。agent 侧：frontend tool `applySpreadsheetEdits {file, cells:[{row,col,value}]}`
-→ 前端渲染确认卡（HITL：显示变更数 + 确认/取消）→ 确认后落盘并回传结果。
+单元格，失焦同步内部状态；加行/加列；脏标记），保存经 PUT /files/{name}（新增
+gateway 端点，raw body 覆盖写，同白名单防护）。agent 侧：frontend tool
+`applySpreadsheetEdits {file, cells:[{row,col,value}], summary?}` → 浏览器
+confirm 确认框（HITL v1：显示文件 + 变更数 + summary，确认/取消）→ 确认后 PUT
+落盘并回传 "已应用 N 处变更"；取消则回传 "用户取消了变更"，文件不动。
 
 ### 接口契约
-- `PUT /files/{name}`：text body 覆盖写（同 POST 的白名单/大小限制），返回 {name,size}
-- frontend tool `applySpreadsheetEdits`：parameters {file: string, cells: [{row:number, col:number, value:string}]}；handler 应用变更 → 确认卡（frontend 内嵌确认，不用 A2UI）→ PUT 保存 → 返回 "已应用 N 处变更"
+- `PUT /files/{name}`：text body 覆盖写（同 POST 的白名单/大小限制；空 body 400、
+  非法名 400、超限 413；不存在则新建），返回 {name,size}
+- frontend tool `applySpreadsheetEdits`：parameters {file: string, cells:
+  [{row:number, col:number, value:string}], summary?: string}；row/col 从 0 开始
+  （第 0 行是表头）。handler：读当前内容 → applyEdits 纯函数应用变更（越界行追加、
+  越界列补空、负数/非整数坐标拒绝）→ window.confirm HITL 确认 → PUT 保存 →
+  返回 "已应用 N 处变更到 {file}"
 
 ### 验收
-- gateway 单测 PUT；前端 vitest（网格渲染/编辑/保存/确认卡）
-- curl 实测 PUT 覆盖写 + 文件面板端到端
+- gateway 单测 PUT（新建/覆盖/非法名 400/超限 413/空 400）；前端 vitest
+  （网格渲染/编辑保存 PUT body 断言/加行加列/脏标记/applyEdits 越界语义/handler
+  确认-取消-失败分支）✅ 全绿
+- curl 实测 PUT 覆盖写 + 文件面板端到端（主线统一验证）
 
 ## B5. banking 模式映射说明（无需新代码）
 

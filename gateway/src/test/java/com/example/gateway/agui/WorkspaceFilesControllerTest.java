@@ -67,6 +67,38 @@ class WorkspaceFilesControllerTest {
         assertTrue(files.store("empty.csv", new byte[0]).isEmpty(), "empty rejected");
     }
 
+    // ---- task5-B4: PUT /files/{name} 覆盖写（spec: copilotkit-capabilities.md B4）----
+
+    @Test
+    void putCreatesAndOverwrites() throws Exception {
+        // 新建：PUT 不要求文件已存在
+        var created = controller.put("grid.csv", "a,b\n1,2\n".getBytes());
+        assertTrue(created.getStatusCode().is2xxSuccessful());
+        assertEquals("grid.csv", created.getBody().path("name").asText());
+        assertEquals(8, created.getBody().path("size").asInt());
+        assertEquals("a,b\n1,2\n", Files.readString(dir.resolve("grid.csv")));
+
+        // 覆盖：同名校验内容被替换
+        var overwritten = controller.put("grid.csv", "a,b\n9,9\n".getBytes());
+        assertTrue(overwritten.getStatusCode().is2xxSuccessful());
+        assertEquals("a,b\n9,9\n", Files.readString(dir.resolve("grid.csv")));
+    }
+
+    @Test
+    void putRejectsBadName() {
+        assertEquals(400, controller.put("../evil.csv", "x".getBytes()).getStatusCode().value());
+        assertEquals(400, controller.put("中文.csv", "x".getBytes()).getStatusCode().value());
+        assertFalse(Files.exists(dir.resolve("evil.csv")));
+    }
+
+    @Test
+    void putEnforcesSizeLimitAndRejectsEmpty() {
+        assertEquals(413, controller.put("big.csv", new byte[2048]).getStatusCode().value(), "超 1KB 测试上限 → 413");
+        assertEquals(400, controller.put("empty.csv", new byte[0]).getStatusCode().value(), "空 body → 400");
+        assertFalse(Files.exists(dir.resolve("big.csv")));
+        assertFalse(Files.exists(dir.resolve("empty.csv")));
+    }
+
     @Test
     void listSkipsDirectoriesAndHiddenFiles() throws Exception {
         Files.createDirectories(dir.resolve("subdir"));

@@ -7,6 +7,8 @@ import { dataAgentCatalog } from './a2ui/dataAgentCatalog'
 import { useContextUsage } from './composables/useContextUsage'
 import { useAgentState } from './composables/useAgentState'
 import { useThreads } from './composables/useThreads'
+import { useWorkspaceFiles } from './composables/useWorkspaceFiles'
+import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
 import FilesPanel from './components/FilesPanel.vue'
@@ -42,6 +44,9 @@ function pushToast(t: Omit<Toast, 'id'>) {
   }, 6000)
 }
 
+// task5-B4: applySpreadsheetEdits 落盘通道（与文件面板同一套 /files API）
+const workspaceFilesApi = useWorkspaceFiles()
+
 const frontendTools = [
   {
     name: 'showNotification',
@@ -56,6 +61,31 @@ const frontendTools = [
     handler: async (args: { title: string; message: string; type?: NotificationType }) => {
       pushToast({ title: args.title, message: args.message, type: args.type ?? 'info' })
       return `Notification displayed to the user (title="${args.title}").`
+    },
+  },
+  // task5-B4: agent 编辑 workspace CSV 表格（HITL：浏览器 confirm 确认后才落盘）
+  {
+    name: 'applySpreadsheetEdits',
+    description:
+      "Edit cells of a CSV spreadsheet file in the user's workspace. row/col are 0-based (row 0 is the header row); out-of-range rows/cols extend the sheet. The user sees a browser confirmation dialog with the change count before anything is written — if they cancel, the file is left untouched. Use this to update or append spreadsheet data.",
+    parameters: z.object({
+      file: z.string().describe('CSV file name in the workspace (e.g. sales-2026-08.csv)'),
+      cells: z.array(z.object({
+        row: z.number().int().nonnegative().describe('0-based row index; 0 is the header row'),
+        col: z.number().int().nonnegative().describe('0-based column index'),
+        value: z.string().describe('New cell text'),
+      })).min(1).describe('Cell edits to apply'),
+      summary: z.string().optional()
+        .describe('Short human-readable summary of the edits, shown in the confirmation dialog'),
+    }),
+    handler: async (args: { file: string; cells: { row: number; col: number; value: string }[]; summary?: string }) => {
+      return applySpreadsheetEdits(args, {
+        readFile: async (name) => {
+          try { return await workspaceFilesApi.readFile(name) } catch { return null }
+        },
+        saveFile: (name, content) => workspaceFilesApi.saveFile(name, content),
+        confirm: (msg) => window.confirm(msg),
+      })
     },
   },
 ]

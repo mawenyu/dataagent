@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { formatSize, useWorkspaceFiles } from '../composables/useWorkspaceFiles'
+import SpreadsheetEditor from './SpreadsheetEditor.vue'
 
 /**
  * workspace 文件面板（spec: docs/spec/workspace-files.md）：
  * 列表 / 文本预览 / 上传 / 下载 / 删除。与会话栏同栏位 Tab 切换（App.vue 驱动）。
+ * task5-B4：.csv 文件可"表格编辑"打开 SpreadsheetEditor（PUT 覆盖写保存）。
  */
 const api = useWorkspaceFiles()
 onMounted(() => api.refresh())
@@ -37,6 +39,19 @@ async function confirmRemove(name: string) {
   }
 }
 
+// task5-B4: CSV 表格编辑器（打开前读取完整内容）
+const editing = ref<{ name: string; content: string } | null>(null)
+function isCsv(name: string) { return name.toLowerCase().endsWith('.csv') }
+async function openEditor(name: string) {
+  try {
+    const content = await api.readFile(name)
+    editing.value = { name, content }
+  } catch (err: any) {
+    window.alert(`打开编辑器失败：${err?.message ?? err}`)
+  }
+}
+function closeEditor() { editing.value = null }
+
 function formatTime(iso: string) {
   try {
     return new Date(iso).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -60,6 +75,13 @@ function formatTime(iso: string) {
         <button class="file-name" :title="f.name" @click="api.previewFile(f.name)">{{ f.name }}</button>
         <span class="file-meta">{{ formatSize(f.size) }} · {{ formatTime(f.modifiedAt) }}</span>
         <span class="file-actions">
+          <button
+            v-if="isCsv(f.name)"
+            class="act"
+            :data-testid="`edit-${f.name}`"
+            title="表格编辑"
+            @click="openEditor(f.name)"
+          >✎</button>
           <a class="act" :href="api.downloadUrl(f.name)" :download="f.name" title="下载">⬇</a>
           <button class="act del" :data-testid="`del-${f.name}`" title="删除" @click="confirmRemove(f.name)">×</button>
         </span>
@@ -77,6 +99,14 @@ function formatTime(iso: string) {
       <pre class="preview-body">{{ api.preview.value.content }}</pre>
       <p v-if="api.preview.value.truncated" class="hint">（内容超过 256KB，仅显示前 256KB）</p>
     </div>
+    <!-- task5-B4: CSV 表格编辑器（弹层卡片） -->
+    <SpreadsheetEditor
+      v-if="editing"
+      :name="editing.name"
+      :content="editing.content"
+      @close="closeEditor"
+      @saved="closeEditor"
+    />
   </div>
 </template>
 
