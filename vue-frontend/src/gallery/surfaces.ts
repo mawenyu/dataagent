@@ -163,6 +163,21 @@ const edge = ops('g-edge', [
   { component: 'Text', id: 'e-ok', text: '✓ 页面存活：所有异常均被降级处理', variant: 'caption' },
 ])
 
+
+// ⑧ 性能规模（vision-P5-2）：gateway 上限 100 组件单 surface
+const perfComps: any[] = [{
+  component: 'Column', id: 'root',
+  children: Array.from({ length: 99 }, (_, i) => `pm${i}`),
+}]
+for (let i = 0; i < 99; i++) {
+  perfComps.push({
+    component: 'MetricCard', id: `pm${i}`,
+    title: `规模压测指标 ${i}`, value: `¥${(100000 + i * 37).toLocaleString()}`,
+    delta: `${i % 2 ? '+' : '-'}${(i % 15) + 1}.${i % 9}% 环比`, trend: i % 2 ? 'up' : 'down',
+  })
+}
+const perf = ops('g-perf', perfComps)
+
 export const GALLERY_BATCHES: Record<string, GalleryBatch> = {
   layout: { label: '布局容器类', components: ['Card', 'Row', 'Column', 'List', 'Tabs', 'Divider', 'Modal'], operations: layout },
   form: { label: '表单交互类', components: ['TextField', 'CheckBox', 'ChoicePicker', 'Slider', 'DateTimeInput', 'Button'], operations: form },
@@ -171,4 +186,5 @@ export const GALLERY_BATCHES: Record<string, GalleryBatch> = {
   content: { label: '内容类', components: ['Badge', 'Markdown', 'InsightCard', 'WarningCard', 'ActionButton'], operations: content },
   hitl: { label: 'HITL 确认卡片', components: ['WarningCard', 'ActionButton'], operations: hitl },
   edge: { label: '边界/异常（vision-P4）', components: ['MetricCard', 'Text', 'Column'], operations: edge },
+  perf: { label: '性能规模（100 组件）', components: ['MetricCard', 'Column'], operations: perf },
 }

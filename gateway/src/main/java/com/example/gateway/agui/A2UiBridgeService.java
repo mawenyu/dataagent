@@ -70,6 +70,8 @@ public class A2UiBridgeService {
 
     // Loose caps (TASK §16 — validation only, no auth)
     private static final int MAX_COMPONENTS = 100;
+    /** 测试可见的上限（P5-2 性能基线用）。 */
+    static final int MAX_COMPONENTS_FOR_TEST = MAX_COMPONENTS;
     private static final int MAX_PAYLOAD_CHARS = 64 * 1024;
     private static final int MAX_CONTEXT_ENTRY_CHARS = 32 * 1024;
 
