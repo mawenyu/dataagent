@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -43,6 +46,20 @@ public class ThreadMessagesService {
         if (!m.find()) return List.of();
         return Arrays.stream(m.group(1).split(",\\s*"))
                 .map(String::trim).filter(x -> !x.isEmpty()).toList();
+    }
+
+    /**
+     * 历史拉取共享段：GET /api/session/{sid}/message → {@link #toAguiMessages}。
+     * 调用方各自决定错误兜底（branch 空列表 / messages 带 surfaces 空历史 /
+     * MESSAGES_SNAPSHOT 跳过发送，语义不同故不在此统一）。
+     */
+    public Mono<List<JsonNode>> fetchAguiMessages(WebClient webClient, String sessionId) {
+        return webClient.get()
+                .uri("/api/session/{sid}/message", sessionId)
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(String.class)
+                .map(this::toAguiMessages);
     }
 
     public List<JsonNode> toAguiMessages(String historyJson) {

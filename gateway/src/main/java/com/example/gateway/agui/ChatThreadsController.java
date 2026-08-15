@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -116,12 +115,7 @@ public class ChatThreadsController {
         String sessionId = store.resolveSession(id);
         Mono<List<JsonNode>> ownMessages = sessionId == null
                 ? Mono.just(List.of())
-                : webClient.get()
-                        .uri("/api/session/{sid}/message", sessionId)
-                        .accept(MediaType.APPLICATION_JSON)
-                        .retrieve()
-                        .bodyToMono(String.class)
-                        .map(b -> (List<JsonNode>) messagesService.toAguiMessages(b))
+                : messagesService.fetchAguiMessages(webClient, sessionId)
                         .onErrorReturn(List.of());
         return ownMessages.map(own -> {
             List<JsonNode> all = new ArrayList<>(parentPrefix);
@@ -149,14 +143,10 @@ public class ChatThreadsController {
         if (sessionId == null) {
             return Mono.just(messagesResponse(prefix, surfaces));
         }
-        return webClient.get()
-                .uri("/api/session/{sid}/message", sessionId)
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(body -> {
+        return messagesService.fetchAguiMessages(webClient, sessionId)
+                .map(msgs -> {
                     List<JsonNode> merged = new ArrayList<>(prefix);
-                    merged.addAll(messagesService.toAguiMessages(body));
+                    merged.addAll(msgs);
                     return messagesResponse(merged, surfaces);
                 })
                 .onErrorResume(e -> {

@@ -476,19 +476,14 @@ public class AgUiProtocolService {
      * 空历史/拉取失败 → empty（调用方跳过发送；空数组 snapshot 会清客户端消息）。
      */
     private Mono<ServerSentEvent<String>> messagesSnapshot(String sessionId, String threadId, String runId) {
-        return webClient.get()
-                .uri("/api/session/{id}/message", sessionId)
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(String.class)
-                .flatMap(body -> {
-                    List<JsonNode> msgs = messagesService.toAguiMessages(body);
+        return messagesService.fetchAguiMessages(webClient, sessionId)
+                .flatMap(msgs -> {
                     if (msgs.isEmpty()) return Mono.empty();
                     var n = MAPPER.createObjectNode();
                     n.put("type", "MESSAGES_SNAPSHOT");
                     n.put("threadId", threadId);
                     n.put("runId", runId);
-                    n.putArray("messages").addAll(msgs.stream().map(m -> (JsonNode) m).toList());
+                    n.putArray("messages").addAll(msgs);
                     return Mono.just(sseRaw(toJson(n)));
                 })
                 .onErrorResume(e -> {
