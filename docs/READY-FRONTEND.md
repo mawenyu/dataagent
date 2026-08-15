@@ -39,5 +39,6 @@ F1 主链路 / F2 功能项 / F4 全部在 task6 及之前已完成；本次补�
 | `b0e518c` | **P-B 错误恢复 UX**：run 失败/中断 → 消息流尾部内联错误卡（原因 + 重试 + ×，零原生弹窗）；重试 = 截掉失败轮后在原线程 clone 重发最后一条用户消息（多模态 parts 原样保留、不重复入列）；用户主动 abort 不弹 |
 | `1011ce1` | **P-C 文件预览 modal**：csv 表格（引号感知解析、首行 sticky、500 行截断）/ json 美化 / md 轻量渲染（先转义后变换，XSS 安全）/ txt·log 原文；Teleport + ESC/遮罩关闭；顺手清掉 FilesPanel 的 alert/confirm（内联 notice + 删除两段确认） |
 | `b81e809` | **P-D Prompt 模板**：欢迎页 4 模板卡（销售分析/可视化看板/周报生成/数据清洗），点击填充输入框（非直接发送）+ 聚焦，可编辑后回车发出 |
+| `a5c6c69` | **P-E 模板库/输入增强**：模板卡点击后高亮（card-active，编辑/清空自动移除）+ 一键清空按钮（✕，复位高度并聚焦）；欢迎页输入框自适应高度（下限 40px、超 3 行 82px 封顶出滚动条）+ Enter 发送 / Shift+Enter 换行 |
 
-**验证**：vue-frontend vitest 24 文件 140 全绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
+**验证**：vue-frontend vitest 24 文件 147 全绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
