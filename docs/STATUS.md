@@ -25,7 +25,7 @@ fork 10 个既有失败（与 P 系列改动零交集，P11 已用"失败集 dif
 ## ② 部署一致性核验（2026-08-16）
 
 - `vue-frontend` HEAD 全新构建 vs `/var/www/blog/agui/`：`main-LJQQtx7u.js` **md5 逐字节一致**，index.html 一致，公网抓取同 hash ✅ 无陈旧部署
-- gateway 运行 jar = HEAD `mvn package`（重启纪律：kill → package → start，防懒加载 wedge）
+- gateway 运行 jar = `/tmp/agui-gateway-run.jar` 副本（P-P 固化：`scripts/restart-gateway.sh` = kill → package → 拷副本 → 副本启动；三件套一键 `scripts/up.sh`，幂等）
 - opencode server：tmux `opencode2-4096` 常驻（启动必须 `-c /home/ubuntu/dataagent`，否则 jsxImportSource/provider 配置丢失）
 - 注意：repo 根有个陈旧顶层 `dist/`（历史残留，非部署源，忽略）
 

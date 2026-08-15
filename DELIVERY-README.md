@@ -76,11 +76,20 @@ tmux new-session -d -s opencode2-4096 -x 220 -y 50 \
 ### 2. Java gateway
 
 ```bash
-cd gateway
-mvn test          # 22+ 协议/桥接单测
-mvn spring-boot:run   # 或 mvn package 后 java -jar target/*.jar
-# 监听 :8090，健康检查 curl localhost:8090/actuator/health
+# 推荐(P-P 固化): 一键拉起/重启三件套(opencode :4096 + gateway :8090 + vite :3001,幂等)
+scripts/up.sh            # 缺啥起啥;已健康的服务跳过
+scripts/up.sh --build    # 强制重新打包 gateway
+
+# gateway 重启纪律(kill → package → 拷贝 /tmp 副本 → 从副本启动):
+scripts/restart-gateway.sh           # 跳过测试快速重启
+scripts/restart-gateway.sh --tests   # 先 mvn test 全绿再重启
 ```
+
+要点：
+- **gateway 从 `/tmp/agui-gateway-run.jar` 副本运行**，不直接 `java -jar target/*.jar` —— 否则下次 `mvn package` 原地覆盖运行中的 jar，热路径类加载可能 wedge（实测踩过）；副本即"正在运行的制品"，可审计
+- 重启顺序必须是 **先 kill 再 package 后启动**（restart-gateway.sh 已固化）
+- 启动 cwd = 仓库根（workspace 落点 `./workspace/`，与现行一致）
+- 监听 :8090，健康检查 `curl localhost:8090/actuator/health`
 
 ### 3. 前端
 
