@@ -1,0 +1,424 @@
+data:{"type":"RUN_STARTED","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800374112}
+
+data:{"type":"STATE_SNAPSHOT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800374112,"snapshot":{"model":"deepseek-reasoner","workspace":"workspace","provider":"deepseek","threadId":"vision-hitl-restart","contextSize":0}}
+
+data:{"type":"STEP_STARTED","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376869,"stepName":"step-msg_0059a02ab001Rskbqcaobu629X"}
+
+data:{"type":"REASONING_START","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376873,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1"}
+
+data:{"type":"REASONING_MESSAGE_START","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376873,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","role":"reasoning"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376876,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"The"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376895,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" user"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376896,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" wants"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376904,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" to"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376907,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" delete"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376916,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" the"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376922,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" file"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376927,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" e"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376930,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"2"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376932,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"e"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376938,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"-up"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376947,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":".txt"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376950,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" in"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376952,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" the"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376991,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" workspace"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376997,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"/"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800376999,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"thread"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377003,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"s"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377007,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"/"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377013,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"vision"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377017,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"-hit"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377023,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"l"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377027,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"-rest"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377029,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"art"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377030,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" directory"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377037,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377041,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" Let"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377043,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" me"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377045,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" check"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377049,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" the"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377055,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" file"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377057,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" first"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377058,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":","}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377059,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" then"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377060,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" confirm"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377061,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" deletion"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377083,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" since"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377084,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" it"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377085,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"'s"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377085,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" a"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377087,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" destructive"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377089,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" operation"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377091,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377097,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" Per"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377110,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" instructions"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377114,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":","}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377117,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" deleting"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377122,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" files"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377136,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" is"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377138,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" a"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377140,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" high"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377155,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"-risk"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377156,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" operation"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377184,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" and"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377186,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" I"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377187,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" should"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377191,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" use"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377195,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" request"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377219,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"_user"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377225,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"_"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377231,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"confirm"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377267,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":".\n\n"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377273,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"Let"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377281,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" me"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377289,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" first"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377294,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" verify"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377298,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" the"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377300,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" file"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377300,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":" exists"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800377302,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1","delta":"."}
+
+data:{"type":"TOOL_CALL_START","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381026,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","toolCallName":"glob"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381027,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"{"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381028,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381029,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"pattern"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381029,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381030,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":": "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381030,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381030,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"works"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381030,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"pace"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381031,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"/"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381031,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"thread"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381031,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"s"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381032,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"/"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381032,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"vision"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381032,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"-hit"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381033,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"l"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381033,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"-rest"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381033,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"art"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381033,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"/e"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381034,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"2"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381034,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"e"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381036,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"-up"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381036,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":".txt"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381037,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381038,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","delta":"}"}
+
+data:{"type":"REASONING_MESSAGE_END","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381039,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1"}
+
+data:{"type":"REASONING_END","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381039,"messageId":"msg_0059a02ab001Rskbqcaobu629X-0#1"}
+
+data:{"type":"TOOL_CALL_END","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381161,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188"}
+
+data:{"type":"TOOL_CALL_RESULT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381168,"toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","messageId":"toolres-call_00_uGkPRVankdG7FhHO71il3188","content":"/home/ubuntu/dataagent/workspace/threads/vision-hitl-restart/e2e-up.txt"}
+
+data:{"type":"STEP_FINISHED","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381169,"stepName":"step-msg_0059a02ab001Rskbqcaobu629X"}
+
+data:{"type":"CUSTOM","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381169,"name":"context_usage","value":{"input":5720,"output":58,"reasoning":70,"cacheRead":1920,"cacheWrite":0,"contextSize":7640,"finish":"tool-calls"}}
+
+data:{"type":"STATE_DELTA","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381169,"delta":[{"op":"replace","path":"/contextSize","value":7640}]}
+
+data:{"type":"STEP_STARTED","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381173,"stepName":"step-msg_0059a1073001NMxT6vwo4sUwhR"}
+
+data:{"type":"REASONING_START","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381173,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1"}
+
+data:{"type":"REASONING_MESSAGE_START","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381173,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","role":"reasoning"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381173,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":"The"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381173,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" file"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381173,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" exists"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381173,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381173,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" De"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":"letion"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" is"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" a"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" destructive"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" operation"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":","}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" so"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" I"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381174,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" should"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381175,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" confirm"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381175,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" with"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381175,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" the"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381175,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":" user"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381176,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1","delta":"."}
+
+data:{"type":"TOOL_CALL_START","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381176,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","toolCallName":"request_user_confirm"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381176,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"{"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381176,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381177,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"action"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381177,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"Id"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381177,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381177,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":": "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381177,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381177,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"del"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381178,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"-e"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381178,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"2"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381178,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"e"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381178,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"-up"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381178,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"-t"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381179,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"xt"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381179,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381179,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":", "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381179,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381179,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"title"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381179,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381180,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":": "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381180,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381180,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"删除"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381180,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"确认"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381180,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381180,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":", "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381181,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381181,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"message"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381181,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381181,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":": "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381181,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381181,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"将"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381182,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"删除"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381182,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":" workspace"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381182,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"/"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381182,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"thread"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381182,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"s"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381182,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"/"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381182,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"vision"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381183,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"-hit"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381184,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"l"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381184,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"-rest"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381185,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"art"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381185,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"/e"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381185,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"2"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381185,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"e"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381185,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"-up"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381185,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":".txt"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381185,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"，"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381185,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"此"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"操作"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"不可"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"恢复"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"。"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"是否"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"继续"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"？"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381186,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","delta":"}"}
+
+data:{"type":"REASONING_MESSAGE_END","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381187,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1"}
+
+data:{"type":"REASONING_END","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381187,"messageId":"msg_0059a1073001NMxT6vwo4sUwhR-0#1"}
+
+data:{"type":"TOOL_CALL_END","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381187,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916"}
+
+data:{"type":"ACTIVITY_SNAPSHOT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381197,"messageId":"a2ui-hitl-del-e2e-up-txt","activityType":"a2ui-surface","content":{"a2ui_operations":[{"version":"v0.9","createSurface":{"surfaceId":"hitl-del-e2e-up-txt","catalogId":"https://opencode-agui-app.local/a2ui/data-agent-catalog.json"}},{"version":"v0.9","updateComponents":{"surfaceId":"hitl-del-e2e-up-txt","components":[{"component":"Column","id":"root","children":["warn","actions"]},{"component":"WarningCard","id":"warn","title":"删除确认","text":"将删除 workspace/threads/vision-hitl-restart/e2e-up.txt，此操作不可恢复。是否继续？"},{"component":"Row","id":"actions","children":["confirm","cancel"]},{"component":"ActionButton","id":"confirm","label":"确认","variant":"primary","action":{"event":{"context":{"actionId":"del-e2e-up-txt"},"name":"hitl_confirm"}}},{"component":"ActionButton","id":"cancel","label":"取消","action":{"event":{"context":{"actionId":"del-e2e-up-txt"},"name":"hitl_cancel"}}}]}}]},"replace":true}
+
+data:{"type":"TOOL_CALL_RESULT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381222,"toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","messageId":"toolres-call_00_AaIkVxGc9tgZmvzqqi2T0916","content":"Confirmation card shown to the user. END your turn now and wait for the user's choice (hitl_confirm/hitl_cancel)."}
+
+data:{"type":"STEP_FINISHED","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381225,"stepName":"step-msg_0059a1073001NMxT6vwo4sUwhR"}
+
+data:{"type":"CUSTOM","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381225,"name":"context_usage","value":{"input":122,"output":111,"reasoning":19,"cacheRead":7680,"cacheWrite":0,"contextSize":7802,"finish":"tool-calls"}}
+
+data:{"type":"STATE_DELTA","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381225,"delta":[{"op":"replace","path":"/contextSize","value":7802}]}
+
+data:{"type":"STEP_STARTED","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381228,"stepName":"step-msg_0059a1835001xzz5gJpTj8ceS7"}
+
+data:{"type":"TEXT_MESSAGE_START","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381241,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","role":"assistant"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381241,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","delta":"已"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381242,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","delta":"弹出"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381243,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","delta":"确认"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381243,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","delta":"，"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381244,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","delta":"等待"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381244,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","delta":"你的"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381244,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","delta":"选择"}
+
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381245,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32","delta":"。"}
+
+data:{"type":"TEXT_MESSAGE_END","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381245,"messageId":"ag-afe2a409-32f9-4309-9d95-e4e7fac28f32"}
+
+data:{"type":"STEP_FINISHED","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381246,"stepName":"step-msg_0059a1835001xzz5gJpTj8ceS7"}
+
+data:{"type":"CUSTOM","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381246,"name":"context_usage","value":{"input":166,"output":9,"reasoning":0,"cacheRead":7808,"cacheWrite":0,"contextSize":7974,"finish":"stop"}}
+
+data:{"type":"STATE_DELTA","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381246,"delta":[{"op":"replace","path":"/contextSize","value":7974}]}
+
+data:{"type":"MESSAGES_SNAPSHOT","threadId":"vision-hitl-restart","runId":"r1","messages":[{"id":"msg_0059a023e001Eq2KJsdwpnpSNt","role":"user","content":"请删除本会话数据工作目录里的 e2e-up.txt。"},{"id":"msg_0059a02ab001Rskbqcaobu629X-r","role":"reasoning","content":"The user wants to delete the file e2e-up.txt in the workspace/threads/vision-hitl-restart directory. Let me check the file first, then confirm deletion since it's a destructive operation. Per instructions, deleting files is a high-risk operation and I should use request_user_confirm.\n\nLet me first verify the file exists."},{"id":"msg_0059a02ab001Rskbqcaobu629X","role":"assistant","content":"","toolCalls":[{"id":"call_00_uGkPRVankdG7FhHO71il3188","type":"function","function":{"name":"glob","arguments":"{\"pattern\":\"workspace/threads/vision-hitl-restart/e2e-up.txt\"}"}}]},{"id":"toolres-call_00_uGkPRVankdG7FhHO71il3188","role":"tool","toolCallId":"call_00_uGkPRVankdG7FhHO71il3188","content":"/home/ubuntu/dataagent/workspace/threads/vision-hitl-restart/e2e-up.txt"},{"id":"msg_0059a1073001NMxT6vwo4sUwhR-r","role":"reasoning","content":"The file exists. Deletion is a destructive operation, so I should confirm with the user."},{"id":"msg_0059a1073001NMxT6vwo4sUwhR","role":"assistant","content":"","toolCalls":[{"id":"call_00_AaIkVxGc9tgZmvzqqi2T0916","type":"function","function":{"name":"request_user_confirm","arguments":"{\"actionId\":\"del-e2e-up-txt\",\"title\":\"删除确认\",\"message\":\"将删除 workspace/threads/vision-hitl-restart/e2e-up.txt，此操作不可恢复。是否继续？\"}"}}]},{"id":"toolres-call_00_AaIkVxGc9tgZmvzqqi2T0916","role":"tool","toolCallId":"call_00_AaIkVxGc9tgZmvzqqi2T0916","content":"Confirmation card shown to the user. END your turn now and wait for the user's choice (hitl_confirm/hitl_cancel)."},{"id":"msg_0059a1835001xzz5gJpTj8ceS7","role":"assistant","content":"已弹出确认，等待你的选择。"}]}
+
+data:{"type":"RUN_FINISHED","runId":"r1","threadId":"vision-hitl-restart","timestamp":1786800381248}
+

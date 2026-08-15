@@ -1,0 +1,30 @@
+== HITL 超时与取消路径实测（vision-P5-3，2026-08-15）==
+
+场景1 长时间不响应（延迟 resume）✅
+- interrupt（vision-hitl-timeout2，请求删 region-sales-2026-08-result.csv）
+  → 确认卡片渲染（hitl-del-region-sales-result），run 正常 RUN_FINISHED，
+  文件未动（2026-08-15-hitl-timeout-interrupt.sse）
+- 设计说明：interrupt 模型下 run 即结束，确认卡片不绑定任何进行中的
+  run/超时计时（run-idle-timeout 只约束进行中的流），卡片持久有效
+- 静置 130s（> run-idle-timeout 120s）后 resume：正常工作
+  （2026-08-15-hitl-timeout-cancel-resume.sse）
+
+场景2 用户拒绝（hitl_cancel）✅
+- 同上 resume 即 cancel：agent 答"已取消，文件未删除"，文件系统核实仍在
+- （P3 首批证据 2026-08-15-vision-hitl-resume.sse 同路径独立复测过）
+
+场景3 会话中断恢复（opencode 重启）✅
+- interrupt（vision-hitl-restart，删 e2e-up.txt，session=ses_ffa65ff82…）
+  → tmux 重启 opencode server（全部 session 丢失）
+  → resume hitl_confirm：gateway 存活校验发现 stale session → 自动重建并
+  rebind（需求1 机制）→ run 完成，agent 答"已删除 e2e-up.txt"，
+  目录核实文件已删（2026-08-15-hitl-restart-confirm-resume.sse）
+- 已知边界：新 session 无旧对话上下文，agent 仅凭 A2UI_ACTION prompt
+  （action 名 + context.actionId + surfaceId）决策 —— 本例足够执行；
+  复杂多轮依赖上下文的确认在重启后可能要求用户复述（记录在案，非 bug）
+
+过程修复（顺手）：
+- gateway 曾以 cwd=gateway/ 运行导致 workspace 相对路径错位
+  （workspace/threads 落到 gateway/workspace/ 下、播种为空）——重启修正
+  cwd=/home/ubuntu/dataagent 并清除错位目录。启动纪律：gateway 与
+  opencode 都必须从工程根启动（DELIVERY-README 已强调 opencode，gateway 同理）。
