@@ -1,0 +1,22 @@
+== P9 run 进行中 UX（2026-08-16 实测）==
+
+① 主输入框 run 期间禁用 + 停止按钮
+- fork CopilotChatView 两处 CopilotChatInput 补 :disabled="isRunning"
+  （停止按钮 fork 原有：isRunning && messages>0 → send 位变 stop，
+  handleStop → stopAgent/abortRun）
+- fork 测试: CopilotChatView.test.ts 新增 2 例（run 中 textarea disabled /
+  空闲可编辑），11/11 绿
+- gateway abort 语义补全（复用 runErrorRecovery 的 abort 不报错约定）:
+  此前只有超时路径 abort OpenCode session；现客户端断开（浏览器 abort →
+  SSE cancel）即 doOnCancel → POST /api/session/{id}/interrupt。
+  JUnit: clientCancelAbortsOpenCodeSession（stub hang + dispose → aborts 非空）
+- 生产实测: curl 长任务 8s 掐断 → 日志
+  "AG-UI run cancelled by client thread=vision-p9-abort session=ses_ff9e7e67… — aborting"
+
+② 工具调用流式耗时 + 状态点（fork F3 已有，P9 验证锁定）
+- copilot-tool-render-duration 实时计时（ticking → 完成冻结）；
+  状态图标 spinner/✓/✗ + 文案 Running/Done/失败/已中断 + 配色
+- fork 测试 use-default-render-tool.test.ts "F3 duration / status icon /
+  failure state" 覆盖（ticking/冻结/失败态/中断态）
+
+前端 152 / gateway 全量绿；fork CopilotChatView 11/11。

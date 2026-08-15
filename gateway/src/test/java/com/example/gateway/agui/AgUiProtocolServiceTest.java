@@ -919,4 +919,21 @@ class AgUiProtocolServiceTest {
         assertEquals("confirm", hitl.path("decision").asText());
         assertTrue(hitl.path("waitMs").asLong() >= 0);
     }
+
+    /** P9-①: 客户端停止（SSE 取消/断开）→ gateway 主动 abort OpenCode session，不再白烧 token。 */
+    @Test
+    void clientCancelAbortsOpenCodeSession() throws Exception {
+        stub.hangEventStream = true; // /api/event 永不响应（模拟 run 进行中）
+        reactor.core.Disposable sub = service.run(userMsg("t-cancel", "hi")).subscribe();
+        // 等 prompt 真正发出（run 已开始）
+        long deadline = System.currentTimeMillis() + 5000;
+        while (stub.prompts.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(20);
+        assertFalse(stub.prompts.isEmpty(), "run started");
+        assertTrue(stub.aborts.isEmpty(), "取消前不应 abort");
+
+        sub.dispose(); // 用户点了停止
+        deadline = System.currentTimeMillis() + 5000;
+        while (stub.aborts.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(20);
+        assertFalse(stub.aborts.isEmpty(), "客户端取消必须触发 OpenCode session abort");
+    }
 }

@@ -541,6 +541,7 @@ onBeforeUnmount(() => {
               <CopilotChatInput
                 :model-value="resolvedInputValue"
                 :is-running="isRunning"
+                :disabled="isRunning"
                 :mode="inputMode"
                 :tools-menu="inputToolsMenu"
                 positioning="static"
@@ -727,6 +728,7 @@ onBeforeUnmount(() => {
           <CopilotChatInput
             :model-value="resolvedInputValue"
             :is-running="isRunning"
+            :disabled="isRunning"
             :mode="inputMode"
             :tools-menu="inputToolsMenu"
             positioning="static"

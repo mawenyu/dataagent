@@ -386,7 +386,13 @@ public class AgUiProtocolService {
                                             .thenMany(Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(msg) + "\"}")));
                                 })
                                 .doOnSubscribe(s -> log.info("AG-UI run started thread={} run={} session={} user={}", finalThreadId, finalRunId, sessionId, userId))
-                                .doOnError(e -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage()));
+                                .doOnError(e -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage()))
+                                // P9-①: 客户端停止（浏览器 abort → SSE 取消）→ 主动中断
+                                // OpenCode session，不再白烧 token（此前只在超时路径 abort）
+                                .doOnCancel(() -> {
+                                    log.info("AG-UI run cancelled by client thread={} session={} — aborting", finalThreadId, sessionId);
+                                    abortSession(sessionId).subscribe();
+                                });
                 })
                 .onErrorResume(e -> Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(String.valueOf(e.getMessage())) + "\"}")));
     }

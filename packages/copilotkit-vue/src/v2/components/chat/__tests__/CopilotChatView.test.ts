@@ -371,4 +371,30 @@ describe("CopilotChatView", () => {
         .exists(),
     ).toBe(true);
   });
-});
+
+  // P9-①: run 进行中主输入框禁用（停止按钮接管发送位）
+  it("disables the textarea while a run is in progress", async () => {
+    const wrapper = mountChatView({
+      messages: chatMessages,
+      isRunning: true,
+      onStop: vi.fn(),
+    });
+    await nextTick();
+    const textarea = wrapper.get(
+      "[data-testid='copilot-chat-input-textarea']",
+    );
+    expect(textarea.attributes("disabled")).toBeDefined();
+  });
+
+  it("keeps the textarea enabled when idle", async () => {
+    const wrapper = mountChatView({
+      messages: chatMessages,
+      isRunning: false,
+    });
+    await nextTick();
+    const textarea = wrapper.get(
+      "[data-testid='copilot-chat-input-textarea']",
+    );
+    expect(textarea.attributes("disabled")).toBeUndefined();
+  });
+})
