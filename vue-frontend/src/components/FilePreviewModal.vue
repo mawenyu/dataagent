@@ -7,11 +7,17 @@ import { parseCsvPreview, prettyJson, renderMarkdownLite } from '../composables/
  * csv/tsv → 表格(首行表头,超 500 行截断提示);json → 美化;md → 轻量渲染;
  * txt/log → 等宽原文。
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   name: string
-  content: string
+  content?: string
   truncated?: boolean
-}>()
+  /** P-N: 大文件(>1MB)替代预览 —— 展示下载入口而非内容 */
+  oversize?: boolean
+  sizeLabel?: string
+  downloadUrl?: string
+}>(), {
+  content: '',
+})
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -58,7 +64,15 @@ const markdownHtml = computed(() => (ext.value === 'md' ? renderMarkdownLite(pro
         </div>
 
         <div class="fpv-body">
+          <!-- P-N: 大文件下载提示(不渲染内容) -->
+          <div v-if="oversize" class="fpv-oversize" data-testid="file-preview-oversize">
+            <span class="fpv-oversize-icon" aria-hidden="true">📦</span>
+            <p class="fpv-oversize-title">文件较大（{{ sizeLabel }}），在线预览已停用</p>
+            <p class="fpv-oversize-sub">超过 1MB 的文件请下载后查看，避免拖慢页面</p>
+            <a v-if="downloadUrl" class="fpv-dl" :href="downloadUrl" :download="name" data-testid="file-preview-download">⬇ 下载文件</a>
+          </div>
           <!-- csv/tsv: 表格 -->
+          <template v-else>
           <div v-if="csvRows" class="fpv-table-wrap" data-testid="file-preview-table">
             <table v-if="tableRows.length">
               <thead>
@@ -79,6 +93,7 @@ const markdownHtml = computed(() => (ext.value === 'md' ? renderMarkdownLite(pro
           <div v-else-if="ext === 'md'" class="fpv-md" data-testid="file-preview-md" v-html="markdownHtml"></div>
           <!-- txt/log: 原文 -->
           <pre v-else class="fpv-pre" data-testid="file-preview-text">{{ content }}</pre>
+          </template>
         </div>
 
         <p v-if="truncated" class="fpv-note fpv-trunc">（内容超过 256KB，仅显示前 256KB）</p>
@@ -177,6 +192,16 @@ const markdownHtml = computed(() => (ext.value === 'md' ? renderMarkdownLite(pro
 .fpv-md :deep(table) { border-collapse: collapse; margin: 10px 0; }
 .fpv-md :deep(th), .fpv-md :deep(td) { border: 1px solid #e5e7eb; padding: 5px 10px; }
 .fpv-md :deep(a) { color: #4f46e5; }
+/* P-N: 大文件下载提示 */
+.fpv-oversize { display: flex; flex-direction: column; align-items: center; padding: 32px 0; gap: 6px; }
+.fpv-oversize-icon { font-size: 34px; }
+.fpv-oversize-title { margin: 0; font-size: 14px; font-weight: 600; color: #111827; }
+.fpv-oversize-sub { margin: 0 0 10px; font-size: 12.5px; color: #9ca3af; }
+.fpv-dl {
+  display: inline-block; font-size: 13px; font-weight: 600; color: #ffffff;
+  background: #6366f1; border-radius: 8px; padding: 8px 18px; text-decoration: none;
+}
+.fpv-dl:hover { background: #4f46e5; }
 @keyframes fpv-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fpv-pop {
   from { opacity: 0; transform: translateY(6px) scale(0.98); }

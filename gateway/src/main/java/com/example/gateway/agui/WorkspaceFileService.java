@@ -132,6 +132,72 @@ public class WorkspaceFileService {
         }
     }
 
+    /** P-N: 目录层级上限。 */
+    private static final int MAX_PATH_DEPTH = 8;
+
+    /**
+     * P-N: 相对路径校验(逐段 NAME_PATTERN、禁 ".."/反斜杠/空段、深度 ≤ 8),
+     * 解析为根内路径;rel 为空 → 根目录本身。非法返回 empty。
+     */
+    public Optional<Path> resolvePath(String rel) {
+        if (rel == null || rel.isBlank()) return Optional.of(root);
+        // Spring {*name} 捕获多段路径时带前导斜杠 —— 归一掉(绝对路径语义在此无意义)
+        if (rel.startsWith("/")) rel = rel.substring(1);
+        if (rel.isBlank()) return Optional.of(root);
+        if (rel.contains("..") || rel.contains("\\")) return Optional.empty();
+        String[] segs = rel.split("/");
+        if (segs.length > MAX_PATH_DEPTH) return Optional.empty();
+        for (String seg : segs) {
+            if (!NAME_PATTERN.matcher(seg).matches()) return Optional.empty();
+        }
+        Path p = root.resolve(rel).normalize();
+        if (!p.startsWith(root)) return Optional.empty();
+        return Optional.of(p);
+    }
+
+    /** P-N: 目录列表结果(子目录名 + 文件)。 */
+    public record DirListing(List<String> dirs, List<FileInfo> files) {}
+
+    /**
+     * P-N: 列出 rel 目录内容(目录名升序 + 文件按 list() 同规则)。
+     * 共享根(service 根实例)隐藏会话隔离内部目录 threads/。
+     */
+    public DirListing listDir(String rel) {
+        Optional<Path> target = resolvePath(rel);
+        if (target.isEmpty() || !Files.isDirectory(target.get())) {
+            return new DirListing(List.of(), List.of());
+        }
+        boolean isRootService = sharedRoot != null;
+        boolean atRoot = target.get().equals(root);
+        try (var stream = Files.list(target.get())) {
+            List<Path> all = stream.toList();
+            List<String> dirs = all.stream()
+                    .filter(Files::isDirectory)
+                    .map(p -> p.getFileName().toString())
+                    .filter(n -> NAME_PATTERN.matcher(n).matches())
+                    .filter(n -> !(isRootService && atRoot && THREADS_DIR.equals(n)))
+                    .sorted()
+                    .toList();
+            List<FileInfo> files = all.stream()
+                    .filter(Files::isRegularFile)
+                    .map(p -> {
+                        try {
+                            return new FileInfo(p.getFileName().toString(), Files.size(p),
+                                    Files.getLastModifiedTime(p).toInstant());
+                        } catch (IOException e) {
+                            return null;
+                        }
+                    })
+                    .filter(f -> f != null && NAME_PATTERN.matcher(f.name()).matches())
+                    .sorted(Comparator.comparing(FileInfo::name))
+                    .toList();
+            return new DirListing(dirs, files);
+        } catch (IOException e) {
+            log.warn("listDir {} failed: {}", rel, e.getMessage());
+            return new DirListing(List.of(), List.of());
+        }
+    }
+
     /** 校验文件名并解析为根内路径；非法返回 empty。 */
     public Optional<Path> resolve(String name) {
         if (name == null || !NAME_PATTERN.matcher(name).matches() || name.contains("..")) {
@@ -163,7 +229,8 @@ public class WorkspaceFileService {
     }
 
     public Optional<Resource> read(String name) {
-        return resolve(name).filter(Files::isRegularFile).map(FileSystemResource::new);
+        // P-N: resolvePath 支持子目录相对路径(单段与 resolve 等价)
+        return resolvePath(name).filter(Files::isRegularFile).map(FileSystemResource::new);
     }
 
     public Optional<Long> sizeOf(String name) {
@@ -183,7 +250,8 @@ public class WorkspaceFileService {
             log.warn("upload rejected: {} bytes > limit {}", content.length, maxUploadBytes);
             return Optional.empty();
         }
-        return resolve(name).flatMap(p -> {
+        // P-N: resolvePath 支持写入子目录(父目录须已存在)
+        return resolvePath(name).flatMap(p -> {
             try {
                 Files.write(p, content);
                 return Optional.of(new FileInfo(name, content.length, Files.getLastModifiedTime(p).toInstant()));
@@ -195,7 +263,8 @@ public class WorkspaceFileService {
     }
 
     public boolean delete(String name) {
-        return resolve(name).filter(Files::isRegularFile).map(p -> {
+        // P-N: resolvePath 支持删除子目录内文件
+        return resolvePath(name).filter(Files::isRegularFile).map(p -> {
             try {
                 Files.delete(p);
                 return true;

@@ -19,8 +19,15 @@ export function formatSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
+/** P-N: 逐段编码相对路径(%2F 会被网关拒,必须保留 / 分隔)。 */
+function encodeRel(rel: string): string {
+  return rel.split('/').map(encodeURIComponent).join('/')
+}
+
 export function useWorkspaceFiles(threadId?: Ref<string | undefined>) {
   const files = ref<WorkspaceFile[]>([])
+  /** P-N: 当前目录的子目录名列表(listDir 响应) */
+  const dirs = ref<string[]>([])
   const loading = ref(false)
   const error = ref('')
   /** 预览中的文件内容（文本）；null = 未在预览 */
@@ -39,14 +46,16 @@ export function useWorkspaceFiles(threadId?: Ref<string | undefined>) {
     })
   }
 
-  async function refresh() {
+  /** P-N: path = 相对子目录('' = 根);响应含 dirs + files。 */
+  async function refresh(path = '') {
     loading.value = true
     error.value = ''
     try {
-      const res = await fetch(apiBase())
+      const res = await fetch(apiBase() + (path ? `?path=${encodeURIComponent(path)}` : ''))
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       files.value = data.files ?? []
+      dirs.value = data.dirs ?? []
     } catch (e: any) {
       error.value = e?.message ?? '加载失败'
     } finally {
@@ -57,7 +66,7 @@ export function useWorkspaceFiles(threadId?: Ref<string | undefined>) {
   async function previewFile(name: string) {
     error.value = ''
     try {
-      const res = await fetch(`${apiBase()}/${encodeURIComponent(name)}`)
+      const res = await fetch(`${apiBase()}/${encodeRel(name)}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const buf = await res.arrayBuffer()
       const truncated = buf.byteLength > 256 * 1024
@@ -71,40 +80,46 @@ export function useWorkspaceFiles(threadId?: Ref<string | undefined>) {
 
   function closePreview() { preview.value = null }
 
-  async function upload(file: File) {
+  /** P-N: path = 目标子目录(须已存在);上传后刷新该目录。 */
+  async function upload(file: File, path = '') {
     error.value = ''
     const form = new FormData()
     form.append('file', file, file.name)
-    const res = await fetch(apiBase(), { method: 'POST', body: form })
+    const res = await fetch(apiBase() + (path ? `?path=${encodeURIComponent(path)}` : ''), { method: 'POST', body: form })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
       throw new Error(body?.error ?? `HTTP ${res.status}`)
     }
-    await refresh()
+    await refresh(path)
   }
 
   function downloadUrl(name: string) {
-    return `${apiBase()}/${encodeURIComponent(name)}`
+    return `${apiBase()}/${encodeRel(name)}`
   }
 
   /** 读取完整文件文本（task5-B4：表格编辑器打开 / agent handler 读当前内容用）。 */
   async function readFile(name: string): Promise<string> {
-    const res = await fetch(`${apiBase()}/${encodeURIComponent(name)}`)
+    const res = await fetch(`${apiBase()}/${encodeRel(name)}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return new TextDecoder('utf-8', { fatal: false }).decode(await res.arrayBuffer())
   }
 
-  /** task5-B4：PUT 覆盖写（raw text body），保存后刷新列表并同步预览内容。 */
-  async function saveFile(name: string, content: string) {
+  /** task5-B4：PUT 覆盖写（raw text body），保存后刷新列表并同步预览内容。
+   *  P15: baseModified（打开/读取时的 modifiedAt 毫秒）→ 乐观并发检测，
+   *  服务端不符返回 409（不静默覆盖他人改动）。 */
+  async function saveFile(name: string, content: string, baseModified?: number) {
     error.value = ''
-    const res = await fetch(`${apiBase()}/${encodeURIComponent(name)}`, {
+    const url = `${apiBase()}/${encodeRel(name)}`
+        + (baseModified != null ? `?baseModified=${baseModified}` : '')
+    const res = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       body: content,
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      throw new Error(body?.error ?? `HTTP ${res.status}`)
+      // 带状态码：409 冲突检测依赖它（P15）
+      throw new Error(`${body?.error ?? 'error'} (HTTP ${res.status})`)
     }
     if (preview.value?.name === name) preview.value = { name, content, truncated: false }
     await refresh()
@@ -112,11 +127,27 @@ export function useWorkspaceFiles(threadId?: Ref<string | undefined>) {
 
   async function remove(name: string) {
     error.value = ''
-    const res = await fetch(`${apiBase()}/${encodeURIComponent(name)}`, { method: 'DELETE' })
+    const res = await fetch(`${apiBase()}/${encodeRel(name)}`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     if (preview.value?.name === name) preview.value = null
     await refresh()
   }
 
-  return { files, loading, error, preview, refresh, previewFile, closePreview, upload, downloadUrl, remove, readFile, saveFile }
+  /** P-N: 只读取目录内容(不改动当前列表状态),供树展开懒加载。 */
+  async function fetchDir(path: string): Promise<{ dirs: string[]; files: WorkspaceFile[] }> {
+    const res = await fetch(apiBase() + (path ? `?path=${encodeURIComponent(path)}` : ''))
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    return { dirs: data.dirs ?? [], files: data.files ?? [] }
+  }
+
+  /** P15: 文件当前 modifiedAt（毫秒），用于乐观冲突检测；找不到 → null。 */
+  function statOf(name: string): number | null {
+    const f = files.value.find((x) => x.name === name)
+    if (!f) return null
+    const ms = Date.parse(f.modifiedAt)
+    return Number.isNaN(ms) ? null : ms
+  }
+
+  return { files, dirs, loading, error, preview, refresh, fetchDir, previewFile, closePreview, upload, downloadUrl, remove, readFile, saveFile, statOf }
 }

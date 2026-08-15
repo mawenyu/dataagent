@@ -1,0 +1,7 @@
+P-N 目录树导航 —— 真实 API 冒烟(8091 临时实例, 新 jar, 2026-08-16)
+== nested dl ==      q,1 [200]
+== traversal ==      404(reports/../../top.csv --path-as-is 被拒)
+== nested upload ==  {"name":"reports/2026/pn-up.csv","size":4}(?path= 入子目录)
+== nested del ==     204
+== after del ==      {"path":"reports/2026","dirs":[],"files":[q1.csv 保留]}
+另: root list dirs:["reports"]; sub list dirs:["2026"] files:[readme.md] —— 层级正确

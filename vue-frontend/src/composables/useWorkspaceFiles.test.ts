@@ -89,3 +89,46 @@ describe('useWorkspaceFiles (task6 会话隔离)', () => {
     expect((fetchMock.mock.calls.at(-2)?.[1] as any)?.method).toBe('DELETE')
   })
 })
+
+describe('P-N: 目录导航支持', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+
+  it('refresh(path) 带 ?path= 并解析 dirs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        path: 'reports',
+        dirs: ['2026'],
+        files: [{ name: 'q1.csv', size: 5, modifiedAt: '2026-08-15T01:00:00Z' }],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const api = useWorkspaceFiles()
+    await api.refresh('reports')
+    expect(fetchMock).toHaveBeenCalledWith('/agui-api/files?path=reports')
+    expect(api.dirs.value).toEqual(['2026'])
+    expect(api.files.value[0].name).toBe('q1.csv')
+  })
+
+  it('嵌套路径逐段编码(保留 / 分隔,防 %2F 被网关拒)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new TextEncoder().encode('x').buffer),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const api = useWorkspaceFiles()
+    expect(api.downloadUrl('reports/2026/q1.csv')).toBe('/agui-api/files/reports/2026/q1.csv')
+    await api.readFile('reports/2026/q1.csv')
+    expect(fetchMock).toHaveBeenCalledWith('/agui-api/files/reports/2026/q1.csv')
+  })
+
+  it('upload 支持目标子目录(?path=)', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ name: 'a.csv', size: 3 }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ dirs: [], files: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const api = useWorkspaceFiles()
+    await api.upload(new File(['a'], 'a.csv'), 'reports')
+    expect(fetchMock.mock.calls[0][0]).toBe('/agui-api/files?path=reports')
+  })
+})

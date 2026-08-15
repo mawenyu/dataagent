@@ -81,3 +81,19 @@ describe('FilePreviewModal (P-C)', () => {
     w.unmount()
   })
 })
+
+describe('FilePreviewModal 大文件 (P-N)', () => {
+  it('oversize: 显示下载提示与下载链接,不渲染内容区', async () => {
+    const w = mount(FilePreviewModal, {
+      props: { name: 'big.csv', oversize: true, sizeLabel: '2.0 MB', downloadUrl: '/agui-api/files/big.csv' },
+      attachTo: document.body,
+    })
+    await nextTick()
+    const dlg = modal()!
+    expect(dlg.querySelector('[data-testid="file-preview-oversize"]')).toBeTruthy()
+    expect(dlg.textContent).toContain('2.0 MB')
+    expect((dlg.querySelector('[data-testid="file-preview-download"]') as HTMLAnchorElement).href).toContain('/agui-api/files/big.csv')
+    expect(dlg.querySelector('[data-testid="file-preview-table"]')).toBeNull()
+    w.unmount()
+  })
+})

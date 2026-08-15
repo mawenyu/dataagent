@@ -181,3 +181,117 @@ describe('FilesPanel (task6 会话隔离)', () => {
     expect(wrapper.text()).not.toContain('t1-only.csv')
   })
 })
+
+describe('FilesPanel P-N（目录树导航 + 大文件提示）', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { document.body.innerHTML = '' })
+
+  const ROOT_LIST = {
+    path: '',
+    dirs: ['reports'],
+    files: [{ name: 'top.csv', size: 100, modifiedAt: '2026-08-15T01:00:00Z' }],
+  }
+  const SUB_LIST = {
+    path: 'reports',
+    dirs: [],
+    files: [{ name: 'q1.csv', size: 50, modifiedAt: '2026-08-15T02:00:00Z' }],
+  }
+
+  it('点目录名进入子目录,面包屑可返回根目录', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(ROOT_LIST) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(SUB_LIST) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(ROOT_LIST) })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel)
+    await nextTick(); await nextTick(); await nextTick()
+
+    // 根: 目录行 + 顶层文件
+    expect(wrapper.find('[data-dir="reports"]').exists()).toBe(true)
+    expect(wrapper.find('[data-file="top.csv"]').exists()).toBe(true)
+
+    // 进入 reports
+    await wrapper.find('[data-dir="reports"] .dir-name').trigger('click')
+    await nextTick(); await nextTick()
+    expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/files?path=reports')
+    expect(wrapper.find('[data-file="reports/q1.csv"]').exists()).toBe(true)
+    expect(wrapper.find('[data-file="top.csv"]').exists()).toBe(false)
+    // 面包屑: 根目录 / reports
+    const crumbs = wrapper.find('[data-testid="breadcrumbs"]')
+    expect(crumbs.text()).toContain('根目录')
+    expect(crumbs.text()).toContain('reports')
+
+    // 面包屑返回
+    await wrapper.find('[data-testid="crumb-root"]').trigger('click')
+    await nextTick(); await nextTick()
+    expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/files')
+    expect(wrapper.find('[data-file="top.csv"]').exists()).toBe(true)
+  })
+
+  it('chevron 就地展开子目录(懒加载+缩进),再点折叠', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(ROOT_LIST) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(SUB_LIST) })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel, { attachTo: document.body })
+    await nextTick(); await nextTick(); await nextTick()
+
+    await wrapper.find('[data-testid="expand-reports"]').trigger('click')
+    await nextTick(); await nextTick()
+    expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/files?path=reports')
+    // 子文件就地出现且不离开当前目录(top.csv 仍在)
+    const child = wrapper.find('[data-file="reports/q1.csv"]')
+    expect(child.exists()).toBe(true)
+    expect(wrapper.find('[data-file="top.csv"]').exists()).toBe(true)
+    // 缩进: 子行 paddingLeft 大于父行
+    expect(child.attributes('style')).toContain('padding-left: 26px')
+
+    // 折叠
+    await wrapper.find('[data-testid="expand-reports"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-file="reports/q1.csv"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('大文件(>1MB)点击 → 下载提示 modal,不发内容请求', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        path: '', dirs: [],
+        files: [{ name: 'big.csv', size: 2 * 1024 * 1024, modifiedAt: '2026-08-15T01:00:00Z' }],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel, { attachTo: document.body })
+    await nextTick(); await nextTick(); await nextTick()
+
+    await wrapper.find('[data-file="big.csv"] .file-name').trigger('click')
+    await nextTick()
+    expect(fetchMock).toHaveBeenCalledTimes(1) // 只有列表请求,没拉内容
+    const dlg = document.body.querySelector('[data-testid="file-preview-oversize"]')
+    expect(dlg, '应出大文件下载提示 modal').toBeTruthy()
+    expect(dlg!.textContent).toContain('2.0 MB')
+    wrapper.unmount()
+  })
+
+  it('上传落入当前目录(?path=)', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(ROOT_LIST) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(SUB_LIST) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ name: 'up.csv', size: 3 }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(SUB_LIST) })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel)
+    await nextTick(); await nextTick(); await nextTick()
+    await wrapper.find('[data-dir="reports"] .dir-name').trigger('click')
+    await nextTick(); await nextTick()
+
+    const input = wrapper.find('[data-testid="file-input"]')
+    const file = new File(['a,b'], 'up.csv', { type: 'text/csv' })
+    Object.defineProperty(input.element, 'files', { value: [file] })
+    await input.trigger('change')
+    await nextTick(); await nextTick(); await nextTick()
+    expect(fetchMock.mock.calls[2][0]).toBe('/agui-api/files?path=reports')
+    expect(fetchMock.mock.calls[2][1].method).toBe('POST')
+  })
+})

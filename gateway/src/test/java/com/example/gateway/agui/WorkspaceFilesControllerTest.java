@@ -32,7 +32,7 @@ class WorkspaceFilesControllerTest {
         byte[] csv = "区域,销售额\n华北,388082\n".getBytes();
         assertTrue(files.store("q3.csv", csv).isPresent());
 
-        var list = controller.list();
+        var list = controller.list(null);
         assertEquals(1, list.path("files").size());
         assertEquals("q3.csv", list.path("files").get(0).path("name").asText());
         assertEquals(csv.length, list.path("files").get(0).path("size").asInt());
@@ -170,29 +170,118 @@ class WorkspaceFilesControllerTest {
         t1.store("only-t1.csv", "1".getBytes());
 
         // GET list 按会话隔离
-        var l1 = controller.listThreadFiles("thread-aaa");
+        var l1 = controller.listThreadFiles("thread-aaa", null);
         assertEquals(1, l1.path("files").size());
         assertEquals("only-t1.csv", l1.path("files").get(0).path("name").asText());
-        var l2 = controller.listThreadFiles("thread-bbb");
+        var l2 = controller.listThreadFiles("thread-bbb", null);
         assertEquals(0, l2.path("files").size(), "另一会话看不到 t1 的文件");
 
         // GET 下载 / PUT 覆盖写 / DELETE
         assertTrue(controller.downloadThreadFile("thread-aaa", "only-t1.csv").getStatusCode().is2xxSuccessful());
         assertTrue(controller.downloadThreadFile("thread-bbb", "only-t1.csv").getStatusCode().is4xxClientError());
-        var put = controller.putThreadFile("thread-aaa", "new.csv", "a,b\n".getBytes());
+        var put = controller.putThreadFile("thread-aaa", "new.csv", "a,b\n".getBytes(), null);
         assertTrue(put.getStatusCode().is2xxSuccessful());
         assertEquals("a,b\n", Files.readString(dir.resolve("threads/thread-aaa/new.csv")));
         assertTrue(controller.deleteThreadFile("thread-aaa", "new.csv").getStatusCode().is2xxSuccessful());
 
         // 非法 threadId → 400
-        assertFalse(controller.listThreadFiles("..").path("error").asText().isBlank(),
+        assertFalse(controller.listThreadFiles("..", null).path("error").asText().isBlank(),
                 "listThreadFiles 非法 id 返回 error 体");
     }
 
     @Test
     void threadScopedRejectsBadThreadId() {
         assertTrue(controller.downloadThreadFile("..", "x.csv").getStatusCode().is4xxClientError());
-        assertEquals(400, controller.putThreadFile("a/b", "x.csv", "x".getBytes()).getStatusCode().value());
+        assertEquals(400, controller.putThreadFile("a/b", "x.csv", "x".getBytes(), null).getStatusCode().value());
         assertTrue(controller.deleteThreadFile("..", "x.csv").getStatusCode().is4xxClientError());
+    }
+
+    // ---- P15: PUT 乐观并发冲突检测（baseModified）----
+
+    @Test
+    void putWithStaleBaseModifiedGets409() throws Exception {
+        var svc = files.forThread("t-conflict").orElseThrow();
+        svc.store("g.csv", "a,b\n1,2\n".getBytes());
+        long current = Files.getLastModifiedTime(dir.resolve("threads/t-conflict/g.csv")).toMillis();
+
+        // 携带过期 baseModified → 409
+        var stale = controller.putThreadFile("t-conflict", "g.csv", "a,b\n9,9\n".getBytes(), current - 10000);
+        assertEquals(409, stale.getStatusCode().value());
+        assertTrue(stale.getBody().path("error").asText().contains("conflict"));
+        // 文件未被覆盖
+        assertEquals("a,b\n1,2\n", Files.readString(dir.resolve("threads/t-conflict/g.csv")));
+
+        // 携带当前 baseModified → 200 落盘
+        var ok = controller.putThreadFile("t-conflict", "g.csv", "a,b\n9,9\n".getBytes(), current);
+        assertEquals(200, ok.getStatusCode().value());
+        assertEquals("a,b\n9,9\n", Files.readString(dir.resolve("threads/t-conflict/g.csv")));
+    }
+
+    @Test
+    void putWithoutBaseModifiedKeepsLegacyBehavior() {
+        var svc = files.forThread("t-legacy").orElseThrow();
+        svc.store("g.csv", "a,b\n1,2\n".getBytes());
+        // 不带 baseModified（null）→ 原覆盖语义
+        var res = controller.putThreadFile("t-legacy", "g.csv", "x,y\n".getBytes(), null);
+        assertEquals(200, res.getStatusCode().value());
+    }
+
+    @Test
+    void pnNestedDirectoryBrowse() throws Exception {
+        // P-N: 子目录列表/进入/读写删
+        Files.createDirectories(dir.resolve("reports/2026"));
+        Files.writeString(dir.resolve("reports/2026/q1.csv"), "q,1\n");
+        Files.writeString(dir.resolve("reports/readme.md"), "# r\n");
+        Files.writeString(dir.resolve("top.csv"), "t,1\n");
+
+        // 根列表: dirs 含 reports,files 只含顶层
+        var root = controller.list(null);
+        assertEquals(1, root.path("dirs").size());
+        assertEquals("reports", root.path("dirs").get(0).asText());
+        assertEquals(1, root.path("files").size());
+        assertEquals("top.csv", root.path("files").get(0).path("name").asText());
+
+        // 进入子目录
+        var sub = controller.list("reports");
+        assertEquals(1, sub.path("dirs").size());
+        assertEquals("2026", sub.path("dirs").get(0).asText());
+        assertEquals("readme.md", sub.path("files").get(0).path("name").asText());
+
+        // 嵌套下载/删除(路径段)
+        var dl = controller.download("reports/2026/q1.csv");
+        assertTrue(dl.getStatusCode().is2xxSuccessful());
+        assertTrue(controller.delete("reports/2026/q1.csv").getStatusCode().is2xxSuccessful());
+        assertTrue(controller.download("reports/2026/q1.csv").getStatusCode().is4xxClientError());
+    }
+
+    @Test
+    void pnNestedTraversalRejected() {
+        assertTrue(files.resolvePath("..").isEmpty());
+        assertTrue(files.resolvePath("a/../b").isEmpty());
+        assertTrue(files.resolvePath("a//b").isEmpty());
+        assertTrue(files.resolvePath("中文/ok.csv").isEmpty());
+        assertTrue(files.resolvePath("a.b/c-d/e_f.csv").isPresent());
+        // 深度上限 8
+        assertTrue(files.resolvePath("a/b/c/d/e/f/g/h/i.csv").isEmpty());
+        assertTrue(controller.list("../x").path("files").isEmpty());
+        assertTrue(controller.download("a/../../etc/passwd").getStatusCode().is4xxClientError());
+    }
+
+    @Test
+    void pnRootHidesThreadsDir() throws Exception {
+        // 共享根的 threads/ 是会话隔离内部目录,目录导航不暴露
+        Files.createDirectories(dir.resolve("threads"));
+        Files.createDirectories(dir.resolve("public-dir"));
+        var root = controller.list(null);
+        assertEquals(1, root.path("dirs").size());
+        assertEquals("public-dir", root.path("dirs").get(0).asText());
+    }
+
+    @Test
+    void pnLeadingSlashNormalized() {
+        // Spring {*name} 通配捕获带前导斜杠 —— resolvePath 须归一
+        assertTrue(files.resolvePath("/a.b/c.csv").isPresent());
+        assertTrue(files.resolvePath("/").isPresent());
+        assertTrue(files.resolvePath("/../x").isEmpty());
     }
 }

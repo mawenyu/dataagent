@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref, toRef } from 'vue'
-import { formatSize, useWorkspaceFiles } from '../composables/useWorkspaceFiles'
+import { computed, onMounted, ref, toRef, watch } from 'vue'
+import { formatSize, useWorkspaceFiles, type WorkspaceFile } from '../composables/useWorkspaceFiles'
 import { isPreviewable } from '../composables/filePreview'
 import SpreadsheetEditor from './SpreadsheetEditor.vue'
 import FilePreviewModal from './FilePreviewModal.vue'
@@ -12,15 +12,98 @@ import FilePreviewModal from './FilePreviewModal.vue'
  * task6：threadId prop —— 面板显示当前会话的隔离 workspace（spec: workspace-isolation.md）。
  * P-C：预览升级为全屏 modal（csv 表格 / json 美化 / md 渲染，Teleport+ESC）；
  *      同时清掉原生 alert/confirm —— 错误走内联 notice，删除走两段确认。
+ * P-N：目录树导航 —— 点目录名进入 + 面包屑返回 + ▸/▾ 就地折叠展开(懒加载,
+ *      打平为可见行渲染);大文件(>1MB)预览改为下载提示,不直接拉内容渲染。
  */
 const props = defineProps<{ threadId?: string }>()
 const api = useWorkspaceFiles(toRef(props, 'threadId'))
 onMounted(() => api.refresh())
 
+/** P-N: 大文件阈值 —— 超过则预览改为下载提示。 */
+const OVERSIZE_PREVIEW_BYTES = 1024 * 1024
+
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement>()
 /** 内联提示（上传/删除/编辑器错误、不可预览提示）—— 不用原生弹窗 */
 const notice = ref('')
+
+// ---- P-N: 目录导航状态 ----
+const currentPath = ref('')
+const expanded = ref<Set<string>>(new Set())
+const childrenCache = ref(new Map<string, { dirs: string[]; files: WorkspaceFile[] }>())
+
+interface Row {
+  kind: 'dir' | 'file'
+  name: string
+  rel: string
+  depth: number
+  file?: WorkspaceFile
+}
+
+/** 打平的可见行: 当前目录(dirs 在前) + 已展开目录的递归子行(缩进)。 */
+const visibleRows = computed<Row[]>(() => {
+  const rows: Row[] = []
+  const walk = (path: string, dirs: string[], files: WorkspaceFile[], depth: number) => {
+    for (const d of dirs) {
+      const rel = path ? `${path}/${d}` : d
+      rows.push({ kind: 'dir', name: d, rel, depth })
+      if (expanded.value.has(rel) && depth < 8) {
+        const c = childrenCache.value.get(rel)
+        if (c) walk(rel, c.dirs, c.files, depth + 1)
+      }
+    }
+    for (const f of files) {
+      rows.push({ kind: 'file', name: f.name, rel: path ? `${path}/${f.name}` : f.name, depth, file: f })
+    }
+  }
+  walk(currentPath.value, api.dirs.value, api.files.value, 0)
+  return rows
+})
+
+const breadcrumbs = computed(() => {
+  const segs = currentPath.value ? currentPath.value.split('/') : []
+  const crumbs: { label: string; path: string }[] = [{ label: '根目录', path: '' }]
+  segs.forEach((seg, i) => crumbs.push({ label: seg, path: segs.slice(0, i + 1).join('/') }))
+  return crumbs
+})
+
+function navigate(path: string) {
+  currentPath.value = path
+  notice.value = ''
+  void api.refresh(path)
+}
+
+function enterDir(rel: string) {
+  navigate(rel)
+}
+
+async function toggleExpand(rel: string) {
+  const next = new Set(expanded.value)
+  if (next.has(rel)) {
+    next.delete(rel)
+  } else {
+    if (!childrenCache.value.has(rel)) {
+      try {
+        const children = await api.fetchDir(rel)
+        const m = new Map(childrenCache.value)
+        m.set(rel, children)
+        childrenCache.value = m
+      } catch (err: any) {
+        notice.value = `读取目录失败：${err?.message ?? err}`
+        return
+      }
+    }
+    next.add(rel)
+  }
+  expanded.value = next
+}
+
+// 切会话: 导航状态复位(目录属于旧会话)
+watch(toRef(props, 'threadId'), () => {
+  currentPath.value = ''
+  expanded.value = new Set()
+  childrenCache.value = new Map()
+})
 
 function pickFile() { fileInput.value?.click() }
 
@@ -30,7 +113,7 @@ async function onPick(e: Event) {
   uploading.value = true
   notice.value = ''
   try {
-    await api.upload(f)
+    await api.upload(f, currentPath.value)
   } catch (err: any) {
     notice.value = `上传失败：${err?.message ?? err}`
   } finally {
@@ -39,21 +122,33 @@ async function onPick(e: Event) {
   }
 }
 
-function onNameClick(name: string) {
+/** P-N: 大文件预览替代态(modal 内给下载入口)。 */
+const oversizePreview = ref<{ name: string; size: number; url: string } | null>(null)
+
+function onNameClick(row: { name: string; rel: string; file?: WorkspaceFile }) {
   notice.value = ''
-  if (!isPreviewable(name)) {
-    notice.value = `「${name}」不支持在线预览，请下载查看`
+  if (!isPreviewable(row.name)) {
+    notice.value = `「${row.name}」不支持在线预览，请下载查看`
     return
   }
-  void api.previewFile(name)
+  // P-N: 大文件不拉内容,直接给下载提示
+  if (row.file && row.file.size > OVERSIZE_PREVIEW_BYTES) {
+    oversizePreview.value = {
+      name: row.rel,
+      size: row.file.size,
+      url: api.downloadUrl(row.rel),
+    }
+    return
+  }
+  void api.previewFile(row.rel)
 }
 
 // 两段确认删除：第一次点击 × → 按钮变"确认删除？"(3s 超时复位);再点才真删
 const confirmingDel = ref<string | null>(null)
 let confirmTimer: number | undefined
-async function confirmRemove(name: string) {
-  if (confirmingDel.value !== name) {
-    confirmingDel.value = name
+async function confirmRemove(rel: string) {
+  if (confirmingDel.value !== rel) {
+    confirmingDel.value = rel
     window.clearTimeout(confirmTimer)
     confirmTimer = window.setTimeout(() => { confirmingDel.value = null }, 3000)
     return
@@ -62,20 +157,21 @@ async function confirmRemove(name: string) {
   window.clearTimeout(confirmTimer)
   notice.value = ''
   try {
-    await api.remove(name)
+    await api.remove(rel)
   } catch (err: any) {
     notice.value = `删除失败：${err?.message ?? err}`
   }
 }
 
 // task5-B4: CSV 表格编辑器（打开前读取完整内容）
-const editing = ref<{ name: string; content: string } | null>(null)
+const editing = ref<{ name: string; content: string; baseModified?: number } | null>(null)
 function isCsv(name: string) { return name.toLowerCase().endsWith('.csv') }
-async function openEditor(name: string) {
+async function openEditor(rel: string) {
   notice.value = ''
   try {
-    const content = await api.readFile(name)
-    editing.value = { name, content }
+    const content = await api.readFile(rel)
+    // P15: 打开时记录 mtime —— 保存携带 baseModified 做乐观并发检测
+    editing.value = { name: rel, content, baseModified: api.statOf(rel.split('/').pop() ?? rel) ?? undefined }
   } catch (err: any) {
     notice.value = `打开编辑器失败：${err?.message ?? err}`
   }
@@ -98,32 +194,66 @@ function formatTime(iso: string) {
       </button>
       <input ref="fileInput" type="file" hidden data-testid="file-input" @change="onPick" />
     </div>
-    <p class="hint">本会话独立文件区，agent 可直接读取做分析</p>
+    <!-- P-N: 面包屑 -->
+    <nav class="crumbs" data-testid="breadcrumbs">
+      <template v-for="(c, i) in breadcrumbs" :key="c.path">
+        <span v-if="i > 0" class="crumb-sep">/</span>
+        <button
+          class="crumb"
+          :class="{ current: i === breadcrumbs.length - 1 }"
+          :data-testid="`crumb-${c.path || 'root'}`"
+          @click="navigate(c.path)"
+        >{{ c.label }}</button>
+      </template>
+    </nav>
     <div v-if="api.error.value" class="error">{{ api.error }}</div>
     <div v-if="notice" class="error" data-testid="files-notice">{{ notice }}</div>
     <div class="file-list">
-      <div v-for="f in api.files.value" :key="f.name" class="file-item" :data-file="f.name">
-        <button class="file-name" :title="f.name" @click="onNameClick(f.name)">{{ f.name }}</button>
-        <span class="file-meta">{{ formatSize(f.size) }} · {{ formatTime(f.modifiedAt) }}</span>
-        <span class="file-actions">
+      <div
+        v-for="row in visibleRows"
+        :key="row.rel"
+        class="file-item"
+        :class="{ 'is-dir': row.kind === 'dir' }"
+        :data-file="row.kind === 'file' ? row.rel : undefined"
+        :data-dir="row.kind === 'dir' ? row.rel : undefined"
+        :style="{ paddingLeft: `${10 + row.depth * 16}px` }"
+      >
+        <!-- 目录行: chevron 折叠展开 + 名字进入 -->
+        <template v-if="row.kind === 'dir'">
           <button
-            v-if="isCsv(f.name)"
-            class="act"
-            :data-testid="`edit-${f.name}`"
-            title="表格编辑"
-            @click="openEditor(f.name)"
-          >✎</button>
-          <a class="act" :href="api.downloadUrl(f.name)" :download="f.name" title="下载">⬇</a>
-          <button
-            class="act del"
-            :class="{ confirming: confirmingDel === f.name }"
-            :data-testid="`del-${f.name}`"
-            :title="confirmingDel === f.name ? '再次点击确认删除' : '删除'"
-            @click="confirmRemove(f.name)"
-          >{{ confirmingDel === f.name ? '确认删除？' : '×' }}</button>
-        </span>
+            class="dir-chev"
+            :data-testid="`expand-${row.rel}`"
+            :title="expanded.has(row.rel) ? '折叠' : '展开'"
+            @click="toggleExpand(row.rel)"
+          >{{ expanded.has(row.rel) ? '▾' : '▸' }}</button>
+          <button class="file-name dir-name" :title="`进入 ${row.rel}`" @click="enterDir(row.rel)">
+            📁 {{ row.name }}
+          </button>
+        </template>
+        <!-- 文件行 -->
+        <template v-else>
+          <button class="file-name" :title="row.rel" @click="onNameClick(row)">{{ row.name }}</button>
+          <span class="file-meta">{{ formatSize(row.file!.size) }} · {{ formatTime(row.file!.modifiedAt) }}</span>
+          <span class="file-actions">
+            <button
+              v-if="isCsv(row.name)"
+              class="act"
+              :data-testid="`edit-${row.rel}`"
+              title="表格编辑"
+              @click="openEditor(row.rel)"
+            >✎</button>
+            <a class="act" :href="api.downloadUrl(row.rel)" :download="row.name" title="下载">⬇</a>
+            <button
+              class="act del"
+              :class="{ confirming: confirmingDel === row.rel }"
+              :data-testid="`del-${row.rel}`"
+              :title="confirmingDel === row.rel ? '再次点击确认删除' : '删除'"
+              @click="confirmRemove(row.rel)"
+            >{{ confirmingDel === row.rel ? '确认删除？' : '×' }}</button>
+          </span>
+        </template>
       </div>
-      <div v-if="!api.loading.value && api.files.value.length === 0" class="empty">
+      <div v-if="!api.loading.value && visibleRows.length === 0" class="empty">
         暂无文件，点击"上传"添加 CSV/数据文件
       </div>
     </div>
@@ -135,11 +265,22 @@ function formatTime(iso: string) {
       :truncated="api.preview.value.truncated"
       @close="api.closePreview()"
     />
+    <!-- P-N: 大文件下载提示 modal -->
+    <FilePreviewModal
+      v-if="oversizePreview"
+      :name="oversizePreview.name"
+      :oversize="true"
+      :size-label="formatSize(oversizePreview.size)"
+      :download-url="oversizePreview.url"
+      @close="oversizePreview = null"
+    />
     <!-- task5-B4: CSV 表格编辑器（弹层卡片） -->
     <SpreadsheetEditor
       v-if="editing"
       :name="editing.name"
       :content="editing.content"
+      :thread-id="props.threadId"
+      :base-modified="editing.baseModified"
       @close="closeEditor"
       @saved="closeEditor"
     />
@@ -156,6 +297,16 @@ function formatTime(iso: string) {
 }
 .new-btn:hover { background: #e0e7ff; }
 .new-btn:disabled { opacity: 0.5; cursor: default; }
+/* P-N: 面包屑 */
+.crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; padding: 0 14px 6px; }
+.crumb {
+  border: none; background: transparent; font-size: 12px; color: #4f46e5;
+  cursor: pointer; padding: 1px 4px; border-radius: 5px;
+}
+.crumb:hover { background: #eef2ff; }
+.crumb.current { color: #6b7280; font-weight: 600; cursor: default; }
+.crumb.current:hover { background: transparent; }
+.crumb-sep { font-size: 11px; color: #cbd5e1; }
 .hint { font-size: 11.5px; color: #9ca3af; margin: 0 14px 8px; }
 .error { font-size: 12px; color: #b91c1c; margin: 0 14px 6px; }
 .file-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
@@ -170,6 +321,12 @@ function formatTime(iso: string) {
   font-size: 13px; color: #374151; padding: 0;
 }
 .file-name:hover { color: #4338ca; }
+.dir-name { font-weight: 600; color: #1f2937; }
+.dir-chev {
+  flex: none; width: 18px; border: none; background: transparent;
+  color: #9ca3af; font-size: 11px; cursor: pointer; padding: 0;
+}
+.dir-chev:hover { color: #4338ca; }
 .file-meta { font-size: 11px; color: #9ca3af; white-space: nowrap; }
 .file-actions { display: flex; gap: 2px; opacity: 0; align-items: center; }
 .file-item:hover .file-actions { opacity: 1; }
