@@ -186,3 +186,13 @@ docs/design.md 已重写为现行架构。
 流式路径同步（DSML 尾巴到达即派发，残余剥 DSML 标签）。同批实测驱动修复：
 catalogId 短别名归一化（不再拒绝）、嵌套子组件 items 容器变体拍平。
 gateway 73 全绿；实测 8 组件扁平看板、文本零泄漏（docs/evidence/2026-08-15-dsml-fix-live.sse）。
+
+**[DONE] 2026-08-15 task4 最终全量验收通过**：
+- AG-UI 8/8：生命周期/文本流/思考流/工具调用+定制渲染/frontend tools/多轮多会话历史回放/
+  STATE_SNAPSHOT+STATE_DELTA（commit 6ac62de，顶栏模型徽章）/超时兜底+context 徽章
+- A2UI 组件全量（commit 3e40267）：新增 PieChart/Badge/Markdown 自定义组件；
+  scripts/test-a2ui-all-components.sh 分 4 组真实 agent 渲染 31 断言全过（布局/展示/图表/表单）
+- 已知 bug 清零：DSML 泄漏（ecae6b4）、事件乱序丢 text（b25355d 回归测试钉住）、
+  裸 JSON 泄漏（仅剩"模型产出不合法 JSON"的设计性文本 fallback，脚本按组重试规避）
+- 门槛：gateway 76 mvn 全绿、前端 34 vitest 全绿、vite build 通过、
+  公网 /agui/ 200 + 最终 SSE 实测 8 类事件全齐（59 text delta）
