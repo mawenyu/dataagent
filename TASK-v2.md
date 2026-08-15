@@ -225,3 +225,22 @@ PUT 覆盖写/删除，白名单+5MB+双保险 canonical 校验）；前端 会�
 
 **门槛**：gateway 97 mvn 全绿、前端 55 vitest 全绿、vite build + 部署
 /agui/ 200、公网 /agui-api/files 200；证据 docs/evidence/2026-08-15-*.sse/txt
+
+## 需求 10（task6）：workspace 会话隔离 + ChatGPT 式上传
+
+### [DONE] 2026-08-15（df2c6ad + ecce4ef + 338ab52/370f327 加固）
+- spec: docs/spec/workspace-isolation.md；每会话独立目录 workspace/threads/<threadId>
+  （懒创建+共享根播种示例数据，删会话级联删目录）；会话级文件 API
+  /chat/threads/{id}/files（GET/POST/PUT/DELETE，threadId 白名单+canonical 双保险）；
+  run prompt 数据工作目录按会话隔离；多模态消息（text+document parts）附件名写入
+  <attachments> 段，纯附件消息回退引导语
+- ChatGPT 式上传：fork CopilotChat 原生 attachments（点击/拖拽 → 即传即存当前会话
+  目录 → chip 队列 → 发送时 metadata.filename 随消息给 agent）
+- 插队修复 413：gateway 上限 5MB→50MB + spring.codec.max-in-memory-size 50MB，
+  6MB 文件公网全链路上传实测 200
+- 隔离回归修复（本会话发现）：a2uiAction 续跑 prompt 缺会话级数据工作目录提示，
+  模型在隔离目录下找不到 CSV → 补 <environment> 到 action 分支（单测断言
+  threads/<threadId> 入 prompt；test-a2ui-form.sh 复测 8/8）
+- 实测：docs/evidence/task6-isolation.txt（两会话隔离/播种/穿越拒绝/级联删除/
+  agent 读会话目录答出华东销量=100）、task6-attach-run.sse.txt、task6-upload-limit.txt
+- gateway 112 mvn 全绿；前端 63+ vitest 全绿；公网 /agui/ 200 + 会话级 files API 200

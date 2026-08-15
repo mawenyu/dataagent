@@ -72,7 +72,7 @@ DELETE /chat/threads/{threadId}/files/{name}     204 / 404
 CopilotChat :attachments="{
   enabled: true,
   accept: '.csv,.json,.txt,.md,.xlsx,.png,.jpg,.jpeg,.log',
-  maxSize: 5 * 1024 * 1024,        // 与 gateway 上限一致
+  maxSize: 50 * 1024 * 1024,       // 与 gateway 上限一致（2026-08-15 413 修复后 50MB）
   onUpload: async (file) => {      // 上传到当前会话工作目录
     await threadFilesApi.upload(file)
     return { type: 'url', value: threadFilesApi.downloadUrl(file.name),
