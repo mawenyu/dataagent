@@ -11,7 +11,7 @@ import { useWorkspaceFiles } from './composables/useWorkspaceFiles'
 import { buildAttachmentsConfig, ATTACH_ACCEPT } from './composables/chatAttachments'
 import { useWelcomeAttachments } from './composables/welcomeAttachments'
 import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
-import { buildThreadMarkdown, downloadMarkdown, exportFilename } from './composables/exportThread'
+import { buildThreadJson, buildThreadMarkdown, downloadJson, downloadMarkdown, exportFilename } from './composables/exportThread'
 import { useRunErrorRecovery, isAbortError, parseRunError } from './composables/runErrorRecovery'
 import { useNetworkStatus } from './composables/networkStatus'
 import RunErrorCard from './components/RunErrorCard.vue'
@@ -265,21 +265,25 @@ function handleChatError({ error, code }: { error: Error; code?: string }) {
   })
 }
 
-// P-A: 会话导出 —— 拉 gateway 历史消息 → 前端生成 Markdown Blob 下载
-async function exportThread(id: string) {
+// P-A/P-M: 会话导出 —— 拉 gateway 历史消息 → 前端生成 Blob 下载(MD 或 JSON)
+async function exportThread(id: string, format: 'md' | 'json') {
   const meta = threadsApi.threads.value.find((t) => t.id === id)
+  const threadMeta = { id, title: meta?.title ?? id, createdAt: meta?.createdAt, updatedAt: meta?.updatedAt }
   try {
     const res = await fetch(`/agui-api/chat/threads/${encodeURIComponent(id)}/messages`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const body = await res.json()
     const messages = body.data ?? []
-    const md = buildThreadMarkdown(
-      { id, title: meta?.title ?? id, createdAt: meta?.createdAt, updatedAt: meta?.updatedAt },
-      messages,
-      new Date(),
-    )
-    downloadMarkdown(exportFilename({ id, title: meta?.title ?? id }), md)
-    pushToast({ title: '导出成功', message: `已导出 ${messages.length} 条消息为 Markdown`, type: 'success' })
+    if (format === 'json') {
+      downloadJson(exportFilename(threadMeta, 'json'), buildThreadJson(threadMeta, messages, new Date()))
+    } else {
+      downloadMarkdown(exportFilename(threadMeta, 'md'), buildThreadMarkdown(threadMeta, messages, new Date()))
+    }
+    pushToast({
+      title: '导出成功',
+      message: `已导出 ${messages.length} 条消息为 ${format === 'json' ? 'JSON' : 'Markdown'}`,
+      type: 'success',
+    })
   } catch (e: any) {
     pushToast({ title: '导出失败', message: e?.message ?? '未知错误', type: 'error' })
   }
@@ -365,7 +369,7 @@ async function exportThread(id: string) {
                   @switch="threadsApi.switchTo($event); closeSidebarOnMobile()"
                   @remove="threadsApi.remove($event)"
                   @rename="(id: string, title: string) => threadsApi.rename(id, title)"
-                  @export="exportThread($event)"
+                  @export="(id: string, format: 'md' | 'json') => exportThread(id, format)"
                 />
                 <aside v-else class="sidebar">
                   <FilesPanel :thread-id="threadsApi.currentId.value" />

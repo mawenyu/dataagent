@@ -134,6 +134,8 @@ describe('App UI (需求4)', () => {
     const exportBtn = w.find('[data-testid="export-t-exp"]')
     expect(exportBtn.exists(), '会话列表项应有导出按钮').toBe(true)
     await exportBtn.trigger('click')
+    await nextTick()
+    await w.find('[data-testid="export-md-t-exp"]').trigger('click')
     for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
 
     expect(createObjectURL).toHaveBeenCalledTimes(1)
@@ -153,6 +155,25 @@ describe('App UI (需求4)', () => {
     expect(clickSpy).toHaveBeenCalledTimes(1)
     // 成功 toast
     expect(w.find('.toast-stack').text()).toContain('导出成功')
+
+    // P-M: JSON 格式选项 → application/json Blob,内容为结构化会话数据
+    await w.find('[data-testid="export-t-exp"]').trigger('click')
+    await nextTick()
+    await w.find('[data-testid="export-json-t-exp"]').trigger('click')
+    for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    expect(createObjectURL).toHaveBeenCalledTimes(2)
+    const jsonBlob = createObjectURL.mock.calls[1][0] as Blob
+    expect(jsonBlob.type).toContain('application/json')
+    const jsonText = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(jsonBlob)
+    })
+    const parsed = JSON.parse(jsonText)
+    expect(parsed.thread.id).toBe('t-exp')
+    expect(parsed.messageCount).toBe(3)
+    expect(parsed.messages[1].toolCalls[0]).toMatchObject({ name: 'bash', result: 'sales.csv' })
     clickSpy.mockRestore()
   })
 

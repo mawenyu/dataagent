@@ -35,11 +35,22 @@ describe('ThreadSidebar (需求1/F2)', () => {
     expect(w.emitted('new')).toHaveLength(1)
   })
 
-  it('P-A: 导出按钮发 export 事件且不触发切换', async () => {
+  it('P-A/P-M: 导出按钮开格式菜单,选 Markdown/JSON 发 export(含格式)且不触发切换', async () => {
     const w = mount(ThreadSidebar, { props: { threads, currentId: 'a' } })
     await w.find('[data-testid="export-b"]').trigger('click')
-    expect(w.emitted('export')).toEqual([['b']])
+    const menu = w.find('[data-testid="export-menu-b"]')
+    expect(menu.exists(), '点导出应出现格式菜单').toBe(true)
+    expect(menu.text()).toContain('Markdown')
+    expect(menu.text()).toContain('JSON')
+
+    await w.find('[data-testid="export-md-b"]').trigger('click')
+    expect(w.emitted('export')).toEqual([['b', 'md']])
     expect(w.emitted('switch')).toBeUndefined()
+    expect(w.find('[data-testid="export-menu-b"]').exists(), '选择后菜单关闭').toBe(false)
+
+    await w.find('[data-testid="export-b"]').trigger('click')
+    await w.find('[data-testid="export-json-b"]').trigger('click')
+    expect(w.emitted('export')![1]).toEqual(['b', 'json'])
   })
 
   it('删除点确认按钮先弹 modal(不发事件),点"删除"才发 remove', async () => {

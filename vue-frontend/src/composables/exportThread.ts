@@ -209,3 +209,88 @@ export function downloadMarkdown(filename: string, markdown: string): void {
   a.remove()
   URL.revokeObjectURL(url)
 }
+
+/** P-M: 结构化 JSON 导出。 */
+export interface ThreadJsonExport {
+  thread: ExportThreadMeta & { title: string }
+  exportedAt: string
+  messageCount: number
+  messages: NormalizedMessage[]
+}
+
+export interface NormalizedToolCall {
+  id?: string
+  name: string
+  arguments?: string
+  durationMs?: number
+  status?: string
+  /** 按 toolCallId 配对的结果文本(未配对则缺省) */
+  result?: string
+}
+
+export interface NormalizedMessage {
+  id?: string
+  role: string
+  content?: unknown
+  createdAt?: string
+  attachments?: string[]
+  toolCalls?: NormalizedToolCall[]
+  toolCallId?: string
+}
+
+/**
+ * 结构化会话数据：线程元数据 + 逐消息（toolCall 归一 name/arguments 并
+ * 按 toolCallId 配对结果文本）。下游可直接 JSON.parse 消费。
+ */
+export function buildThreadJson(
+  thread: ExportThreadMeta,
+  messages: ExportableMessage[],
+  exportedAt: Date,
+): ThreadJsonExport {
+  const resultsByCallId = new Map<string, string>()
+  for (const m of messages) {
+    if (m.role === 'tool' && m.toolCallId) {
+      resultsByCallId.set(m.toolCallId, typeof m.content === 'string' ? m.content : String(m.content ?? ''))
+    }
+  }
+  const normalized: NormalizedMessage[] = messages.map((m) => {
+    const out: NormalizedMessage = { id: m.id, role: m.role }
+    if (m.content !== undefined) out.content = m.content
+    if (m.createdAt) out.createdAt = m.createdAt
+    if (m.attachments?.length) out.attachments = m.attachments
+    if (m.toolCallId) out.toolCallId = m.toolCallId
+    if (m.toolCalls?.length) {
+      out.toolCalls = m.toolCalls.map((tc) => {
+        const n: NormalizedToolCall = {
+          id: tc.id,
+          name: tc.function?.name || 'unknown',
+          arguments: tc.function?.arguments,
+        }
+        if (typeof tc.durationMs === 'number') n.durationMs = tc.durationMs
+        if (tc.status) n.status = tc.status
+        if (tc.id && resultsByCallId.has(tc.id)) n.result = resultsByCallId.get(tc.id)
+        return n
+      })
+    }
+    return out
+  })
+  return {
+    thread: { ...thread, title: thread.title || thread.id },
+    exportedAt: exportedAt.toISOString(),
+    messageCount: messages.length,
+    messages: normalized,
+  }
+}
+
+/** P-M: JSON Blob 下载。 */
+export function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}

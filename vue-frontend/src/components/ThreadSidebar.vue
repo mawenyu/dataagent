@@ -139,7 +139,7 @@ const emit = defineEmits<{
   (e: 'switch', id: string): void
   (e: 'remove', id: string): void
   (e: 'rename', id: string, title: string): void
-  (e: 'export', id: string): void
+  (e: 'export', id: string, format: 'md' | 'json'): void
 }>()
 
 type DialogState =
@@ -147,6 +147,9 @@ type DialogState =
   | { kind: 'rename'; thread: ThreadMeta }
   | { kind: 'batch-remove'; ids: string[] }
   | null
+
+// P-M: 导出格式菜单(当前打开菜单的线程 id)
+const exportMenuFor = ref<string | null>(null)
 
 const dialog = ref<DialogState>(null)
 const renameDraft = ref('')
@@ -160,6 +163,14 @@ function startRename(t: ThreadMeta) {
     renameInput.value?.focus()
     renameInput.value?.select()
   })
+}
+
+function toggleExportMenu(t: ThreadMeta) {
+  exportMenuFor.value = exportMenuFor.value === t.id ? null : t.id
+}
+function emitExport(t: ThreadMeta, format: 'md' | 'json') {
+  exportMenuFor.value = null
+  emit('export', t.id, format)
 }
 
 function confirmRemove(t: ThreadMeta) {
@@ -271,12 +282,18 @@ const renameInvalid = () => !renameDraft.value.trim()
             title="归档会话(移入底部归档区)"
             @click.stop="toggleArchive(t)"
           >📥</button>
-          <button
-            class="icon-btn export-btn"
-            :data-testid="`export-${t.id}`"
-            title="导出会话为 Markdown"
-            @click.stop="emit('export', t.id)"
-          >⤓</button>
+          <span class="export-wrap">
+            <button
+              class="icon-btn export-btn"
+              :data-testid="`export-${t.id}`"
+              title="导出会话(Markdown / JSON)"
+              @click.stop="toggleExportMenu(t)"
+            >⤓</button>
+            <span v-if="exportMenuFor === t.id" class="export-menu" :data-testid="`export-menu-${t.id}`" @click.stop>
+              <button :data-testid="`export-md-${t.id}`" @click="emitExport(t, 'md')">📄 Markdown</button>
+              <button :data-testid="`export-json-${t.id}`" @click="emitExport(t, 'json')">{ } JSON</button>
+            </span>
+          </span>
           <button
             class="icon-btn del-btn"
             :data-testid="`del-${t.id}`"
@@ -316,12 +333,18 @@ const renameInvalid = () => !renameDraft.value.trim()
             title="取消归档"
             @click.stop="toggleArchive(t)"
           >📤</button>
-          <button
-            class="icon-btn export-btn"
-            :data-testid="`export-${t.id}`"
-            title="导出会话为 Markdown"
-            @click.stop="emit('export', t.id)"
-          >⤓</button>
+          <span class="export-wrap">
+            <button
+              class="icon-btn export-btn"
+              :data-testid="`export-${t.id}`"
+              title="导出会话(Markdown / JSON)"
+              @click.stop="toggleExportMenu(t)"
+            >⤓</button>
+            <span v-if="exportMenuFor === t.id" class="export-menu" :data-testid="`export-menu-${t.id}`" @click.stop>
+              <button :data-testid="`export-md-${t.id}`" @click="emitExport(t, 'md')">📄 Markdown</button>
+              <button :data-testid="`export-json-${t.id}`" @click="emitExport(t, 'json')">{ } JSON</button>
+            </span>
+          </span>
           <button
             class="icon-btn del-btn"
             :data-testid="`del-${t.id}`"
@@ -500,6 +523,35 @@ const renameInvalid = () => !renameDraft.value.trim()
 .export-btn:hover { color: #6366f1; background: #eef2ff; }
 .del-btn:hover { color: #ef4444; background: #fef2f2; }
 .empty { padding: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; }
+
+/* ---- P-M: 导出格式菜单 ---- */
+.export-wrap { position: relative; display: inline-flex; }
+.export-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 132px;
+  background: #ffffff;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  padding: 4px;
+}
+.export-menu button {
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 12.5px;
+  color: #374151;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.export-menu button:hover { background: #eef2ff; color: #4338ca; }
 
 /* ---- P-G: 归档折叠区 ---- */
 .archive-section {
