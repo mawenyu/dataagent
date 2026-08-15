@@ -1,0 +1,4 @@
+data:{"type":"RUN_STARTED","runId":"r1","threadId":"vision-p18","timestamp":1786824971835}
+
+data:{"type":"STATE_SNAPSHOT","runId":"r1","threadId":"vision-p18","timestamp":1786824971835,"snapshot":{"provider":"deepseek","workspace":"workspace","model":"deepseek-reasoner","contextSize":0,"threadId":"vision-p18"}}
+

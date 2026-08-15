@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -60,6 +61,40 @@ public class ThreadMessagesService {
         data.forEach(newestFirst::add);
         for (int i = newestFirst.size() - 1; i >= 0; i--) {
             convert(newestFirst.get(i), out);
+        }
+        return dedupeAbortedRetry(out);
+    }
+
+    /**
+     * P18: 断线/失败续跑的服务端残留去重 —— 中断轮的 user 消息与重发的同文
+     * 消息相邻（中间无 assistant 正文）时折叠前者（reasoning/tool 痕迹保留，
+     * 它们是真实运行轨迹）。有完整 assistant 回答的重复提问不折叠。
+     */
+    static List<JsonNode> dedupeAbortedRetry(List<JsonNode> msgs) {
+        List<JsonNode> out = new ArrayList<>(msgs);
+        for (int i = 0; i < out.size(); i++) {
+            JsonNode m = out.get(i);
+            if (!"user".equals(m.path("role").asText())) continue;
+            String text = m.path("content").asText("");
+            if (text.isBlank()) continue;
+            // 向后找下一条 user；中间出现带正文的 assistant → 不折叠
+            boolean assistantBetween = false;
+            int j = i + 1;
+            for (; j < out.size(); j++) {
+                JsonNode n = out.get(j);
+                String role = n.path("role").asText();
+                if ("assistant".equals(role) && !n.path("content").asText("").isBlank()) {
+                    assistantBetween = true;
+                    break;
+                }
+                if ("user".equals(role)) break;
+            }
+            if (!assistantBetween && j < out.size()
+                    && "user".equals(out.get(j).path("role").asText())
+                    && text.equals(out.get(j).path("content").asText(""))) {
+                out.remove(i);
+                i--; // 重查当前位（后续仍可能连环折叠）
+            }
         }
         return out;
     }
@@ -172,6 +207,25 @@ public class ThreadMessagesService {
             }
             default -> { /* system/model-switched 等跳过 */ }
         }
+    }
+
+    /**
+     * P-Q: 分叉前缀 —— 截断到 messageId(不含该消息),保留 user/assistant
+     * 文本消息(reasoning/tool 不进分叉上下文),单条截断 2000、最多 50 条。
+     */
+    public List<Map<String, String>> simplifyForFork(List<JsonNode> messages, String messageId) {
+        List<Map<String, String>> out = new ArrayList<>();
+        for (JsonNode m : messages) {
+            if (m.path("id").asText().equals(messageId)) break;
+            String role = m.path("role").asText();
+            if (!"user".equals(role) && !"assistant".equals(role)) continue;
+            String content = m.path("content").asText("");
+            if (content.isBlank()) continue;
+            if (content.length() > 2000) content = content.substring(0, 2000) + "…";
+            out.add(Map.of("id", m.path("id").asText(), "role", role, "content", content));
+            if (out.size() >= 50) break;
+        }
+        return out;
     }
 
     /** 还原 gateway 的 prompt 包装：剥掉 <environment> 段、解包 <user_message>。 */

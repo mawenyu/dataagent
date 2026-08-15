@@ -135,4 +135,43 @@ class ThreadMessagesServiceTest {
         assertEquals(464, tc.path("durationMs").asLong(), "completed - ran");
         assertEquals("completed", tc.path("status").asText());
     }
+
+    /** P18: 断线续跑残留去重 —— 中断轮的 user 消息与重发的相同消息相邻
+     *  （中间无 assistant 正文）→ 折叠为一条。 */
+    @org.junit.jupiter.api.Test
+    void abortedTurnDuplicateUserMessageCollapsed() {
+        String history = """
+            {"data":[
+              {"id":"a2","type":"assistant","content":[{"type":"text","id":"t2","text":"行数 137"}]},
+              {"id":"u2","type":"user","content":[{"type":"text","text":"统计行数"}]},
+              {"id":"r1","type":"assistant","content":[{"type":"reasoning","id":"r1","text":"中断前的半截推理"}]},
+              {"id":"u1","type":"user","content":[{"type":"text","text":"统计行数"}]},
+              {"id":"a0","type":"assistant","content":[{"type":"text","id":"t0","text":"之前的回答"}]},
+              {"id":"u0","type":"user","content":[{"type":"text","text":"你好"}]}
+            ]}
+            """;
+        List<JsonNode> msgs = svc.toAguiMessages(history);
+        long userCount = msgs.stream().filter(m -> "user".equals(m.path("role").asText())).count();
+        assertEquals(2, userCount, "中断轮重发折叠：你好 + 统计行数 各一条");
+        // 最终答案仍在（无丢失）
+        assertTrue(msgs.stream().anyMatch(m -> "行数 137".equals(m.path("content").asText())));
+        // 中断轮的半截 reasoning 痕迹保留（真实轨迹，不算重复）
+        assertTrue(msgs.stream().anyMatch(m -> "reasoning".equals(m.path("role").asText())));
+    }
+
+    /** 有意的重复提问（中间有完整 assistant 回答）不得折叠。 */
+    @org.junit.jupiter.api.Test
+    void intentionalRepeatPreserved() {
+        String history = """
+            {"data":[
+              {"id":"a2","type":"assistant","content":[{"type":"text","id":"t2","text":"答案B"}]},
+              {"id":"u2","type":"user","content":[{"type":"text","text":"再算一遍"}]},
+              {"id":"a1","type":"assistant","content":[{"type":"text","id":"t1","text":"答案A"}]},
+              {"id":"u1","type":"user","content":[{"type":"text","text":"再算一遍"}]}
+            ]}
+            """;
+        List<JsonNode> msgs = svc.toAguiMessages(history);
+        long userCount = msgs.stream().filter(m -> "user".equals(m.path("role").asText())).count();
+        assertEquals(2, userCount, "有完整回答的重复提问保留");
+    }
 }

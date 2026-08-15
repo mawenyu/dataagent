@@ -1,0 +1,23 @@
+== P18 断网恢复深挖（2026-08-16 生产实测）==
+
+场景A: 断线期间工具执行中（sleep 25 工具）
+- run 开始（RUN_STARTED/STATE_SNAPSHOT 已收）→ 6s 掐断客户端
+- gateway P9 语义: SSE cancel → doOnCancel → POST /api/session/{id}/interrupt
+  中断 OpenCode run —— 工具不会"断线期间完成"，而是被主动终止（设计语义:
+  断线即终止，恢复后整轮重跑，防止半完成状态）
+- 重连续跑（retryLastMessage 语义: 截尾重发同一用户消息）→ 新 run 完成
+  （sleep 25 执行 + 行数 137 正确）
+- **发现真问题**: 重发导致 opencode 历史中 user 消息 × 2（前端截尾只清
+  客户端，服务端 session 仍留有中断轮的用户消息）→ 刷新/回放会看到重复
+- 修复: ThreadMessagesService.dedupeAbortedRetry —— 中断轮的同文 user
+  消息与重发相邻（中间无 assistant 正文）→ 折叠前者；半截 reasoning/tool
+  痕迹保留（真实轨迹）；有完整回答的故意重复提问不折叠（JUnit ×2）
+- 修复后实测: vision-p18 历史 user 消息 2→1，回答轨迹完整
+
+场景B: HITL 等待中断线重连
+- interrupt 出卡（hitl-del-e2e-up-txt）→ 重连拉历史：恰好 1 张卡（无重复）
+- resume confirm → 删除执行成功；再拉历史 12 条无重复 id
+- 证据: p18-hitl-interrupt.sse / p18-hitl-resume.sse
+
+结论: P-I 自动续跑语义闭环 —— 断线即终止（无半完成工具）+ 整轮重跑 +
+历史去重后无丢失无重复。
