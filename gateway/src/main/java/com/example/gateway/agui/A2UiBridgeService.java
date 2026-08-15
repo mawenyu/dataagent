@@ -108,8 +108,16 @@ public class A2UiBridgeService {
             if (f.getValue().isNull()) nullFields.add(f.getKey());
         });
         nullFields.forEach(c::remove);
-        // 先收集子组件引用（父条目先入库，保持 root 在前的自然顺序），再递归拍平
+        // 先收集子组件引用（父条目先入库，保持 root 在前的自然顺序），再递归拍平。
+        // 实测模型用三种容器字段装嵌套子组件：children（v0.9 约定）/ child（单个）/
+        // items（2026-08-15 实测变体，统一改写为 children）。
         List<JsonNode> nested = new ArrayList<>();
+        JsonNode items = c.get("items");
+        if (items != null && items.isArray()
+                && items.iterator().hasNext() && items.iterator().next().isObject()) {
+            c.remove("items");
+            c.set("children", items);
+        }
         JsonNode children = c.get("children");
         if (children != null && children.isArray()) {
             ArrayNode ids = MAPPER.createArrayNode();
@@ -237,16 +245,12 @@ public class A2UiBridgeService {
             return Optional.empty();
         }
         String catalogId = args.path("catalogId").asText("");
-        // TASK §15: the frontend registers the DataAgent catalog (a superset of
-        // the basic catalog) — normalize any blank/basic id to it so
-        // createSurface always matches a registered catalog.
-        if (catalogId.isBlank() || A2UiService.BASIC_CATALOG_ID.equals(catalogId)) {
-            if (!catalogId.isBlank()) log.debug("mapping basic catalog id to data-agent catalog");
-            catalogId = A2UiService.DATA_AGENT_CATALOG_ID;
-        }
+        // 前端只注册了 DataAgent catalog（basic 超集）——任何空值/基础 catalog id/
+        // 模型编的短别名（实测 "data-agent"，2026-08-15）都归一化到它；
+        // 组件白名单才是真正的安全边界，catalogId 只是匹配前端注册表用。
         if (!A2UiService.DATA_AGENT_CATALOG_ID.equals(catalogId)) {
-            log.warn("render_a2ui: unknown catalogId '{}' rejected", catalogId);
-            return Optional.empty();
+            if (!catalogId.isBlank()) log.debug("normalizing catalogId '{}' to data-agent catalog", catalogId);
+            catalogId = A2UiService.DATA_AGENT_CATALOG_ID;
         }
 
         List<ObjectNode> ops = new ArrayList<>();

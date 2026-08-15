@@ -649,16 +649,20 @@ public class AguiEventTranslator {
         }
     }
 
-    /** TOOL_CALL mode: accumulate until END_MARKER, then dispatch the call. */
+    /** TOOL_CALL mode: accumulate until END_MARKER (or a DSML pseudo tail), then dispatch the call. */
     private void scanToolCall(String threadId, String runId, Set<String> frontendTools,
                               AtomicBoolean terminalEmitted, AtomicBoolean sawOutput,
                               Set<String> activeSteps,
                               MsgState st, List<ServerSentEvent<String>> out) {
         String b = st.buf.toString();
         int endIdx = b.indexOf(END_MARKER);
+        int dsmlIdx = FrontendToolBridge.dsmlTailIndex(b);
+        if (endIdx < 0 || (dsmlIdx >= 0 && dsmlIdx < endIdx)) endIdx = dsmlIdx;
         if (endIdx < 0) return;
         String payload = b.substring(0, endIdx);
-        String remainder = b.substring(endIdx + END_MARKER.length());
+        // DSML 尾巴：剥掉全部 DSML 伪标签，不让它们作为文本泄漏
+        String remainder = b.substring(endIdx + (endIdx == dsmlIdx ? 0 : END_MARKER.length()))
+                .replaceAll("</?[|｜]+DSML[|｜]+[^>]*>", "");
         dispatchToolCall(threadId, runId, frontendTools, terminalEmitted, sawOutput, activeSteps, st,
                 MARKER + payload + END_MARKER, out);
         // anything after the end marker is treated as text again

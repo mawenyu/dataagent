@@ -137,6 +137,11 @@ public class FrontendToolBridge {
     /**
      * Parse a completed assistant text buffer into a tool call.
      * Tolerates surrounding whitespace and accidental markdown fences.
+     *
+     * <p>2026-08-15 实测：DeepSeek 会把结束标签输出成 DSML 伪标签
+     * （{@code </｜｜DSML｜｜parameter> </｜｜DSML｜｜invoke>}，全角竖线）而不是
+     * {@code </tool_call>}。因此不再要求块以 END_MARKER 结尾 —— 剥掉 MARKER
+     * 前缀后，在 END_MARKER 或 DSML 尾巴标签处截断，中间即 JSON payload。
      */
     public Optional<ToolCallRequest> parseToolCall(String text) {
         if (text == null) return Optional.empty();
@@ -147,8 +152,13 @@ public class FrontendToolBridge {
             if (s.endsWith("```")) s = s.substring(0, s.length() - 3);
             s = s.strip();
         }
-        if (!s.startsWith(MARKER) || !s.endsWith(END_MARKER)) return Optional.empty();
-        String json = s.substring(MARKER.length(), s.length() - END_MARKER.length()).strip();
+        if (!s.startsWith(MARKER)) return Optional.empty();
+        String rest = s.substring(MARKER.length());
+        int end = rest.indexOf(END_MARKER);
+        int dsml = dsmlTailIndex(rest);
+        if (end < 0 || (dsml >= 0 && dsml < end)) end = dsml;
+        String json = (end >= 0 ? rest.substring(0, end) : rest).strip();
+        if (json.isEmpty()) return Optional.empty();
         try {
             JsonNode node = MAPPER.readTree(json);
             String name = node.path("name").asText("");
@@ -160,6 +170,12 @@ public class FrontendToolBridge {
             log.warn("failed to parse tool_call payload: {}", e.getMessage());
             return Optional.empty();
         }
+    }
+
+    /** DSML 伪尾巴标签（{@code </｜DSML｜...>} 半/全角竖线、单/双竖线变体）的位置；无则 -1。 */
+    static int dsmlTailIndex(String s) {
+        var m = java.util.regex.Pattern.compile("</[|｜]+DSML[|｜]+").matcher(s);
+        return m.find() ? m.start() : -1;
     }
 
     /**

@@ -124,6 +124,52 @@ class AguiEventTranslatorTest {
         assertTrue(allText.contains("tool_call"), "broken block surfaces as plain text");
     }
 
+    /** 2026-08-15 实测：DeepSeek 把 tool_call 的结束标签输出成 DSML 伪标签
+        （</｜｜DSML｜｜parameter> </｜｜DSML｜｜invoke>），不是 </tool_call> ——
+        必须剥离尾巴解析出 JSON，否则整段原始 JSON 当文本泄漏到聊天里。 */
+    @Test
+    void dsmlTailedToolCallBlockIsParsed() {
+        String dsml = "<tool_call>{\"name\":\"render_a2ui\",\"arguments\":{\"surfaceId\":\"s1\","
+                + "\"components\":[{\"component\":\"MetricCard\",\"id\":\"root\",\"title\":\"t\",\"value\":\"v\"}]}}"
+                + "</｜｜DSML｜｜parameter> </｜｜DSML｜｜invoke>";
+        List<JsonNode> events = translate(Flux.just(
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(dsml) + "}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.ended", "{}")));
+        List<String> types = types(events);
+        assertTrue(types.contains("TOOL_CALL_START"), "DSML-tailed block must dispatch as tool call");
+        assertTrue(types.contains("ACTIVITY_SNAPSHOT"), "render_a2ui executed server-side");
+        String allText = events.stream()
+                .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
+                .map(e -> e.path("delta").asText()).reduce("", String::concat);
+        assertFalse(allText.contains("tool_call"), "no raw tool_call markup leaks to chat text");
+        assertFalse(allText.contains("DSML"), "no DSML tags leak to chat text");
+    }
+
+    /** DSML 尾巴出现在流式中段（先文字后 tool_call）也要正常派发。 */
+    @Test
+    void dsmlTailAfterMidStreamMarkerIsParsed() {
+        String part1 = "看板如下 <tool_call>{\"name\":\"render_a2ui\",\"arguments\":{\"surfaceId\":\"s1\",";
+        String part2 = "\"components\":[{\"component\":\"MetricCard\",\"id\":\"root\",\"title\":\"t\",\"value\":\"v\"}]}}";
+        String part3 = "</｜｜DSML｜｜parameter> </｜｜DSML｜｜invoke>";
+        List<JsonNode> events = translate(Flux.just(
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(part1) + "}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(part2) + "}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":" + json(part3) + "}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.ended", "{}")));
+        List<String> types = types(events);
+        assertTrue(types.contains("TOOL_CALL_START"));
+        assertTrue(types.contains("ACTIVITY_SNAPSHOT"));
+        String allText = events.stream()
+                .filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
+                .map(e -> e.path("delta").asText()).reduce("", String::concat);
+        assertTrue(allText.contains("看板如下"), "leading text preserved");
+        assertFalse(allText.contains("DSML"), "no DSML tags leak to chat text");
+    }
+
     @Test
     void multipleTextMessagesInOneRun() {
         List<JsonNode> events = translate(Flux.just(

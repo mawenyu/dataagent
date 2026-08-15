@@ -72,9 +72,27 @@ class A2UiBridgeServiceTest {
         assertNotNull(t1);
     }
 
+    /** 2026-08-15 实测：模型会传 catalogId 短别名（"data-agent"）——前端只注册了
+        一个 catalog，非标准值应归一化而不是拒绝整个 surface。 */
     @Test
-    void flatComponentsPassThroughUnchanged() throws Exception {
+    void catalogIdAliasIsNormalizedNotRejected() throws Exception {
         String args = """
+                {"surfaceId":"s1","catalogId":"data-agent","components":[
+                  {"component":"MetricCard","id":"root","title":"t","value":"v"}
+                ]}""";
+        Optional<ServerSentEvent<String>> out = bridge.execute("run", "thread", MAPPER.readTree(args));
+        assertTrue(out.isPresent(), "catalogId alias must be normalized, not rejected");
+        JsonNode ops = snapshotOps(out.get());
+        for (JsonNode op : ops) {
+            if (op.has("createSurface")) {
+                assertEquals(A2UiService.DATA_AGENT_CATALOG_ID,
+                        op.path("createSurface").path("catalogId").asText());
+            }
+        }
+    }
+
+    @Test
+    void flatComponentsPassThroughUnchanged() throws Exception {        String args = """
                 {"surfaceId":"s1","components":[
                   {"component":"Column","id":"root","children":["a"]},
                   {"component":"Text","id":"a","text":"hi"}
@@ -87,6 +105,32 @@ class A2UiBridgeServiceTest {
                 JsonNode comps = op.path("updateComponents").path("components");
                 assertEquals(2, comps.size());
                 assertEquals("a", comps.get(0).path("children").get(0).asText());
+            }
+        }
+    }
+
+    /** 2026-08-15 实测：模型还会用 "items" 而不是 "children" 装嵌套子组件。 */
+    @Test
+    void itemsArrayIsTreatedAsNestedChildren() throws Exception {
+        String args = """
+                {"surfaceId":"s1","components":[
+                  {"component":"Column","id":"root","items":[
+                    {"component":"MetricCard","id":"m1","title":"总销售额","value":"1,360,700"},
+                    {"component":"BarChart","id":"c1","xField":"d","yField":"v","data":[{"d":"a","v":1}]}
+                  ]}
+                ]}""";
+        Optional<ServerSentEvent<String>> out = bridge.execute("run", "thread", MAPPER.readTree(args));
+        assertTrue(out.isPresent());
+        JsonNode ops = snapshotOps(out.get());
+        for (JsonNode op : ops) {
+            if (op.has("updateComponents")) {
+                JsonNode comps = op.path("updateComponents").path("components");
+                assertEquals(3, comps.size(), "items 里的嵌套组件也要拍平: " + comps);
+                JsonNode root = comps.get(0);
+                assertEquals(List.of("m1", "c1"),
+                        MAPPER.convertValue(root.path("children"), List.class),
+                        "items 应改写为 children id 引用");
+                assertFalse(root.has("items"), "items prop 不应残留");
             }
         }
     }
