@@ -254,7 +254,7 @@ const MarkdownImage = defineComponent({
             {
               type: "button",
               class:
-                "cpk:absolute cpk:right-2 cpk:bottom-2 cpk:flex cpk:h-8 cpk:w-8 cpk:cursor-pointer cpk:items-center cpk:justify-center cpk:rounded-md cpk:border cpk:border-border cpk:bg-background/90 cpk:shadow-sm cpk:backdrop-blur-sm cpk:transition-all cpk:duration-200 cpk:hover:bg-background cpk:opacity-0 cpk:group-hover:opacity-100",
+                "cpk:absolute cpk:right-2 cpk:bottom-2 cpk:flex cpk:h-8 cpk:w-8 cpk:cursor-pointer cpk:items-center cpk:justify-center cpk:rounded-md cpk:border cpk:border-border cpk:bg-background/90 cpk:shadow-sm cpk:backdrop-blur-sm cpk:transition-all cpk:duration-200 cpk:hover:bg-background cpk:opacity-0 cpk:group-hover:opacity-100 cpk:pointer-events-none cpk:group-hover:pointer-events-auto", // FORK-PATCH(touch-safe): 隐形时禁 pointer-events,触屏无 hover 不拦截点击
               title: "Download image",
               onClick: handleDownload,
             },

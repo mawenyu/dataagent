@@ -1104,5 +1104,40 @@ describe("CopilotChatAssistantMessage", () => {
         document.querySelector('button[title="Download table"]'),
       ).toBeDefined();
     });
+
+    it("hover-reveal image download button is not clickable while invisible (touch-safe)", () => {
+      // 实测 bug 类（ThreadSidebar/FilesPanel 同案）：opacity-0 但未禁
+      // pointer-events 的按钮在触屏(无 hover)上拦截点击。
+      const message: AssistantMessage = {
+        id: "assistant-img-pointer",
+        role: "assistant",
+        content: `![Alt text](https://example.com/image.png)`,
+        timestamp: new Date(),
+      };
+      const Host = defineComponent({
+        components: {
+          CopilotKitProvider,
+          CopilotChatConfigurationProvider,
+          CopilotChatAssistantMessage,
+        },
+        setup() {
+          return { message, TEST_THREAD_ID };
+        },
+        template: `
+          <CopilotKitProvider runtime-url="/api/copilotkit">
+            <CopilotChatConfigurationProvider :thread-id="TEST_THREAD_ID">
+              <CopilotChatAssistantMessage :message="message" />
+            </CopilotChatConfigurationProvider>
+          </CopilotKitProvider>
+        `,
+      });
+      renderWithProvider(Host);
+      const btn = document.querySelector('button[title="Download image"]');
+      expect(btn).toBeTruthy();
+      const cls = btn!.getAttribute("class") ?? "";
+      expect(cls).toContain("cpk:opacity-0");
+      expect(cls).toContain("cpk:pointer-events-none");
+      expect(cls).toContain("cpk:group-hover:pointer-events-auto");
+    });
   });
 });

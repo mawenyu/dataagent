@@ -68,6 +68,14 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     at line start only. Covered by 2 new cases in
     `use-default-render-tool.test.ts`.
 
+14. `src/v2/components/chat/CopilotChatAssistantMessage.vue` (touch-safe,
+    mainline) — upstream image download button is hover-revealed via
+    `opacity-0` only; on touch devices (no hover) the invisible button
+    intercepted taps (same bug class as app-side ThreadSidebar/FilesPanel,
+    verified via playwright elementFromPoint). Added `pointer-events-none` +
+    `group-hover:pointer-events-auto` (marked `FORK-PATCH(touch-safe)`).
+    Covered by a class-guard case in `CopilotChatAssistantMessage.test.ts`.
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 
