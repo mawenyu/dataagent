@@ -583,4 +583,30 @@ class AguiEventTranslatorTest {
             return "\"\"";
         }
     }
+
+    /** vision-P3: 原生 request_user_confirm → HITL 确认卡片 ACTIVITY_SNAPSHOT 并中断 run。 */
+    @Test
+    void nativeHitlConfirmRendersInterruptSurface() {
+        A2UiService a2UiService = new A2UiService();
+        AguiEventTranslator t = new AguiEventTranslator(new FrontendToolBridge(),
+                new A2UiBridgeService(a2UiService, new A2UiSurfaceRegistry()),
+                List.of(new HitlConfirmHandler(a2UiService, new A2UiSurfaceRegistry())));
+        List<JsonNode> events = t.translate("thread", "run", Set.of(), Flux.just(
+                oc("session.step.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c9\",\"name\":\"request_user_confirm\"}"),
+                oc("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c9\"}"),
+                oc("session.tool.called",
+                        "{\"assistantMessageID\":\"m1\",\"id\":\"c9\",\"input\":{"
+                                + "\"actionId\":\"del-1\",\"title\":\"删除确认\",\"message\":\"将删除 sales.csv\"}}")))
+                .map(ServerSentEvent::data)
+                .map(d -> {
+                    try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); }
+                })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        List<String> types = types(events);
+        assertTrue(types.contains("ACTIVITY_SNAPSHOT"), "HITL surface rendered: " + types);
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1), "interrupt: run 立即结束等用户");
+        JsonNode snap = events.get(types.indexOf("ACTIVITY_SNAPSHOT"));
+        assertEquals("a2ui-hitl-del-1", snap.path("messageId").asText());
+    }
 }

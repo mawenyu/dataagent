@@ -94,6 +94,41 @@ export default Plugin.define({
         },
       })
 
+      // ---- request_user_confirm: HITL 确认（vision-P3，interrupt/resume）----
+      // agent 调即中断：gateway 渲染确认卡片并结束本轮；用户点击经 A2UI action
+      // 以新 run 回传 hitl_confirm/hitl_cancel（context.actionId 关联）。
+      tools.add({
+        name: "request_user_confirm",
+        options: { codemode: false },
+        description:
+          `在执行不可逆/高风险操作（删除文件、覆盖数据、批量修改等）之前请求用户确认。` +
+          `调用后必须立即结束本轮回复（简短说明在等待用户确认即可，不要继续执行该操作）；` +
+          `用户的选择会通过后续消息回传（hitl_confirm / hitl_cancel，context.actionId 与本次调用一致），` +
+          `收到 hitl_confirm 才执行操作，收到 hitl_cancel 则放弃并告知用户。`,
+        input: {
+          type: "object",
+          properties: {
+            actionId: { type: "string", description: "待决操作的稳定 id（[A-Za-z0-9_-]，如 del-sales-csv）" },
+            title: { type: "string", description: "确认卡片标题（如 删除确认）" },
+            message: { type: "string", description: "向用户说明将执行的操作与后果" },
+            confirmLabel: { type: "string", description: "确认按钮文案（默认 确认）" },
+            cancelLabel: { type: "string", description: "取消按钮文案（默认 取消）" },
+          },
+          required: ["actionId", "title", "message"],
+          additionalProperties: false,
+        },
+        output: {
+          type: "object",
+          properties: { status: { type: "string" }, surfaceId: { type: "string" } },
+          required: ["status", "surfaceId"],
+          additionalProperties: false,
+        },
+        execute: async (args: { actionId: string }) => ({
+          output: { status: "awaiting_user", surfaceId: `hitl-${args.actionId ?? ""}` },
+          content: "Confirmation card shown to the user. END your turn now and wait for the user's choice (hitl_confirm/hitl_cancel).",
+        }),
+      })
+
       // ---- render_report: 数字报告（服务端真实聚合 CSV）----
       tools.add({
         name: "render_report",

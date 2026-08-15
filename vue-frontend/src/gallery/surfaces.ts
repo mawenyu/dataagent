@@ -132,10 +132,21 @@ const content = ops('g-content', [
   { component: 'ActionButton', id: 'x-action', label: '刷新看板', variant: 'primary', action: { event: { name: 'refresh_dashboard', context: { surfaceId: 'g-content' } } } },
 ])
 
+
+// ⑥ HITL 确认卡片（vision-P3：request_user_confirm interrupt 形态，与 gateway HitlConfirmHandler 同构）
+const hitl = ops('g-hitl', [
+  { component: 'Column', id: 'root', children: ['warn', 'actions'] },
+  { component: 'WarningCard', id: 'warn', title: '删除确认', text: '将删除 region-sales-2026-08-result.csv，此操作不可恢复。' },
+  { component: 'Row', id: 'actions', children: ['confirm', 'cancel'] },
+  { component: 'ActionButton', id: 'confirm', label: '确认删除', variant: 'primary', action: { event: { name: 'hitl_confirm', context: { actionId: 'del-region-sales-csv' } } } },
+  { component: 'ActionButton', id: 'cancel', label: '取消', action: { event: { name: 'hitl_cancel', context: { actionId: 'del-region-sales-csv' } } } },
+])
+
 export const GALLERY_BATCHES: Record<string, GalleryBatch> = {
   layout: { label: '布局容器类', components: ['Card', 'Row', 'Column', 'List', 'Tabs', 'Divider', 'Modal'], operations: layout },
   form: { label: '表单交互类', components: ['TextField', 'CheckBox', 'ChoicePicker', 'Slider', 'DateTimeInput', 'Button'], operations: form },
   media: { label: '媒体展示类', components: ['Text', 'Image', 'Icon', 'Video', 'AudioPlayer'], operations: media },
   charts: { label: '图表/数据类', components: ['MetricCard', 'BarChart', 'LineChart', 'PieChart', 'DataTable'], operations: charts },
   content: { label: '内容类', components: ['Badge', 'Markdown', 'InsightCard', 'WarningCard', 'ActionButton'], operations: content },
+  hitl: { label: 'HITL 确认卡片', components: ['WarningCard', 'ActionButton'], operations: hitl },
 }
