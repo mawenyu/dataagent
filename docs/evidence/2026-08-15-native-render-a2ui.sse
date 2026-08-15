@@ -1,0 +1,268 @@
+data:{"type":"RUN_STARTED","runId":"r1","threadId":"native2-1786758498","timestamp":1786758498357}
+
+data:{"type":"STATE_SNAPSHOT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758498357,"snapshot":{"workspace":"workspace","model":"deepseek-reasoner","contextSize":0,"threadId":"native2-1786758498","provider":"deepseek"}}
+
+data:{"type":"STEP_STARTED","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499367,"stepName":"step-msg_0031b086a001zRuIhTXSBkbdB2"}
+
+data:{"type":"REASONING_START","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499367,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1"}
+
+data:{"type":"REASONING_MESSAGE_START","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499367,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","role":"reasoning"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499367,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"The"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499454,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" user"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499478,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" wants"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499478,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" me"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499478,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" to"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499478,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" call"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499507,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" render"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499508,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"_a"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499508,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"2"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499508,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"ui"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499508,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" to"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499537,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" render"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499537,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" an"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499537,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" Insight"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499537,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"Card"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499537,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"."}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499554,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" Let"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499555,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" me"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499555,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" do"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499555,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" that"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499584,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" with"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499584,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" the"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499584,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" specified"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499610,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" structure"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499610,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":":"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499642,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" surface"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499643,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"Id"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499643,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"="}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499643,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"ins"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499643,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"ight"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499643,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"-d"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499672,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"emo"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499673,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":","}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499673,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" root"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499673,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" is"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499673,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" Column"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499692,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" containing"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499692,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" an"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499692,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":" Insight"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499693,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"Card"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499693,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"{"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499736,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"title"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499737,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":":"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499737,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"提示"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499737,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":","}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499737,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"text"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499802,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":":"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499802,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"华北"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499803,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"区域"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499803,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"领"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499803,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"跑"}
+
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499803,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1","delta":"}."}
+
+data:{"type":"TOOL_CALL_START","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499856,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","toolCallName":"render_a2ui"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499871,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"{"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499871,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499871,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"surface"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499872,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"Id"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499872,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499872,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":": "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499898,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499899,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"ins"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499899,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"ight"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499899,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"-d"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499899,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"emo"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499920,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499952,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":", "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499952,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499952,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"components"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499953,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499953,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":": "}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499977,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"["}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499978,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"{\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758499978,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"component"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500003,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\":"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500003,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500003,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"Column"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500004,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\","}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500004,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500004,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"id"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500028,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\":"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500030,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500030,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"root"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500030,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\","}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500030,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500031,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"children"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500059,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\":"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500059,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" [\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500080,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"ins"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500081,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"ight"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500081,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\"]"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500107,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"},"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500108,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" {\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500108,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"component"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500108,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\":"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500108,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500108,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"Ins"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500132,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"ight"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500133,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"Card"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500133,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\","}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500133,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500134,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"id"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500134,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\":"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500179,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500180,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"ins"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500180,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"ight"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500180,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\","}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500180,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500181,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"title"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500189,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\":"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500189,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500189,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"提示"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500190,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\","}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500190,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500190,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"text"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500222,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\":"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500222,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":" \""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500222,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"华北"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500222,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"区域"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500223,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"领"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500223,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"跑"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500238,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"\""}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500239,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"}]"}
+
+data:{"type":"TOOL_CALL_ARGS","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500271,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654","delta":"}"}
+
+data:{"type":"REASONING_MESSAGE_END","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500317,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1"}
+
+data:{"type":"REASONING_END","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500317,"messageId":"msg_0031b086a001zRuIhTXSBkbdB2-0#1"}
+
+data:{"type":"TOOL_CALL_END","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500317,"toolCallId":"call_00_VPcg3xjCqqx3v0QkG4O03654"}
+
+data:{"type":"STEP_FINISHED","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500318,"stepName":"step-msg_0031b086a001zRuIhTXSBkbdB2"}
+
+data:{"type":"ACTIVITY_SNAPSHOT","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500321,"messageId":"a2ui-insight-demo","activityType":"a2ui-surface","content":{"a2ui_operations":[{"version":"v0.9","createSurface":{"surfaceId":"insight-demo","catalogId":"https://opencode-agui-app.local/a2ui/data-agent-catalog.json"}},{"version":"v0.9","updateComponents":{"surfaceId":"insight-demo","components":[{"component":"Column","id":"root","children":["insight"]},{"component":"InsightCard","id":"insight","title":"提示","text":"华北区域领跑"}]}}]},"replace":true}
+
+data:{"type":"RUN_FINISHED","runId":"r1","threadId":"native2-1786758498","timestamp":1786758500321}
+

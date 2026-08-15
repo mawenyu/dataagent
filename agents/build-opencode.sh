@@ -55,6 +55,8 @@ else
 fi
 
 # ---------- 2. 部署扩展到 target 项目 ----------
+# plugins/ 含 a2ui-tools.ts（render_a2ui/render_report/render_slides/update_canvas
+# 工具注册，codemode:false —— 否则 provider 按名调用得 Unknown tool）
 echo "==> deploying extensions to $TARGET_DIR/.opencode"
 mkdir -p "$TARGET_DIR/.opencode"
 for d in plugins tool skills command agent; do
