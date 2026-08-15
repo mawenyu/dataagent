@@ -441,4 +441,32 @@ class A2UiBridgeServiceTest {
         // 但 components 缺失/非数组仍拒绝
         assertNotNull(bridge.validate(MAPPER.readTree("{\"surfaceId\":\"s1\"}")));
     }
+
+    // ---- P13: 嵌套深度上限（递归渲染栈保护）----
+
+    private String nestedArgs(int depth) {
+        StringBuilder json = new StringBuilder("{\"surfaceId\":\"s1\",\"components\":[");
+        json.append("{\"component\":\"Column\",\"id\":\"root\",\"children\":[\"l1\"]}");
+        for (int i = 1; i < depth; i++) {
+            String child = (i == depth - 1) ? "deep" : "l" + (i + 1);
+            json.append(",{\"component\":\"Column\",\"id\":\"l").append(i)
+                    .append("\",\"children\":[\"").append(child).append("\"]}");
+        }
+        json.append(",{\"component\":\"Text\",\"id\":\"deep\",\"text\":\"x\"}]}");
+        return json.toString();
+    }
+
+    @Test
+    void depthWithinLimitAccepted() throws Exception {
+        assertNull(bridge.validate(MAPPER.readTree(nestedArgs(32))), "32 层放行");
+        assertTrue(bridge.execute("run", "t", MAPPER.readTree(nestedArgs(32))).isPresent());
+    }
+
+    @Test
+    void excessiveDepthRejected() throws Exception {
+        String reason = bridge.validate(MAPPER.readTree(nestedArgs(64)));
+        assertNotNull(reason);
+        assertTrue(reason.toLowerCase().contains("depth") || reason.contains("深"), reason);
+        assertTrue(bridge.execute("run", "t", MAPPER.readTree(nestedArgs(64))).isEmpty());
+    }
 }

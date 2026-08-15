@@ -27,6 +27,71 @@ describe("useDefaultRenderTool", () => {
     vi.clearAllMocks();
   });
 
+    function getDefaultRenderer(): (props: Record<string, unknown>) => unknown {
+      const Harness = defineComponent({
+        setup() {
+          useDefaultRenderTool();
+          return {};
+        },
+        template: `<div />`,
+      });
+      render(Harness);
+      const [config] = mockUseRenderTool.mock.calls[0] as [
+        { render: (props: Record<string, unknown>) => unknown },
+      ];
+      return config.render;
+    }
+
+    function renderWithRunContext(
+      renderer: (props: Record<string, unknown>) => unknown,
+      props: Record<string, unknown>,
+      fakeAgent: {
+        isRunning: boolean;
+        subscribe: ReturnType<typeof vi.fn>;
+      },
+    ) {
+      const fakeCore = { getAgent: vi.fn(() => fakeAgent) };
+      const Harness = defineComponent({
+        setup() {
+          provide(CopilotKitKey, {
+            copilotkit: shallowRef(fakeCore),
+            executingToolCallIds: ref(new Set<string>()),
+            a2uiTheme: computed(() => undefined),
+            a2uiCatalog: computed(() => undefined),
+            a2uiLoadingComponent: computed(() => undefined),
+            a2uiIncludeSchema: computed(() => false),
+          } as never);
+          provide(
+            CopilotChatConfigurationKey,
+            computed(
+              () =>
+                ({ agentId: "default", threadId: "t-f3" }) as never,
+            ),
+          );
+          return () => h(renderer as never, props);
+        },
+      });
+      render(Harness);
+    }
+
+    function makeFakeAgent(isRunning = true) {
+      let subscriber: Record<string, ((evt?: unknown) => void) | undefined>;
+      const agent = {
+        isRunning,
+        subscribe: vi.fn((sub: Record<string, (evt?: unknown) => void>) => {
+          subscriber = sub;
+          return { unsubscribe: vi.fn() };
+        }),
+      };
+      return {
+        agent,
+        fire(event: "onRunStartedEvent" | "onRunFinishedEvent" | "onRunErrorEvent") {
+          return subscriber[event]?.({});
+        },
+      };
+    }
+
+
   it("registers a wildcard renderer when called without config", () => {
     const Harness = defineComponent({
       setup() {
@@ -597,70 +662,6 @@ describe("useDefaultRenderTool", () => {
       vi.useRealTimers();
     });
 
-    function getDefaultRenderer(): (props: Record<string, unknown>) => unknown {
-      const Harness = defineComponent({
-        setup() {
-          useDefaultRenderTool();
-          return {};
-        },
-        template: `<div />`,
-      });
-      render(Harness);
-      const [config] = mockUseRenderTool.mock.calls[0] as [
-        { render: (props: Record<string, unknown>) => unknown },
-      ];
-      return config.render;
-    }
-
-    function renderWithRunContext(
-      renderer: (props: Record<string, unknown>) => unknown,
-      props: Record<string, unknown>,
-      fakeAgent: {
-        isRunning: boolean;
-        subscribe: ReturnType<typeof vi.fn>;
-      },
-    ) {
-      const fakeCore = { getAgent: vi.fn(() => fakeAgent) };
-      const Harness = defineComponent({
-        setup() {
-          provide(CopilotKitKey, {
-            copilotkit: shallowRef(fakeCore),
-            executingToolCallIds: ref(new Set<string>()),
-            a2uiTheme: computed(() => undefined),
-            a2uiCatalog: computed(() => undefined),
-            a2uiLoadingComponent: computed(() => undefined),
-            a2uiIncludeSchema: computed(() => false),
-          } as never);
-          provide(
-            CopilotChatConfigurationKey,
-            computed(
-              () =>
-                ({ agentId: "default", threadId: "t-f3" }) as never,
-            ),
-          );
-          return () => h(renderer as never, props);
-        },
-      });
-      render(Harness);
-    }
-
-    function makeFakeAgent(isRunning = true) {
-      let subscriber: Record<string, ((evt?: unknown) => void) | undefined>;
-      const agent = {
-        isRunning,
-        subscribe: vi.fn((sub: Record<string, (evt?: unknown) => void>) => {
-          subscriber = sub;
-          return { unsubscribe: vi.fn() };
-        }),
-      };
-      return {
-        agent,
-        fire(event: "onRunStartedEvent" | "onRunFinishedEvent" | "onRunErrorEvent") {
-          return subscriber[event]?.({});
-        },
-      };
-    }
-
     it("shows a spinner and live elapsed time while running, then freezes the duration on complete", async () => {
       vi.useFakeTimers();
       vi.setSystemTime(1_000_000);
@@ -840,6 +841,87 @@ describe("useDefaultRenderTool", () => {
       expect(
         screen.getByTestId("copilot-tool-render-status-icon").textContent,
       ).toBe("✗");
+    });
+  });
+
+  // P-L: 状态点颜色语义统一(F3/P9 语义: running 蓝 / done 绿 / failed 红 /
+  // interrupted 琥珀) + 长参数/结果超阈值默认截断、点击展开。
+  describe("P-L status dot + collapsible long payload", () => {
+    it("status dot data-state 与状态语义一致: running/done/failed/interrupted", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+
+      const running = render(DefaultRenderer as never, {
+        props: { name: "t", toolCallId: "pl-run", parameters: {}, status: "executing", result: undefined },
+      });
+      expect(screen.getByTestId("copilot-tool-render-status-dot").getAttribute("data-state")).toBe("running");
+      running.unmount();
+
+      const done = render(DefaultRenderer as never, {
+        props: { name: "t", toolCallId: "pl-done", parameters: {}, status: "complete", result: "ok" },
+      });
+      expect(screen.getByTestId("copilot-tool-render-status-dot").getAttribute("data-state")).toBe("done");
+      done.unmount();
+
+      // failed: run 出错时仍 active
+      const { agent, fire } = makeFakeAgent(true);
+      renderWithRunContext(DefaultRenderer, {
+        name: "t", toolCallId: "pl-fail", parameters: {}, status: "inProgress", result: undefined,
+      }, agent);
+      fire("onRunErrorEvent");
+      await nextTick();
+      expect(screen.getByTestId("copilot-tool-render-status-dot").getAttribute("data-state")).toBe("failed");
+    });
+
+    it("长参数超阈值默认截断(标注总字符数),点击展开看全文,再点收起", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      const longValue = "x".repeat(800);
+      render(DefaultRenderer as never, {
+        props: {
+          name: "bash",
+          toolCallId: "pl-long-args",
+          parameters: { data: longValue },
+          status: "complete",
+          result: "short",
+        },
+      });
+
+      await fireEvent.click(screen.getByText("bash"));
+      const pre = screen.getByTestId("copilot-tool-render-args-pre");
+      expect(pre.textContent!.length).toBeLessThan(800);
+      expect(pre.textContent).toContain("…");
+
+      const toggle = screen.getByTestId("copilot-tool-render-args-toggle");
+      expect(toggle.textContent).toContain("展开全部");
+      expect(toggle.textContent).toMatch(/共 \d+ 字符/);
+
+      await fireEvent.click(toggle);
+      expect(screen.getByTestId("copilot-tool-render-args-pre").textContent).toContain(longValue);
+
+      await fireEvent.click(screen.getByTestId("copilot-tool-render-args-toggle"));
+      expect(screen.getByTestId("copilot-tool-render-args-pre").textContent!.length).toBeLessThan(800);
+    });
+
+    it("短参数不出展开按钮,完整显示", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      render(DefaultRenderer as never, {
+        props: { name: "bash", toolCallId: "pl-short", parameters: { q: "hi" }, status: "complete", result: "ok" },
+      });
+      await fireEvent.click(screen.getByText("bash"));
+      expect(screen.queryByTestId("copilot-tool-render-args-toggle")).toBeNull();
+      expect(screen.getByTestId("copilot-tool-render-args-pre").textContent).toContain('"hi"');
+    });
+
+    it("长结果同样默认截断并可展开", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      const longResult = "y".repeat(900);
+      render(DefaultRenderer as never, {
+        props: { name: "bash", toolCallId: "pl-long-res", parameters: {}, status: "complete", result: longResult },
+      });
+      await fireEvent.click(screen.getByText("bash"));
+      const pre = screen.getByTestId("copilot-tool-render-result-pre");
+      expect(pre.textContent!.length).toBeLessThan(900);
+      await fireEvent.click(screen.getByTestId("copilot-tool-render-result-toggle"));
+      expect(screen.getByTestId("copilot-tool-render-result-pre").textContent).toBe(longResult);
     });
   });
 });

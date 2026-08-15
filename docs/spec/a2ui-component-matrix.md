@@ -83,3 +83,18 @@
 
 ### 已知边界
 - 未知组件被 gateway 拒绝时，opencode 侧插件 execute 已回执 "rendered"，agent 可能声称"已渲染"而实际未渲染（回执与 gateway 裁决不同步）。低风险（仅白名单外组件触发），后续可让插件回执带校验结果。
+
+## 附录 B：恶意/畸形 payload 防护（vision-P13，2026-08-16）
+
+| 向量 | 防护层 | 行为 | 测试/证据 |
+|---|---|---|---|
+| XSS（Text/Markdown 含 script/iframe/img-onerror） | 前端（构造性免疫：全部经 h() 文本节点转义，无 v-html；唯一 innerHTML 是静态 shimmer 样式） | 字面文本渲染，无可执行节点 | maliciousPayload.test.ts ×3 |
+| 组件名/action 名/图标名带 HTML | 前端 + gateway 白名单 | 按数据处理，无 on* 属性泄漏 | 同上 |
+| 非法组件类型（null/数字/对象） | 双修：fork 渲染器 updateComponents **拆到单组件粒度容错**（一条 op 混入坏组件不再拖垮整 op）+ gateway 白名单 | 坏组件跳过+warn，正常组件照渲染 | 同上（先红后绿） |
+| 深嵌套 | **gateway 新增 MAX_DEPTH=48**（BFS 分层）+ 前端 50 层实测正常 | 超限整体拒绝，回执带深度原因 | bridge 2 例 + 2026-08-16-p13-depth-reject.sse（61 层被拒 → 模型自纠 10 层成功） |
+| 超长字符串 | gateway 64KB payload 上限 + 前端 100KB 实测不崩 | 上限内正常，超限拒绝 | maliciousPayload.test.ts + P5 规模测试 |
+| javascript:/data: URL（Image/Video） | 浏览器语义（img/video src 的 javascript: 不可执行） | 页面存活 | maliciousPayload.test.ts |
+| cycle 引用 | P4 双层（gateway 环检测 + 前端祖先链占位） | 拒绝/占位 | 见附录 A |
+
+结论：A2UI 白名单声明式模型 + 全文本节点渲染，注入面构造性封闭；
+深度/规模/环/非法类型均有确定性防线与回执自纠闭环。

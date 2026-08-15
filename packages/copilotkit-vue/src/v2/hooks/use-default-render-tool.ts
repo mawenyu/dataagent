@@ -133,9 +133,19 @@ function formatToolCallDuration(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
+/** P-L: 参数/结果文本超此阈值默认截断,点击展开全文。 */
+const LONG_TEXT_THRESHOLD = 600;
+
+/** P-L: 状态点颜色语义(与 F3/P9 状态语义统一)。 */
+const STATUS_DOT_COLORS = {
+  running: "#3b82f6",
+  done: "#16a34a",
+  failed: "#dc2626",
+  interrupted: "#d97706",
+} as const;
+
 /** Inline SVG spinner (SMIL-animated, no CSS keyframes needed). */
-function renderSpinner() {
-  return h(
+function renderSpinner() {  return h(
     "svg",
     {
       width: "12",
@@ -204,6 +214,9 @@ const DefaultToolCallRenderer = defineComponent({
   },
   setup(props) {
     const isExpanded = ref(false);
+    // P-L: 长参数/结果块级折叠(超阈值默认截断,点击展开全文)
+    const argsExpanded = ref(false);
+    const resultExpanded = ref(false);
 
     const isActiveStatus = () =>
       props.status === "inProgress" || props.status === "executing";
@@ -322,6 +335,46 @@ const DefaultToolCallRenderer = defineComponent({
       return null;
     });
 
+    /** P-L: 参数/结果块 —— 超阈值默认截断(标注总字符数),点击展开/收起。 */
+    function renderPayloadBlock(
+      label: string,
+      text: string,
+      expanded: typeof argsExpanded,
+      testidBase: string,
+    ) {
+      const isLong = text.length > LONG_TEXT_THRESHOLD;
+      const shown =
+        isLong && !expanded.value
+          ? `${text.slice(0, LONG_TEXT_THRESHOLD)}…`
+          : text;
+      return h("div", [
+        h("div", label),
+        h("pre", { "data-testid": `${testidBase}-pre` }, shown),
+        isLong
+          ? h(
+              "button",
+              {
+                type: "button",
+                "data-testid": `${testidBase}-toggle`,
+                onClick: (e: MouseEvent) => {
+                  e.stopPropagation();
+                  expanded.value = !expanded.value;
+                },
+                style: {
+                  border: "none",
+                  background: "transparent",
+                  color: "#6366f1",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  padding: "2px 0",
+                },
+              },
+              expanded.value ? "收起" : `展开全部(共 ${text.length} 字符)`,
+            )
+          : null,
+      ]);
+    }
+
     return () => {
       const isActive = isActiveStatus();
       const isComplete = props.status === "complete";
@@ -350,6 +403,15 @@ const DefaultToolCallRenderer = defineComponent({
           : isActive
             ? renderSpinner()
             : null;
+
+      // P-L: 状态点(头部左侧,颜色语义与状态图标/文字统一)
+      const dotState = failed
+        ? failed === "failed"
+          ? "failed"
+          : "interrupted"
+        : isComplete
+          ? "done"
+          : "running";
 
       return h(
         "div",
@@ -401,10 +463,35 @@ const DefaultToolCallRenderer = defineComponent({
                   h(
                     "span",
                     {
-                      "data-testid": "copilot-tool-render-name",
-                      style: { fontWeight: "600" },
+                      style: {
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        minWidth: 0,
+                      },
                     },
-                    props.name,
+                    [
+                      h("span", {
+                        "data-testid": "copilot-tool-render-status-dot",
+                        "data-state": dotState,
+                        "aria-hidden": "true",
+                        style: {
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          backgroundColor: STATUS_DOT_COLORS[dotState],
+                          flex: "none",
+                        },
+                      }),
+                      h(
+                        "span",
+                        {
+                          "data-testid": "copilot-tool-render-name",
+                          style: { fontWeight: "600" },
+                        },
+                        props.name,
+                      ),
+                    ],
                   ),
                   h(
                     "span",
@@ -451,18 +538,21 @@ const DefaultToolCallRenderer = defineComponent({
               ),
               isExpanded.value
                 ? h("div", { style: { marginTop: "12px" } }, [
-                    h("div", "Arguments"),
-                    h("pre", safeStringifyForPre(props.parameters ?? {})),
+                    renderPayloadBlock(
+                      "Arguments",
+                      safeStringifyForPre(props.parameters ?? {}),
+                      argsExpanded,
+                      "copilot-tool-render-args",
+                    ),
                     props.result !== undefined
-                      ? h("div", [
-                          h("div", "Result"),
-                          h(
-                            "pre",
-                            typeof props.result === "string"
-                              ? props.result
-                              : safeStringifyForPre(props.result),
-                          ),
-                        ])
+                      ? renderPayloadBlock(
+                          "Result",
+                          typeof props.result === "string"
+                            ? props.result
+                            : safeStringifyForPre(props.result),
+                          resultExpanded,
+                          "copilot-tool-render-result",
+                        )
                       : null,
                   ])
                 : null,

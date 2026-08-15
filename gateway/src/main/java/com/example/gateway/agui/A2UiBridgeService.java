@@ -72,6 +72,8 @@ public class A2UiBridgeService {
     private static final int MAX_COMPONENTS = 100;
     /** 测试可见的上限（P5-2 性能基线用）。 */
     static final int MAX_COMPONENTS_FOR_TEST = MAX_COMPONENTS;
+    /** P13: 嵌套深度上限（前端递归渲染栈保护）。 */
+    static final int MAX_DEPTH = 48;
     private static final int MAX_PAYLOAD_CHARS = 64 * 1024;
     private static final int MAX_CONTEXT_ENTRY_CHARS = 32 * 1024;
 
@@ -260,6 +262,45 @@ public class A2UiBridgeService {
         return flat;
     }
 
+    /** P13: 组件树最大深度（从 root 沿 children/child/trigger/content/tabs.child 引用 BFS）。 */
+    static int maxDepth(ArrayNode comps) {
+        Map<String, List<String>> edges = new LinkedHashMap<>();
+        for (JsonNode n : comps) {
+            if (!n.isObject()) continue;
+            String id = n.path("id").asText("");
+            if (id.isBlank()) continue;
+            List<String> refs = new ArrayList<>();
+            for (JsonNode ch : n.path("children")) {
+                if (ch.isTextual()) refs.add(ch.asText());
+            }
+            for (String field : List.of("child", "trigger", "content")) {
+                JsonNode v = n.get(field);
+                if (v != null && v.isTextual()) refs.add(v.asText());
+            }
+            for (JsonNode tab : n.path("tabs")) {
+                JsonNode child = tab.path("child");
+                if (child.isTextual()) refs.add(child.asText());
+            }
+            edges.put(id, refs);
+        }
+        // BFS 分层（环在 hasReferenceCycle 先拦；这里 visited 防重复入队）
+        java.util.ArrayDeque<String> queue = new java.util.ArrayDeque<>();
+        java.util.Set<String> visited = new java.util.HashSet<>();
+        queue.add("root");
+        visited.add("root");
+        int depth = 0;
+        while (!queue.isEmpty()) {
+            int size = queue.size();
+            depth++;
+            for (int i = 0; i < size; i++) {
+                for (String next : edges.getOrDefault(queue.poll(), List.of())) {
+                    if (visited.add(next)) queue.add(next);
+                }
+            }
+        }
+        return depth;
+    }
+
     /**
      * vision-P4: 组件引用环检测（DFS 三色标记）。收集 children[]/child/trigger/
      * content/tabs[].child 的 id 引用建图，任一节点可达自身即判环。
@@ -399,6 +440,10 @@ public class A2UiBridgeService {
             }
         }
         if (!rejected.isEmpty()) return "not in whitelist or missing id: " + rejected;
+        // P13: 嵌套深度上限 —— 前端递归渲染（DeferredChild）有栈深度边界，
+        // 超限整体拒绝（P5-1 通道回执模型自纠降层重试）
+        int depth = maxDepth(normalized);
+        if (depth > MAX_DEPTH) return "nesting depth " + depth + " exceeds limit " + MAX_DEPTH;
         // P6-A 实测驱动：模型偶发漏掉根容器 —— 无 id="root" 的 surface 前端
         // 永远 shimmer（渲染器从 root 入口递归），必须拒绝并让模型补正重试
         boolean hasRoot = false;

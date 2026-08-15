@@ -98,14 +98,27 @@ function processOperations(operations: A2UIOperation[]) {
       // 缺失 target（未创建/已关闭的 surface）、重复 createSurface 等单条
       // 坏 op 只跳过 + console.warn，不再整批进错误框（此前一条坏 op
       // 会 throw 中断整批，同批正常 surface 也渲染不出来）。
+      // P10 逐 op 容错；P13 进一步把 updateComponents 拆到单组件粒度 ——
+      // 一条 op 里混入非法组件（null/数字/对象 type 等）只跳过坏组件，
+      // 同 op 的正常组件不再陪葬
       for (const op of filtered) {
-        try {
-          processor.processMessages([op] as any);
-        } catch (opErr) {
-          console.warn(
-            `[A2UI Vue] op skipped (surface=${surfaceId}):`,
-            opErr instanceof Error ? opErr.message : opErr,
-          );
+        const uc = (op as any)?.updateComponents;
+        const opList: any[] =
+          uc && Array.isArray(uc.components) && uc.components.length > 1
+            ? uc.components.map((c: unknown) => ({
+                ...op,
+                updateComponents: { ...uc, components: [c] },
+              }))
+            : [op];
+        for (const single of opList) {
+          try {
+            processor.processMessages([single] as any);
+          } catch (opErr) {
+            console.warn(
+              `[A2UI Vue] op skipped (surface=${surfaceId}):`,
+              opErr instanceof Error ? opErr.message : opErr,
+            );
+          }
         }
       }
     }
