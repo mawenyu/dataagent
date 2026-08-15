@@ -128,4 +128,35 @@ describe('App UI (需求4)', () => {
     expect(w.find('.toast-stack').text()).toContain('导出成功')
     clickSpy.mockRestore()
   })
+
+  it('P-B: run 失败 → 内联错误卡;点重试在原线程重发最后一条用户消息(不重复入列)', async () => {
+    // fetch 打桩返回非 SSE 响应 → agent run 必然失败(getReader 缺失)
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: [] }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
+
+    // 欢迎页发送一条消息 → 触发 /agent/run(会失败)
+    await w.find('.welcome-input textarea').setValue('分析本月销售')
+    await w.find('.welcome-send').trigger('click')
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+    const runs = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent/run'))
+    expect(runs().length).toBe(1)
+
+    // 内联错误卡出现在消息流尾部上方
+    const card = w.find('[data-testid="run-error-card"]')
+    expect(card.exists(), 'run 失败应显示内联错误卡').toBe(true)
+
+    // 点重试 → 同一线程重发最后一条用户消息
+    await w.find('[data-testid="run-error-retry"]').trigger('click')
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+    expect(runs().length, '重试应再次触发 /agent/run').toBe(2)
+    const retryBody = String((runs()[1][1] as RequestInit)?.body ?? '')
+    expect(retryBody).toContain('分析本月销售')
+    // 失败轮被截掉后重发 → 请求体里该用户消息只出现一次
+    expect(retryBody.split('分析本月销售').length - 1).toBe(1)
+  })
 })

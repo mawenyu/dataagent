@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { z } from 'zod'
-import { CopilotKitProvider, CopilotChat } from '@copilotkit/vue'
+import { CopilotKitProvider, CopilotChat, getThreadClone } from '@copilotkit/vue'
 import { dataAgent } from './agents/dataAgent'
 import { dataAgentCatalog } from './a2ui/dataAgentCatalog'
 import { useContextUsage } from './composables/useContextUsage'
@@ -12,6 +12,8 @@ import { buildAttachmentsConfig, ATTACH_ACCEPT } from './composables/chatAttachm
 import { useWelcomeAttachments } from './composables/welcomeAttachments'
 import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
 import { buildThreadMarkdown, downloadMarkdown, exportFilename } from './composables/exportThread'
+import { useRunErrorRecovery, isAbortError } from './composables/runErrorRecovery'
+import RunErrorCard from './components/RunErrorCard.vue'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
 import FilesPanel from './components/FilesPanel.vue'
@@ -143,13 +145,21 @@ const welcomeSuggestions = [
   { title: '趋势与异常', desc: '按日趋势、峰值与低谷解读', prompt: '本月按日销售趋势如何？指出峰值和异常低谷' },
 ]
 
-// 需求7-6: run 超时/失败时给用户明确提示（而不是无声卡死），告知可重试
-function handleChatError({ error }: { error: Error }) {
-  pushToast({
-    title: '运行中断',
-    message: `${error?.message ?? '未知错误'} —— 可重新发送消息重试`,
-    type: 'error',
-  })
+// 需求7-6 + P-B: run 超时/失败 → 内联错误卡（原因+重试）+ toast；
+// 用户主动停止(abort)不算失败，两者都不弹
+const errorRecovery = useRunErrorRecovery({
+  // 重试必须打在 UI 实际渲染的 per-thread clone 上（与 useThreads 同一解析规则）
+  resolveAgent: () => getThreadClone(dataAgent, threadsApi.currentId.value) ?? dataAgent,
+  threadId: threadsApi.currentId,
+  run: async (agent) => { await (agent as typeof dataAgent).runAgent() },
+})
+dataAgent.subscribe({ onRunStartedEvent: () => errorRecovery.clear() })
+
+function handleChatError({ error, code }: { error: Error; code?: string }) {
+  if (isAbortError({ code, message: error?.message })) return
+  const message = `${error?.message ?? '未知错误'} —— 可点消息流尾部错误卡重试`
+  errorRecovery.reportError(error?.message ?? '未知错误')
+  pushToast({ title: '运行中断', message, type: 'error' })
 }
 
 // P-A: 会话导出 —— 拉 gateway 历史消息 → 前端生成 Markdown Blob 下载
@@ -247,13 +257,15 @@ async function exportThread(id: string) {
               </div>
             </Transition>
             <div v-if="sidebarOpen" class="drawer-backdrop" @click="toggleSidebar"></div>
-            <CopilotChat
-              agent-id="default"
-              class="chat"
-              :thread-id="threadsApi.currentId.value"
-              :attachments="chatAttachments"
-              :on-error="handleChatError"
-            >
+            <div class="chat-col">
+              <CopilotChat
+                agent-id="default"
+                class="chat"
+                :thread-id="threadsApi.currentId.value"
+                :attachments="chatAttachments"
+                :on-error="handleChatError"
+                @submit-message="errorRecovery.clear()"
+              >
               <template #welcome-screen="{ modelValue, isRunning, onUpdateModelValue, onSubmitMessage }">
                 <div class="welcome" data-testid="welcome-screen">
                   <div class="welcome-logo" aria-hidden="true">
@@ -343,7 +355,17 @@ async function exportThread(id: string) {
                   </div>
                 </div>
               </template>
-            </CopilotChat>
+              </CopilotChat>
+              <!-- P-B: 内联错误卡 —— 悬浮在消息流尾部上方,重试=原线程重发最后一条用户消息 -->
+              <RunErrorCard
+                v-if="errorRecovery.runError.value"
+                class="run-error-overlay"
+                :message="errorRecovery.runError.value"
+                :busy="errorRecovery.retrying.value"
+                @retry="errorRecovery.retryLastMessage()"
+                @dismiss="errorRecovery.clear()"
+              />
+            </div>
           </div>
         </CopilotKitProvider>
       </div>
@@ -482,6 +504,16 @@ body {
 }
 .chat { flex: 1; min-height: 0; min-width: 0; }
 .chat-layout { flex: 1; min-height: 0; display: flex; }
+/* P-B: 聊天列容器(相对定位,承载内联错误卡悬浮层) */
+.chat-col { flex: 1; min-height: 0; min-width: 0; display: flex; position: relative; }
+.run-error-overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 92px;
+  width: min(520px, calc(100% - 32px));
+  z-index: 20;
+}
 
 /* ---- 需求4: 侧边栏折叠/抽屉 ---- */
 /* task5-A: 会话/文件 Tab 容器承载原 .sidebar 的栏位样式 */
