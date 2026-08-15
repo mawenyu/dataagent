@@ -23,3 +23,8 @@ workspace/report/
 .opencode/opencode.jsonc
 .opencode/
 tsconfig.json
+
+# 运行时产物(会话工作区/e2e 临时文件)
+gateway/workspace/
+workspace/threads/
+workspace/e2e-up.txt
