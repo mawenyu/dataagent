@@ -324,6 +324,9 @@ class AgUiProtocolServiceTest {
         assertEquals(1, stub.sessionCreates, "action 必须走真实 OpenCode agent 续跑");
         assertTrue(stub.prompts.get(0).contains("A2UI_ACTION"), "action 翻译为 agent prompt");
         assertTrue(stub.prompts.get(0).contains("refresh_sales"));
+        // task6: action 续跑也带会话级数据工作目录提示（threads/<threadId>）
+        assertTrue(stub.prompts.get(0).contains("数据工作目录: workspace/" + WorkspaceFileService.THREADS_DIR + "/t-act"),
+                "action prompt 包含会话隔离的数据工作目录");
         assertEquals("RUN_FINISHED", types(events).get(types(events).size() - 1));
     }
 
@@ -754,5 +757,63 @@ class AgUiProtocolServiceTest {
                 ))), null, null, null);
         run(input);
         assertEquals("看看这份销量", threadStore.getThread("t-title-mm").orElseThrow().title());
+    }
+
+    // ---- vision-P1: MESSAGES_SNAPSHOT + RAW（spec: docs/spec/agui-protocol-matrix.md）----
+
+    /** RUN_FINISHED 之前发 MESSAGES_SNAPSHOT（OpenCode 历史权威对账，修复 delta 丢失）。 */
+    @Test
+    void messagesSnapshotEmittedBeforeRunFinished() {
+        stub.eventStreams.add(textStep("m1", "你好"));
+        stub.sessionHistory.add("""
+            {"data":[
+              {"id":"a1","type":"assistant","content":[{"type":"text","id":"t0","text":"你好"}]},
+              {"id":"u1","type":"user","content":[{"type":"text","text":"hi"}]}
+            ]}
+            """);
+        List<JsonNode> events = run(userMsg("t-snap", "hi"));
+        List<String> ts = types(events);
+        int snap = ts.indexOf("MESSAGES_SNAPSHOT");
+        int fin = ts.indexOf("RUN_FINISHED");
+        assertTrue(snap > 0, "MESSAGES_SNAPSHOT emitted, got: " + ts);
+        assertTrue(fin > snap, "MESSAGES_SNAPSHOT 必须在 RUN_FINISHED 之前");
+        JsonNode snapshot = events.get(snap);
+        assertEquals("t-snap", snapshot.path("threadId").asText());
+        assertTrue(snapshot.path("messages").size() >= 2);
+        assertEquals("user", snapshot.path("messages").get(0).path("role").asText());
+        assertEquals("hi", snapshot.path("messages").get(0).path("content").asText());
+    }
+
+    /** 历史为空（异常/新 session 边界）时跳过 snapshot —— 空数组会清掉客户端消息，宁可不发。 */
+    @Test
+    void emptyHistorySkipsMessagesSnapshot() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        // stub 默认 {"data":[]} → 转换后 0 条 → 不发
+        List<JsonNode> events = run(userMsg("t-snap-empty", "hi"));
+        assertFalse(types(events).contains("MESSAGES_SNAPSHOT"), "空历史不发 snapshot");
+        assertTrue(types(events).contains("RUN_FINISHED"), "run 正常结束");
+    }
+
+    /** forwardedProps.debugRaw=true → 每个 OpenCode 原始事件回显为 RAW（debug 通道）。 */
+    @Test
+    void debugRawEchoesOpenCodeEvents() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        RunAgentInput input = new RunAgentInput("t-raw", "run-raw", null,
+                List.of(Map.of("role", "user", "content", "hi")), null, null, Map.of("debugRaw", true));
+        List<JsonNode> events = run(input);
+        List<JsonNode> raws = events.stream()
+                .filter(e -> "RAW".equals(e.path("type").asText())).toList();
+        assertFalse(raws.isEmpty(), "debugRaw → RAW events present, got: " + types(events));
+        assertEquals("opencode", raws.get(0).path("source").asText());
+        assertTrue(raws.get(0).path("event").isObject(), "原始事件以对象内嵌");
+        assertTrue(types(events).contains("RUN_FINISHED"), "RAW 回显不影响正常事件流");
+    }
+
+    /** 默认（无 debugRaw）不产生 RAW。 */
+    @Test
+    void noRawEventsByDefault() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        List<JsonNode> events = run(userMsg("t-noraw", "hi"));
+        assertFalse(types(events).contains("RAW"));
     }
 }

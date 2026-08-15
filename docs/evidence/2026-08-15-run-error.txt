@@ -1,0 +1,7 @@
+== RUN_ERROR 实测（vision-P1）==
+-- 1. 非法 threadId（含空格）--
+data:{"type":"RUN_ERROR","message":"invalid threadId format"}
+
+-- 2. 空消息 --
+data:{"type":"RUN_ERROR","message":"empty user message"}
+

@@ -11,7 +11,7 @@
 |---|---|---|---|---|
 | RUN_STARTED | ✅ AguiEventTranslator | ✅ fork core | docs/evidence/2026-08-15-text-stream-fixed.sse 等 | ✅ |
 | RUN_FINISHED | ✅ | ✅ | 同上（每个 .sse 样本尾部） | ✅ |
-| RUN_ERROR | ✅（校验失败/空闲超时/abort） | ✅ onError → toast | 待补真实 SSE 证据 | 🔶 |
+| RUN_ERROR | ✅（校验失败/空闲超时/abort） | ✅ onError → toast | docs/evidence/2026-08-15-run-error.txt（非法 threadId/空消息实测） | ✅ |
 | STEP_STARTED | ✅ session.step.started | ✅ | 已有样本 | ✅ |
 | STEP_FINISHED | ✅ session.step.ended | ✅ | 已有样本 | ✅ |
 
@@ -40,7 +40,7 @@
 |---|---|---|---|---|
 | STATE_SNAPSHOT | ✅（initialState 非空时紧随 RUN_STARTED） | ✅ useAgentState → 顶栏徽章 | docs/evidence/2026-08-15-state-events.sse | ✅ |
 | STATE_DELTA | ✅（token 用量 JSON Patch replace /contextSize） | ✅ useAgentState | 同上 | ✅ |
-| MESSAGES_SNAPSHOT | ⬜ 未产生 | fork 支持 | — | ⬜ 计划：run 结束/历史回放场景评估实现（见 extensions 文档） |
+| MESSAGES_SNAPSHOT | ✅ RUN_FINISHED 前发权威全量（OpenCode 历史转换；空历史跳过防误清客户端） | ✅ fork core 按 id 归并、保留 activity 消息 | docs/evidence/2026-08-15-messages-snapshot-raw.sse | ✅ |
 
 ## Reasoning 事件（8）
 
@@ -67,7 +67,7 @@
 | 事件 | gateway | 前端 | 证据 | 状态 |
 |---|---|---|---|---|
 | CUSTOM | ✅ context_usage（每 step token 用量） | ✅ useContextUsage → 顶栏徽章 | docs/evidence/2026-08-15-state-events.sse | ✅ |
-| RAW | ⬜ 未产生 | fork 透传 | — | ⬜ 计划：debug 通道（forwardedProps.debugRaw 时回显 OpenCode 原始事件） |
+| RAW | ✅ forwardedProps.debugRaw=true 时每原始事件回显（source=opencode） | debug 通道（debug 页/抓包可见） | 同上证据（单次 run RAW×53） | ✅ |
 
 ## 规范外事件
 
@@ -77,5 +77,4 @@
 
 ## 统计
 
-- 官方 33 种：✅ 19 ｜ 🔶 1（RUN_ERROR 补实测）｜ ⬜ 2（MESSAGES_SNAPSHOT / RAW，评估实现）｜ ➖ 11（官方可选或本栈无数据源，逐项附理由）
-- 验收门槛：🔶/⬜ 行在目标2 完成时必须闭环（实测或实现+实测）。
+- 官方 33 种：✅ 22 ｜ ➖ 11（官方可选或本栈无数据源，逐项附理由）—— **目标2 全部闭环（2026-08-15）**

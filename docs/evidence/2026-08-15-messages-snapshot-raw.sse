@@ -1,0 +1,20 @@
+# vision-P1 实测：debugRaw=true 真实 run（DeepSeek reasoner）
+# 全量 18 种事件类型；RAW 53 条（此处留 2 条样例）；MESSAGES_SNAPSHOT 3 条消息在 RUN_FINISHED 前
+data:{"type":"RUN_STARTED","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766910605}
+data:{"type":"STATE_SNAPSHOT","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766910606,"snapshot":{"provider":"deepseek","workspace":"workspace","model":"deepseek-reasoner","contextSize":0,"threadId":"vision-p1-snap"}}
+data:{"type":"RAW","source":"opencode","event":{"id":"evt_0039b6581001bD2blnorriRcGU","type":"server.connected","data":{}}}
+data:{"type":"RAW","source":"opencode","event":{"id":"evt_0039b658f001hOmMwJsvMAM7p3","created":1786766910863,"type":"session.model.selected","durable":{"aggregateID":"ses_ffc649d8affeGApk20pmKm1AA5","seq":1,"version":1},"location":{"directory":"/home/ubuntu/dataagent"},"data":{"sessionID":"ses_ffc649d8affeGApk20pmKm1AA5","model":{"id":"deepseek-reasoner","providerID":"deepseek"}}}}
+data:{"type":"STEP_STARTED","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912086,"stepName":"step-msg_0039b663f00163cH06SAAe3ANY"}
+data:{"type":"REASONING_START","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912099,"messageId":"msg_0039b663f00163cH06SAAe3ANY-0#1"}
+data:{"type":"REASONING_MESSAGE_START","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912099,"messageId":"msg_0039b663f00163cH06SAAe3ANY-0#1","role":"reasoning"}
+data:{"type":"REASONING_MESSAGE_CONTENT","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912112,"messageId":"msg_0039b663f00163cH06SAAe3ANY-0#1","delta":"The"}
+data:{"type":"REASONING_MESSAGE_END","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912275,"messageId":"msg_0039b663f00163cH06SAAe3ANY-0#1"}
+data:{"type":"REASONING_END","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912275,"messageId":"msg_0039b663f00163cH06SAAe3ANY-0#1"}
+data:{"type":"TEXT_MESSAGE_START","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912328,"messageId":"ag-0730293c-44d2-4625-aaa2-17b474b95d76","role":"assistant"}
+data:{"type":"TEXT_MESSAGE_CONTENT","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912328,"messageId":"ag-0730293c-44d2-4625-aaa2-17b474b95d76","delta":"我是"}
+data:{"type":"TEXT_MESSAGE_END","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912558,"messageId":"ag-0730293c-44d2-4625-aaa2-17b474b95d76"}
+data:{"type":"STEP_FINISHED","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912642,"stepName":"step-msg_0039b663f00163cH06SAAe3ANY"}
+data:{"type":"CUSTOM","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912642,"name":"context_usage","value":{"input":5169,"output":27,"reasoning":15,"cacheRead":1920,"cacheWrite":0,"contextSize":7089,"finish":"stop"}}
+data:{"type":"STATE_DELTA","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912642,"delta":[{"op":"replace","path":"/contextSize","value":7089}]}
+data:{"type":"MESSAGES_SNAPSHOT","threadId":"vision-p1-snap","runId":"run-snap-1","messages":[{"id":"msg_0039b661f001xrwoO8jawB6dE8","role":"user","content":"用一句话介绍你自己"},{"id":"msg_0039b663f00163cH06SAAe3ANY-r","role":"reasoning","content":"The user is asking me to introduce myself in one sentence, in Chinese."},{"id":"msg_0039b663f00163cH06SAAe3ANY","role":"assistant","content":"我是 opencode，一个能帮你搜索代码、写代码、跑命令、做数据分析的交互式 AI 命令行助手。"}]}
+data:{"type":"RUN_FINISHED","runId":"run-snap-1","threadId":"vision-p1-snap","timestamp":1786766912644}

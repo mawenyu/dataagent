@@ -64,6 +64,9 @@ public class AgUiProtocolService {
     private final String providerId;
     private final ChatThreadStore threadStore;
     private final WorkspaceFileService workspaceFiles;
+    /** vision-P1: MESSAGES_SNAPSHOT 转换器（无状态，直接实例化）。 */
+    private final ThreadMessagesService messagesService = new ThreadMessagesService();
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
 
     /** Convenience constructor for tests — default everything, throwaway temp store. */
     public AgUiProtocolService(WebClient opencodeWebClient, AguiEventTranslator translator,
@@ -237,6 +240,10 @@ public class AgUiProtocolService {
             if (a2UiBridge.hasA2uiContext(input.context())) {
                 p.append(a2UiBridge.buildServerToolSection(input.context())).append("\n\n");
             }
+            // task6 补齐：action 续跑也要带会话级数据工作目录提示（隔离后模型
+            // 不知道 CSV 在 threads/<threadId> 下，实测出现不查数据直接回答）
+            p.append("<environment>\n数据工作目录: ").append(threadWorkspace)
+                    .append("\n用户的数据文件（如销售 CSV）放在该目录；分析数据问题时先在此目录查找，回答用中文。\n</environment>\n\n");
             p.append(actionHandler.buildAgentPrompt(rawAction));
             return runAgent(input, uid, threadId, runId, p.toString());
         }
@@ -301,6 +308,10 @@ public class AgUiProtocolService {
         final String finalThreadId = threadId;
         final String finalRunId = runId;
         final String finalPrompt = promptText;
+        // vision-P1: debug 通道 —— forwardedProps.debugRaw=true 时把 OpenCode
+        // 原始事件以 AG-UI RAW 事件回显（spec: agui-protocol-matrix.md）
+        final boolean debugRaw = input.forwardedProps() != null
+                && Boolean.TRUE.equals(input.forwardedProps().get("debugRaw"));
 
         return resolveOrCreateSession(threadId)
                 .flatMapMany(sessionId -> {
@@ -311,14 +322,31 @@ public class AgUiProtocolService {
                     reactor.core.publisher.Flux<ServerSentEvent<String>> hot =
                             streamEvents(sessionId).replay();
                     reactor.core.Disposable conn = ((reactor.core.publisher.ConnectableFlux<ServerSentEvent<String>>) hot).connect();
+                    Flux<ServerSentEvent<String>> translated = translator.translate(finalThreadId, finalRunId, frontendToolNames, hot,
+                                    // AG-UI shared state: 会话初始快照（模型/工作区/contextSize），
+                                    // 客户端 useAgent().state 可见；contextSize 由 STATE_DELTA 续更
+                                    Map.of("threadId", finalThreadId, "model", modelId,
+                                            "provider", providerId, "workspace", dataWorkspace,
+                                            "contextSize", 0))
+                            // vision-P1: RUN_FINISHED 前插 MESSAGES_SNAPSHOT —— 以 OpenCode
+                            // session 历史为权威对账客户端消息流（delta 丢失自愈）；空历史
+                            // 跳过（空数组会清掉客户端消息，宁可不发）
+                            .concatMap(ev -> {
+                                String d = ev.data();
+                                if (d != null && d.contains("\"type\":\"RUN_FINISHED\"")) {
+                                    return messagesSnapshot(sessionId, finalThreadId, finalRunId)
+                                            .map(snap -> Flux.just(snap, ev))
+                                            .defaultIfEmpty(Flux.just(ev))
+                                            .flatMapMany(f -> f);
+                                }
+                                return Flux.just(ev);
+                            });
+                    Flux<ServerSentEvent<String>> stream = debugRaw
+                            ? translated.mergeWith(hot.map(this::rawEcho))
+                            : translated;
                     return ensureModel(sessionId)
                                 .then(sendPrompt(sessionId, finalPrompt))
-                                .thenMany(translator.translate(finalThreadId, finalRunId, frontendToolNames, hot,
-                                        // AG-UI shared state: 会话初始快照（模型/工作区/contextSize），
-                                        // 客户端 useAgent().state 可见；contextSize 由 STATE_DELTA 续更
-                                        Map.of("threadId", finalThreadId, "model", modelId,
-                                                "provider", providerId, "workspace", dataWorkspace,
-                                                "contextSize", 0)))
+                                .thenMany(stream)
                                 .doFinally(sig -> conn.dispose())
                                 // 需求7-6: never let a run hang silently — idle timeout
                                 // (question/permission waits, provider stalls) terminates
@@ -339,8 +367,49 @@ public class AgUiProtocolService {
                 .onErrorResume(e -> Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(String.valueOf(e.getMessage())) + "\"}")));
     }
 
-    /** Best-effort abort of the OpenCode-side run; failures are logged and swallowed. */
-    private Mono<Void> abortSession(String sessionId) {
+    /**
+     * vision-P1: MESSAGES_SNAPSHOT —— 拉 OpenCode session 历史转 AG-UI Message[]。
+     * 空历史/拉取失败 → empty（调用方跳过发送；空数组 snapshot 会清客户端消息）。
+     */
+    private Mono<ServerSentEvent<String>> messagesSnapshot(String sessionId, String threadId, String runId) {
+        return webClient.get()
+                .uri("/api/session/{id}/message", sessionId)
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(String.class)
+                .flatMap(body -> {
+                    List<JsonNode> msgs = messagesService.toAguiMessages(body);
+                    if (msgs.isEmpty()) return Mono.empty();
+                    var n = MAPPER.createObjectNode();
+                    n.put("type", "MESSAGES_SNAPSHOT");
+                    n.put("threadId", threadId);
+                    n.put("runId", runId);
+                    n.putArray("messages").addAll(msgs.stream().map(m -> (JsonNode) m).toList());
+                    return Mono.just(sseRaw(toJson(n)));
+                })
+                .onErrorResume(e -> {
+                    log.debug("messages snapshot skipped for session {}: {}", sessionId, e.getMessage());
+                    return Mono.empty();
+                });
+    }
+
+    /** vision-P1: RAW 事件回显（debugRaw 通道）——OpenCode 原始事件对象内嵌。 */
+    private ServerSentEvent<String> rawEcho(ServerSentEvent<String> raw) {
+        String data = raw.data();
+        String embedded;
+        try {
+            embedded = MAPPER.readTree(data == null ? "{}" : data).toString();
+        } catch (Exception e) {
+            embedded = "\"" + escape(String.valueOf(data)) + "\"";
+        }
+        return sseRaw("{\"type\":\"RAW\",\"source\":\"opencode\",\"event\":" + embedded + "}");
+    }
+
+    private static String toJson(com.fasterxml.jackson.databind.node.ObjectNode n) {
+        return n.toString();
+    }
+
+    /** Best-effort abort of the OpenCode-side run; failures are logged and swallowed. */    private Mono<Void> abortSession(String sessionId) {
         // v2 官方分支是 POST /api/session/{id}/interrupt；旧打包二进制是 /abort
         return webClient.post()
                 .uri("/api/session/{id}/interrupt", sessionId)
