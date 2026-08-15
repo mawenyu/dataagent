@@ -145,4 +145,21 @@ describe('P10 surface 生命周期', () => {
     expect(errors, '关闭过程无 Vue 报错').toHaveLength(0)
     errSpy.mockRestore()
   })
+
+  it('P19 更新流：updateDataModel 改绑定值 → DOM 随之更新（数据驱动渲染闭环）', async () => {
+    const { wrapper, push } = mountLifecycle([
+      create('dash'),
+      update('dash', [
+        { component: 'Column', id: 'root', children: ['m'] },
+        { component: 'MetricCard', id: 'm', title: '总销售额', value: { path: 'total' } },
+      ]),
+      { version: 'v0.9', updateDataModel: { surfaceId: 'dash', path: '/', value: { total: 100 } } },
+    ])
+    await nextTick(); await nextTick()
+    expect(wrapper.text()).toContain('100')
+
+    await push([{ version: 'v0.9', updateDataModel: { surfaceId: 'dash', path: '/', value: { total: 999 } } }])
+    expect(wrapper.text()).toContain('999')
+    expect(wrapper.text()).not.toContain('100')
+  })
 })

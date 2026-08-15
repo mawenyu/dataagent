@@ -38,47 +38,68 @@ function makeLongChatMessages(n: number) {
 }
 const longChatMessages = isLongChat ? makeLongChatMessages(longChatN) : []
 
+// P19: ?opsUrl=<url> —— 加载真实 agent run 捕获的 surface ops（ACTIVITY_SNAPSHOT
+// content.a2ui_operations 数组 JSON），用真实渲染链回放留证
+const opsUrl = params.get('opsUrl')
+
+async function boot() {
 const t0 = performance.now()
-const app = createApp({
-  render() {
-    if (isLongChat) {
-      return h(CopilotKitProvider, { runtimeUrl: '/unused' }, () =>
-        h('div', { style: { maxWidth: '760px', margin: '0 auto', padding: '16px', background: '#f8fafc' } }, [
-          h(CopilotChatMessageView as any, { messages: longChatMessages, isRunning: false }),
+  // opsUrl 模式：先拉取再挂载（包装成 async 避免顶层 await 目标限制）
+  const batchOps = opsUrl
+    ? await Promise.resolve(null).then(async () => {
+        const res = await fetch(opsUrl)
+        return await res.json()
+      }).catch(() => null)
+    : null
+  if (batchOps) {
+    batch.operations = batchOps
+    batch.label = `真实 run 回放（${opsUrl!.split('/').pop()}）`
+    batch.components = [...new Set(batchOps.flatMap((o: any) =>
+      (o.updateComponents?.components ?? []).map((c: any) => c.component)))]
+  }
+  const app = createApp({
+    render() {
+      if (isLongChat) {
+        return h(CopilotKitProvider, { runtimeUrl: '/unused' }, () =>
+          h('div', { style: { maxWidth: '760px', margin: '0 auto', padding: '16px', background: '#f8fafc' } }, [
+            h(CopilotChatMessageView as any, { messages: longChatMessages, isRunning: false }),
+          ]),
+        )
+      }
+      return h(CopilotKitProvider, { a2ui: { catalog: dataAgentCatalog, includeSchema: false } }, () =>
+        h('div', { style: { maxWidth: '760px', margin: '0 auto', padding: '16px', background: '#f8fafc', minHeight: '100vh' } }, [
+          h('p', { style: { fontSize: '12px', color: '#6b7280', margin: '0 0 8px' } },
+            `A2UI 画廊 · ${batch.label} · batch=${batchKey} · 组件: ${batch.components.join(' / ')}`),
+          h(A2UISurfaceActivityRenderer as any, {
+            activityType: 'a2ui-surface',
+            content: { operations: batch.operations },
+            message: { id: `gallery-${batchKey}`, role: 'activity', activityType: 'a2ui-surface', content: {} },
+            catalog: dataAgentCatalog,
+          }),
         ]),
       )
-    }
-    return h(CopilotKitProvider, { a2ui: { catalog: dataAgentCatalog, includeSchema: false } }, () =>
-      h('div', { style: { maxWidth: '760px', margin: '0 auto', padding: '16px', background: '#f8fafc', minHeight: '100vh' } }, [
-        h('p', { style: { fontSize: '12px', color: '#6b7280', margin: '0 0 8px' } },
-          `A2UI 画廊 · ${batch.label} · batch=${batchKey} · 组件: ${batch.components.join(' / ')}`),
-        h(A2UISurfaceActivityRenderer as any, {
-          activityType: 'a2ui-surface',
-          content: { operations: batch.operations },
-          message: { id: `gallery-${batchKey}`, role: 'activity', activityType: 'a2ui-surface', content: {} },
-          catalog: dataAgentCatalog,
-        }),
-      ]),
-    )
-  },
-})
-app.mount('#app')
-
-// vision-P5-2: 真实浏览器渲染耗时上屏（截图留证用）
-nextTick(() => nextTick(() => {
-  const ms = (performance.now() - t0).toFixed(1)
-  const el = document.createElement('p')
-  el.id = 'perf-timing'
-  el.style.cssText = 'font-size:12px;color:#047857;margin:8px 16px;font-weight:600'
-  el.textContent = `真实浏览器首屏渲染耗时: ${ms}ms（batch=${batchKey}，组件数=${isLongChat ? longChatN + ' 条消息' : (batch.operations[1]?.updateComponents?.components?.length ?? '-')}）`
-  document.body.firstChild ? document.body.insertBefore(el, document.body.firstChild) : document.body.appendChild(el)
-}))
-
-// 截图留证钩子：?autoclick=1 自动点击第一个 ActionButton，
-// 截图可看到点击后的 disabled/loading 态（HITL 按钮可点性证据，2026-08-15）
-if (params.get('autoclick') === '1') {
-  setTimeout(() => {
-    const btn = document.querySelector('.a2ui-surface button') as HTMLButtonElement | null
-    btn?.click()
-  }, 800)
+    },
+  })
+  app.mount('#app')
+  
+  // vision-P5-2: 真实浏览器渲染耗时上屏（截图留证用）
+  nextTick(() => nextTick(() => {
+    const ms = (performance.now() - t0).toFixed(1)
+    const el = document.createElement('p')
+    el.id = 'perf-timing'
+    el.style.cssText = 'font-size:12px;color:#047857;margin:8px 16px;font-weight:600'
+    el.textContent = `真实浏览器首屏渲染耗时: ${ms}ms（batch=${batchKey}，组件数=${isLongChat ? longChatN + ' 条消息' : (batch.operations[1]?.updateComponents?.components?.length ?? '-')}）`
+    document.body.firstChild ? document.body.insertBefore(el, document.body.firstChild) : document.body.appendChild(el)
+  }))
+  
+  // 截图留证钩子：?autoclick=1 自动点击第一个 ActionButton，
+  // 截图可看到点击后的 disabled/loading 态（HITL 按钮可点性证据，2026-08-15）
+  if (params.get('autoclick') === '1') {
+    setTimeout(() => {
+      const btn = document.querySelector('.a2ui-surface button') as HTMLButtonElement | null
+      btn?.click()
+    }, 800)
+  }
+  
 }
+void boot()

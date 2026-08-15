@@ -1,0 +1,17 @@
+== P19 dashboard 真实化（2026-08-16，生产真实 run ×2 + 真值 diff + 真链回放截图）==
+
+数据-渲染闭环（r1: 2026-08-16-p19-dashboard-full.sse）:
+- agent 工具链 read+shell(awk 聚合) 真实计算 → render_a2ui 一次成板
+- 看板数据 vs python 独立真值: 总额 1,360,700 ✓ 五区域金额全对 ✓
+  按日趋势 13 点 ✓ DataTable 订单数/销量/销售额全对 ✓
+- 截图 READY-VISION-p19-dashboard-full.png（真实 ops 经 opsUrl 回放缓存
+  /agui/dataagent/p19-dash-full.json，与聊天区同一渲染链）
+
+更新流（r3: 2026-08-16-p19-dashboard-update.sse）:
+- 追问"只看华东" → 同 surfaceId 重渲染: ACTIVITY_SNAPSHOT messageId 同为
+  a2ui-p19-dash 且 replace=true（原位更新，非新卡）
+- 更新后数据: 华东总额 366,096 ✓ 品类拆解 笔记本139980/手机131967/
+  平板54579/智能手表31479/耳机8091 全对 ✓ DataTable 单行华东 ✓
+- 截图 READY-VISION-p19-dashboard-huadong.png
+
+vitest 补盲: updateDataModel 改绑定值 → DOM 随之更新（surfaceLifecycle #6）

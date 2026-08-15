@@ -253,8 +253,11 @@ function formatTime(iso: string) {
           </span>
         </template>
       </div>
-      <div v-if="!api.loading.value && visibleRows.length === 0" class="empty">
-        暂无文件，点击"上传"添加 CSV/数据文件
+      <div v-if="!api.loading.value && visibleRows.length === 0" class="empty" data-testid="files-empty">
+        <span class="empty-icon" aria-hidden="true">📂</span>
+        <p class="empty-title">这个目录还没有文件</p>
+        <button class="empty-upload" data-testid="empty-upload" @click="pickFile">⇪ 上传数据文件</button>
+        <p class="empty-sub">支持 CSV / JSON / XLSX / 图片等，agent 可直接读取分析</p>
       </div>
     </div>
     <!-- P-C: 在线预览 modal(csv 表格 / json 美化 / md 渲染;Teleport + ESC) -->
@@ -346,5 +349,15 @@ function formatTime(iso: string) {
   white-space: nowrap;
 }
 .act.del.confirming:hover { background: #dc2626; }
-.empty { padding: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; }
+.empty { padding: 28px 20px; text-align: center; color: #9ca3af; font-size: 12.5px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.empty-icon { font-size: 28px; }
+.empty-title { margin: 0; font-size: 13px; font-weight: 600; color: #6b7280; }
+.empty-upload {
+  margin-top: 4px;
+  font-size: 12.5px; font-weight: 600; color: #4338ca;
+  background: #eef2ff; border: 1px solid #e0e7ff; border-radius: 8px;
+  padding: 7px 16px; cursor: pointer;
+}
+.empty-upload:hover { background: #e0e7ff; }
+.empty-sub { margin: 0; font-size: 11.5px; }
 </style>

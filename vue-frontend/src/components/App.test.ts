@@ -427,3 +427,34 @@ describe('App P-Q（会话分叉）', () => {
     w.unmount()
   })
 })
+
+describe('App P-R（切换会话骨架屏）', () => {
+  it('切换会话时消息区显示 shimmer 骨架,历史加载完成后消失', async () => {
+    const t1 = { id: 't-1', title: '会话一', sessionId: null, createdAt: '', updatedAt: '2026-08-15T01:00:00Z' }
+    const t2 = { id: 't-2', title: '会话二', sessionId: null, createdAt: '', updatedAt: '2026-08-15T02:00:00Z' }
+    let releaseMessages!: () => void
+    const fetchMock = vi.fn(async (input: any) => {
+      const url = String(input)
+      // t1 排最前 → init 落在 t1(其 messages 秒回);t2 的 messages 挂起模拟加载中
+      if (url.endsWith('/chat/threads')) return { ok: true, json: async () => ({ data: [t1, t2] }) }
+      if (url.includes('/t-2/messages')) {
+        await new Promise<void>((r) => { releaseMessages = r })
+        return { ok: true, json: async () => ({ data: [{ id: 'u1', role: 'user', content: '历史消息' }] }) }
+      }
+      return { ok: true, json: async () => ({ data: [] }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App, { attachTo: document.body })
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+
+    // 切到 t-2(消息请求被挂起)
+    await w.find('[data-thread-id="t-2"]').trigger('click')
+    for (let i = 0; i < 4; i++) await nextTick()
+    expect(w.find('[data-testid="thread-skeleton"]').exists(), '加载中应显示骨架').toBe(true)
+
+    releaseMessages()
+    for (let i = 0; i < 8; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    expect(w.find('[data-testid="thread-skeleton"]').exists(), '加载完成后骨架消失').toBe(false)
+    w.unmount()
+  })
+})

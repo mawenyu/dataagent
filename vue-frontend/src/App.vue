@@ -167,6 +167,22 @@ function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
 function closeSidebarOnMobile() {
   if (window.innerWidth <= 720) sidebarOpen.value = false
 }
+
+// P-R: 切换会话时消息区 shimmer 骨架(历史拉取期间占位,避免旧会话残影/白屏)
+const threadSwitching = ref(false)
+async function switchThread(id: string) {
+  if (id === threadsApi.currentId.value) {
+    closeSidebarOnMobile()
+    return
+  }
+  threadSwitching.value = true
+  try {
+    await threadsApi.switchTo(id)
+  } finally {
+    threadSwitching.value = false
+  }
+  closeSidebarOnMobile()
+}
 onMounted(() => { if (window.innerWidth <= 720) sidebarOpen.value = false })
 
 // P-O: 全局快捷键 —— Ctrl/Cmd+K 聚焦会话搜索(自动展开侧边栏+会话 Tab);
@@ -454,7 +470,7 @@ async function exportThread(id: string, format: 'md' | 'json') {
                   :threads="threadsApi.threads.value"
                   :current-id="threadsApi.currentId.value"
                   @new="threadsApi.createNew()"
-                  @switch="threadsApi.switchTo($event); closeSidebarOnMobile()"
+                  @switch="switchThread($event)"
                   @remove="threadsApi.remove($event)"
                   @rename="(id: string, title: string) => threadsApi.rename(id, title)"
                   @export="(id: string, format: 'md' | 'json') => exportThread(id, format)"
@@ -579,6 +595,12 @@ async function exportThread(id: string, format: 'md' | 'json') {
               </template>
               </CopilotChat>
               <!-- P-B: 内联错误卡 —— 悬浮在消息流尾部上方,重试=原线程重发最后一条用户消息 -->
+              <!-- P-R: 切换会话骨架屏 -->
+              <div v-if="threadSwitching" class="thread-skeleton" data-testid="thread-skeleton" aria-hidden="true">
+                <div class="sk-row sk-left"><div class="sk-bubble shimmer"></div></div>
+                <div class="sk-row sk-right"><div class="sk-bubble shimmer"></div></div>
+                <div class="sk-row sk-left"><div class="sk-bubble shimmer"></div></div>
+              </div>
               <RunErrorCard
                 v-if="errorRecovery.runError.value"
                 class="run-error-overlay"
@@ -769,6 +791,24 @@ body {
 }
 .chat { flex: 1; min-height: 0; min-width: 0; }
 .chat-layout { flex: 1; min-height: 0; display: flex; }
+/* P-R: 切换会话骨架屏 */
+.thread-skeleton {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  background: #ffffff;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.sk-row { display: flex; }
+.sk-row.sk-right { justify-content: flex-end; }
+.sk-bubble { border-radius: 14px; }
+.sk-left .sk-bubble { width: 46%; height: 52px; }
+.sk-right .sk-bubble { width: 34%; height: 40px; }
+.sk-row.sk-left:last-child .sk-bubble { width: 58%; height: 64px; }
+
 /* P-B: 聊天列容器(相对定位,承载内联错误卡悬浮层) */
 .chat-col { flex: 1; min-height: 0; min-width: 0; display: flex; position: relative; }
 .run-error-overlay {

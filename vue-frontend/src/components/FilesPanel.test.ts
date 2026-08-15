@@ -295,3 +295,22 @@ describe('FilesPanel P-N（目录树导航 + 大文件提示）', () => {
     expect(fetchMock.mock.calls[2][1].method).toBe('POST')
   })
 })
+
+describe('FilesPanel P-R（友好空态）', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+
+  it('空目录: 图标 + 文案 + 上传引导按钮(点击触发文件选择)', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ files: [], dirs: [] }))
+    const wrapper = mount(FilesPanel)
+    await nextTick(); await nextTick(); await nextTick()
+    const empty = wrapper.find('[data-testid="files-empty"]')
+    expect(empty.exists()).toBe(true)
+    expect(empty.text()).toContain('还没有文件')
+    const btn = wrapper.find('[data-testid="empty-upload"]')
+    expect(btn.exists()).toBe(true)
+    const input = wrapper.find('[data-testid="file-input"]').element as HTMLInputElement
+    const clickSpy = vi.spyOn(input, 'click').mockImplementation(() => {})
+    await btn.trigger('click')
+    expect(clickSpy).toHaveBeenCalled()
+  })
+})
