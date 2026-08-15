@@ -19,6 +19,9 @@ agui:
   # 乱序事件缓存的兜底超时（fold by id/ordinal 的 seq 缺口永不补齐时强制 flush）
   event-reorder-timeout: PT3S
   # 数据工作区：默认相对应用工作目录的 workspace/，可用 AGUI_DATA_WORKSPACE 覆盖
+  files:
+    # workspace 文件上传上限（spec: docs/spec/workspace-files.md）
+    max-upload-size: 5MB
   data-workspace: ${AGUI_DATA_WORKSPACE:workspace}
 
 spring:

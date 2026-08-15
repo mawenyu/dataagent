@@ -9,6 +9,7 @@ import { useAgentState } from './composables/useAgentState'
 import { useThreads } from './composables/useThreads'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
+import FilesPanel from './components/FilesPanel.vue'
 import ThreadSidebar from './components/ThreadSidebar.vue'
 
 // Registered via the fork's `directAgents` prop (see packages/copilotkit-vue/FORK.md).
@@ -61,6 +62,8 @@ const frontendTools = [
 
 // 需求4: 侧边栏可折叠（移动端抽屉化）
 const sidebarOpen = ref(true)
+// task5-A: 侧边栏 Tab（会话 / 文件面板）
+const sidebarTab = ref<'threads' | 'files'>('threads')
 function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
 function closeSidebarOnMobile() {
   if (window.innerWidth <= 720) sidebarOpen.value = false
@@ -129,15 +132,32 @@ function handleChatError({ error }: { error: Error }) {
           <RenderA2uiToolCall />
           <div class="chat-layout">
             <Transition name="drawer">
-              <ThreadSidebar
-                v-if="sidebarOpen"
-                :threads="threadsApi.threads.value"
-                :current-id="threadsApi.currentId.value"
-                @new="threadsApi.createNew()"
-                @switch="threadsApi.switchTo($event); closeSidebarOnMobile()"
-                @remove="threadsApi.remove($event)"
-                @rename="(id: string, title: string) => threadsApi.rename(id, title)"
-              />
+              <div v-if="sidebarOpen" class="sidebar-shell">
+                <div class="sidebar-tabs" data-testid="sidebar-tabs">
+                  <button
+                    :class="{ on: sidebarTab === 'threads' }"
+                    data-testid="tab-threads"
+                    @click="sidebarTab = 'threads'"
+                  >会话</button>
+                  <button
+                    :class="{ on: sidebarTab === 'files' }"
+                    data-testid="tab-files"
+                    @click="sidebarTab = 'files'"
+                  >文件</button>
+                </div>
+                <ThreadSidebar
+                  v-if="sidebarTab === 'threads'"
+                  :threads="threadsApi.threads.value"
+                  :current-id="threadsApi.currentId.value"
+                  @new="threadsApi.createNew()"
+                  @switch="threadsApi.switchTo($event); closeSidebarOnMobile()"
+                  @remove="threadsApi.remove($event)"
+                  @rename="(id: string, title: string) => threadsApi.rename(id, title)"
+                />
+                <aside v-else class="sidebar">
+                  <FilesPanel />
+                </aside>
+              </div>
             </Transition>
             <div v-if="sidebarOpen" class="drawer-backdrop" @click="toggleSidebar"></div>
             <CopilotChat
@@ -329,6 +349,23 @@ body {
 .chat-layout { flex: 1; min-height: 0; display: flex; }
 
 /* ---- 需求4: 侧边栏折叠/抽屉 ---- */
+/* task5-A: 会话/文件 Tab 容器承载原 .sidebar 的栏位样式 */
+.sidebar-shell {
+  width: 240px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-right: 1px solid var(--border);
+  min-height: 0;
+}
+.sidebar-shell .sidebar { width: auto; border-right: none; flex: 1; min-height: 0; }
+.sidebar-tabs { display: flex; gap: 6px; padding: 10px 14px 4px; }
+.sidebar-tabs button {
+  flex: 1; font-size: 12.5px; padding: 5px 0; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff; color: #6b7280;
+}
+.sidebar-tabs button.on { background: #eef2ff; color: #4338ca; border-color: #e0e7ff; font-weight: 600; }
 .sidebar-toggle {
   display: inline-flex;
   align-items: center;
@@ -351,7 +388,7 @@ body {
 .drawer-backdrop { display: none; }
 
 @media (max-width: 720px) {
-  .chat-layout .sidebar {
+  .chat-layout .sidebar-shell {
     position: absolute;
     left: 0; top: 0; bottom: 0;
     z-index: 30;

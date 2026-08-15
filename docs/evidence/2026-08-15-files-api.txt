@@ -1,0 +1,12 @@
+== upload ==
+{"name":"upload-test.csv","size":68}
+== list ==
+dashboard-sales-2026-08.a2ui.json 4982
+region-sales-2026-08-result.csv 87
+sales-2026-08.csv 5528
+upload-test.csv 68
+== download sha ==
+      2 7010d684e4024454f55fb2f87bdca931762c643ac4d06db8fa6657fa11233dd6
+== traversal ==
+404
+terminal: RUN_FINISHED | TEXT: 线上渠道销售额为 520000。
