@@ -19,8 +19,12 @@
 const FORK = process.env.OPENCODE_FORK_PATH ?? "/home/ubuntu/opencode-fork"
 const { Plugin } = await import(`${FORK}/packages/plugin/src/promise/index.ts`)
 
+// 与 gateway A2UiBridgeService.ALLOWED_COMPONENTS + 前端 dataAgentCatalog 严格同源：
+// 18 个 basic catalog 组件 + 10 个自定义组件（2026-08-15 补 Video/AudioPlayer/Modal ——
+// 此前插件漏列导致模型不知道这三个组件可用）
 const CATALOG_COMPONENTS =
-  "Text,Image,Icon,Row,Column,List,Card,Tabs,Divider,Button,TextField,CheckBox,ChoicePicker,Slider,DateTimeInput," +
+  "Text,Image,Icon,Video,AudioPlayer,Row,Column,List,Card,Tabs,Divider,Modal," +
+  "Button,TextField,CheckBox,ChoicePicker,Slider,DateTimeInput," +
   "MetricCard,DataTable,BarChart,LineChart,PieChart,InsightCard,WarningCard,ActionButton,Badge,Markdown"
 
 const ok = (surfaceId: string, detail: string) => ({
