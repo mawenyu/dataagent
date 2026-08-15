@@ -20,12 +20,12 @@ OpenCode server (:4096, bun)  →  DeepSeek LLM
 |---|---|
 | `gateway/` | Java Spring Boot 网关（AG-UI 协议端点 + A2UI 桥），Java 17 + Maven |
 | `vue-frontend/` | **现行前端**（Vue 3 + Vite），部署到 `/agui/` |
-| `agents/` | **OpenCode2 定制层**：plugins/tools/skills/commands/subagents + `build-opencode.sh` 一键构建部署（配合 fork [`mawenyu/opencode@dataagent-v2`](https://github.com/mawenyu/opencode/tree/dataagent-v2)） |
+| `agents/` | **OpenCode2 定制层**：plugins/tool/skills/command/agent + `build-opencode.sh` 一键构建部署（上游样例隔离在 `upstream-examples/`，不部署；配合 fork [`mawenyu/opencode@dataagent-v2`](https://github.com/mawenyu/opencode/tree/dataagent-v2)） |
 | `packages/copilotkit-vue` | @copilotkit/vue 1.67.1 内部 fork（`directAgents` 支持），详见其 `FORK.md` 与 `patches/copilotkit-vue-fork.patch` |
-| `vendor/copilotkit-src` | CopilotKit 上游 monorepo（tag v1.67.1，含 .git），fork 的溯源基线 |
+| `vendor/copilotkit-src` | CopilotKit 上游 monorepo 的 submodule 指针（gitlink @ bee3913，内容未入库、本地未检出）；fork 溯源以 `patches/copilotkit-vue-fork.patch` + 上游 tag v1.67.1 为准 |
 | `ref/` | 参考源码（CopilotKit adk-dashboard 官方示例、ag-ui 上游），不参与构建 |
-| `scripts/` | 实测脚本（连续对话 test-multi-turn.sh、需求7 UI 事件 test-ui-req7.py） |
-| `docs/` | 设计文档（design.md / ARCHITECTURE.md / VERSIONS.md）与实测证据 screenshots/ |
+| `scripts/` | 运维与实测脚本：`up.sh`（opencode+gateway+vite 三件套幂等拉起）、`restart-gateway.sh`（gateway 重启纪律）、`test-multi-turn.sh`（5 轮连续对话）、`test-attachment-e2e.sh`（附件全链路）、`test-frontend-tool.sh`、`test-a2ui-form.sh`、`test-a2ui-all-components.sh`、`test-event-order-e2e.py`（乱序重排）、`test-ui-req7.py`（需求7 UI 事件） |
+| `docs/` | 权威文档（PRODUCT_REQUIREMENTS / CURRENT_ARCHITECTURE / TARGET_ARCHITECTURE / DEVELOPMENT_STATUS / ACCEPTANCE_TESTS）+ design.md / ARCHITECTURE.md / VERSIONS.md / spec/ 与实测证据 evidence/·screenshots/ |
 | `opencode.json` | OpenCode server 项目配置（模型 = deepseek/deepseek-chat） |
 
 ## 依赖版本
@@ -121,7 +121,7 @@ bash scripts/test-multi-turn.sh http://127.0.0.1:8090        # 连续对话 5 �
 
 唯一修改过的开源组件是 **@copilotkit/vue**：
 
-- 基线：上游 `CopilotKit/CopilotKit` **tag v1.67.1**（`vendor/copilotkit-src` 为含 .git 的完整溯源副本，remote = github.com/CopilotKit/CopilotKit.git）
+- 基线：上游 `CopilotKit/CopilotKit` **tag v1.67.1**；`vendor/copilotkit-src` 仅为 submodule 指针（gitlink，内容未入库），逐行溯源以下方的 `patches/copilotkit-vue-fork.patch` 为准（patch 即完整 unified diff）
 - fork 产物：`packages/copilotkit-vue`（前端以 `file:` 依赖）
 - 上游 MIT License 已保留
 
@@ -154,7 +154,7 @@ bash scripts/test-multi-turn.sh http://127.0.0.1:8090        # 连续对话 5 �
 
 ## 安全注意
 
-- 仓库内**不含任何 API key**。DeepSeek key 通过环境变量 `DEEPSEEK_API_KEY` 注入 OpenCode server。
+- 仓库内**不含任何 API key**。DeepSeek key 写在 `.opencode/opencode.jsonc` 的 `provider.deepseek.apiKey`（gitignore 不入库，占位结构见 `agents/opencode.jsonc.example`）；OpenCode serve 密码经 `.env.opencode` 的环境变量 `OPENCODE_SERVER_PASSWORD` 注入。
 - `docs/screenshots/` 内为实测日志/截图，可删。
 
 ## 当前版本状态
@@ -164,5 +164,9 @@ bash scripts/test-multi-turn.sh http://127.0.0.1:8090        # 连续对话 5 �
 - ✅ 需求2/3 去 mock + API 语义化（/agent/run + /chat/threads，无历史残留）
 - ✅ 需求7 对话完整性与可观测性（reasoning/工具调用/context 用量可见 + run 超时兜底）
 - ✅ OpenCode basic 认证支持（opencode.server.username/password）
-- 🚧 进行中：UI 绚丽化（需求4）、设计文档（需求5）
-- 详见 `TASK-v2.md`（任务书，含逐项 [DONE] 实测证据）与 `docs/design.md`
+- ✅ 需求4 UI 绚丽化：浅色 B2B SaaS 主题 + READY-VISION 系列打磨（骨架屏/会话分支/消息级操作/HITL 质感/图表真实数据边界/错误恢复 UI），证据见 `docs/READY-FRONTEND.md` 与 `docs/screenshots/`
+- ✅ 需求5 文档体系：PRODUCT_REQUIREMENTS / CURRENT_ARCHITECTURE / TARGET_ARCHITECTURE / DEVELOPMENT_STATUS / ACCEPTANCE_TESTS 五文档已建（`docs/`）
+- ✅ P0 安全修复：opencode 密码移出 `application.yml`（`.env.opencode` 环境变量注入）；SSE RUN_ERROR/RAW 帧手写 escape 改 Jackson 序列化（反斜杠非法 JSON 修复）
+- ✅ 全仓原生弹窗清零：applySpreadsheetEdits 的原生 confirm 改自绘确认 modal
+- **权威问题清单与下一步见 `docs/DEVELOPMENT_STATUS.md`**；端到端验收场景见 `docs/ACCEPTANCE_TESTS.md`
+- 早期任务书与逐项 [DONE] 实测证据：`TASK-v2.md`、`docs/design.md`

@@ -44,17 +44,23 @@ task5 之前 workspace 是**全局共享**单目录（`agui.data-workspace`，�
 ### B1. 会话级文件 API（新增）
 
 ```
-GET    /chat/threads/{threadId}/files            → { files: [{name,size,modifiedAt}] }
-POST   /chat/threads/{threadId}/files            multipart 字段名 file → {name,size}
-GET    /chat/threads/{threadId}/files/{name}     下载/查看（Content-Disposition attachment）
-PUT    /chat/threads/{threadId}/files/{name}     text/plain 覆盖写 → {name,size}
-DELETE /chat/threads/{threadId}/files/{name}     204 / 404
+GET    /chat/threads/{threadId}/files            → { path, dirs:[...], files:[{name,size,modifiedAt}] }
+                                                   （?path=sub/dir 进入子目录）
+POST   /chat/threads/{threadId}/files            multipart 字段名 file → {name,size}（?path= 入已存在子目录）
+GET    /chat/threads/{threadId}/files/{*name}    下载/查看（支持子目录；Content-Disposition attachment）
+PUT    /chat/threads/{threadId}/files/{*name}    text/plain 覆盖写 → {name,size,modifiedAt}
+DELETE /chat/threads/{threadId}/files/{*name}    204 / 404
 ```
 
 - threadId 非法（白名单外）→ 400 `{error:"invalid threadId"}`；thread 不存在也允许
   操作（目录懒创建，与 run 的自动建档行为一致 —— 前端先上传后发消息时 thread
   尚未建档）。
-- 错误码与 `/files` 一致：非法文件名 400 / 超限 413 / 空文件 400。
+- PUT 支持可选 query `baseModified`（读取时拿到的 modifiedAt 毫秒）乐观并发检测（P15）：
+  文件当前 mtime 与 baseModified 不符（或文件已不存在）→ **409**
+  `{error:"conflict", message:"file modified since read (baseModified mismatch)", currentModified}`，
+  不覆盖；省略 baseModified 则直接覆盖写。用于表格编辑器/agent 编辑在读取后被第三方
+  改动时防止静默丢改。
+- 错误码与 `/files` 一致：非法文件名 400 / 超限 413 / 空文件 400；另加 409（baseModified 冲突）。
 
 ### B2. run prompt 变化
 
