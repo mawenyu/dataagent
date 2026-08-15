@@ -1,0 +1,8 @@
+== P8 gateway 可观测性实测（2026-08-15）==
+-- logs/run-metrics.log（真实 run vision-p8-metrics）--
+{"ts":"2026-08-15T15:04:50.506247016Z","type":"tool_call","runId":"r1","threadId":"vision-p8-metrics","tool":"shell","durationMs":2167}
+{"ts":"2026-08-15T15:04:50.627801816Z","type":"run_finished","runId":"r1","threadId":"vision-p8-metrics","outcome":"completed","durationMs":14012}
+-- /actuator/metrics/agui.run.success.rate --
+{"name":"agui.run.success.rate","description":"AG-UI run success rate (completed/total)","measurements":[{"statistic":"VALUE","value":1.0}],"availableTags":[]}
+-- /actuator/metrics/agui.run.total --
+{"name":"agui.run.total","description":"AG-UI total runs","measurements":[{"statistic":"VALUE","value":1.0}],"availableTags":[]}

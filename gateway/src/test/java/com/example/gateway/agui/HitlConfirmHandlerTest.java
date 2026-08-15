@@ -22,11 +22,15 @@ class HitlConfirmHandlerTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path dir;
+
     private HitlConfirmHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry());
+        handler = new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry(),
+                new RunMetricsService(dir.resolve("m.log")));
     }
 
     private List<JsonNode> componentsOf(ServerSentEvent<String> sse) throws Exception {

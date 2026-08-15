@@ -64,6 +64,7 @@ public class AgUiProtocolService {
     private final String providerId;
     private final ChatThreadStore threadStore;
     private final WorkspaceFileService workspaceFiles;
+    private final RunMetricsService metrics;
     /** vision-P1: MESSAGES_SNAPSHOT 转换器（无状态，直接实例化）。 */
     private final ThreadMessagesService messagesService = new ThreadMessagesService();
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -74,7 +75,7 @@ public class AgUiProtocolService {
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
                                ThreadAccessPolicy threadAccessPolicy) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics());
     }
 
     /** Convenience constructor for tests — custom idle timeout. */
@@ -84,7 +85,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, runIdleTimeout, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics());
     }
 
     /** Convenience constructor for tests — store given (需求1 persistence assertions). */
@@ -94,7 +95,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                ChatThreadStore threadStore) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore, throwawayWorkspace());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore, throwawayWorkspace(), throwawayMetrics());
     }
 
     /** Convenience constructor for tests — custom timeout + workspace, default model. */
@@ -104,7 +105,7 @@ public class AgUiProtocolService {
                                ThreadAccessPolicy threadAccessPolicy,
                                Duration runIdleTimeout, String dataWorkspace) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, runIdleTimeout, dataWorkspace,
-                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace());
+                DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, throwawayStore(), throwawayWorkspace(), throwawayMetrics());
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -121,7 +122,8 @@ public class AgUiProtocolService {
                                @org.springframework.beans.factory.annotation.Value("${agui.model.provider-id:" + DEFAULT_PROVIDER_ID + "}")
                                String providerId,
                                ChatThreadStore threadStore,
-                               WorkspaceFileService workspaceFiles) {
+                               WorkspaceFileService workspaceFiles,
+                               RunMetricsService metrics) {
         this.webClient = opencodeWebClient;
         this.translator = translator;
         this.toolBridge = toolBridge;
@@ -134,11 +136,22 @@ public class AgUiProtocolService {
         this.providerId = providerId;
         this.threadStore = threadStore;
         this.workspaceFiles = workspaceFiles;
+        this.metrics = metrics;
     }
 
     private static ChatThreadStore throwawayStore() {
         try {
             return new ChatThreadStore(java.nio.file.Files.createTempDirectory("agui-threads-test"));
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    /** 测试便捷构造用：临时文件 metrics。 */
+    private static RunMetricsService throwawayMetrics() {
+        try {
+            return new RunMetricsService(java.nio.file.Files.createTempDirectory("agui-metrics-test")
+                    .resolve("run-metrics.log"));
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);
         }
@@ -197,8 +210,13 @@ public class AgUiProtocolService {
             threadWorkspace = dataWorkspace + "/" + WorkspaceFileService.THREADS_DIR + "/" + threadId;
         }
 
+        // P8: run 可观测性 —— 起点/终点/工具耗时结构化指标
+        metrics.runStarted(runId, threadId);
         return doRun(input, uid, threadId, runId, threadWorkspace)
-                .doOnNext(e -> persistSurfaceSnapshot(threadId, e));
+                .doOnNext(e -> {
+                    persistSurfaceSnapshot(threadId, e);
+                    tapMetrics(runId, threadId, e);
+                });
     }
 
     /** 需求1: 把 ACTIVITY_SNAPSHOT 的 surface 内容落盘，供历史回放重放看板。 */
@@ -236,6 +254,8 @@ public class AgUiProtocolService {
         if (input.forwardedProps() != null && input.forwardedProps().containsKey("a2uiAction")) {
             Object rawAction = input.forwardedProps().get("a2uiAction");
             log.info("A2UI action received on thread {} (user={}): {}", threadId, uid, rawAction);
+            // P8: HITL 决策到达 → 记录人工确认等待时长
+            tapHitlMetric(threadId, rawAction);
             StringBuilder p = new StringBuilder();
             if (a2UiBridge.hasA2uiContext(input.context())) {
                 p.append(a2UiBridge.buildServerToolSection(input.context())).append("\n\n");
@@ -369,6 +389,44 @@ public class AgUiProtocolService {
                                 .doOnError(e -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage()));
                 })
                 .onErrorResume(e -> Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"" + escape(String.valueOf(e.getMessage())) + "\"}")));
+    }
+
+    /** P8: 事件流插桩 —— RUN_FINISHED/RUN_ERROR 收尾；TOOL_CALL_START/END 计时。 */
+    private void tapMetrics(String runId, String threadId, ServerSentEvent<String> e) {
+        String d = e.data();
+        if (d == null) return;
+        try {
+            if (d.contains("\"type\":\"RUN_FINISHED\"")) {
+                metrics.runFinished(runId, threadId, "completed");
+            } else if (d.contains("\"type\":\"RUN_ERROR\"")) {
+                metrics.runFinished(runId, threadId, "error");
+            } else if (d.contains("\"type\":\"TOOL_CALL_START\"")) {
+                JsonNode n = MAPPER.readTree(d);
+                metrics.toolCallStarted(runId, n.path("toolCallId").asText(),
+                        n.path("toolCallName").asText("?"), threadId);
+            } else if (d.contains("\"type\":\"TOOL_CALL_END\"")) {
+                JsonNode n = MAPPER.readTree(d);
+                metrics.toolCallEnded(runId, n.path("toolCallId").asText(), threadId);
+            }
+        } catch (Exception ex) {
+            log.debug("metrics tap skipped: {}", ex.getMessage());
+        }
+    }
+
+    /** P8: a2uiAction 中的 hitl_confirm/hitl_cancel → hitl_wait 指标。 */
+    private void tapHitlMetric(String threadId, Object rawAction) {
+        try {
+            JsonNode action = MAPPER.valueToTree(rawAction);
+            JsonNode ev = action.path("action");
+            String name = ev.path("name").asText("");
+            if (!name.startsWith("hitl_")) return;
+            String actionId = ev.path("context").path("actionId").asText("");
+            if (actionId.isBlank()) return;
+            metrics.hitlResolved(threadId, actionId,
+                    "hitl_confirm".equals(name) ? "confirm" : "cancel");
+        } catch (Exception ex) {
+            log.debug("hitl metric tap skipped: {}", ex.getMessage());
+        }
     }
 
     /**

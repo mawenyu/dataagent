@@ -36,10 +36,13 @@ public class HitlConfirmHandler implements AguiEventTranslator.ServerToolHandler
 
     private final A2UiService a2Ui;
     private final A2UiSurfaceRegistry surfaceRegistry;
+    private final RunMetricsService metrics;
 
-    public HitlConfirmHandler(A2UiService a2Ui, A2UiSurfaceRegistry surfaceRegistry) {
+    public HitlConfirmHandler(A2UiService a2Ui, A2UiSurfaceRegistry surfaceRegistry,
+                              RunMetricsService metrics) {
         this.a2Ui = a2Ui;
         this.surfaceRegistry = surfaceRegistry;
+        this.metrics = metrics;
     }
 
     @Override
@@ -84,6 +87,8 @@ public class HitlConfirmHandler implements AguiEventTranslator.ServerToolHandler
                 a2Ui.updateComponents(surfaceId, arr));
         var state = surfaceRegistry.register("anonymous", threadId, surfaceId,
                 A2UiService.DATA_AGENT_CATALOG_ID, arr, null);
+        // P8: HITL 等待计时起点
+        metrics.hitlInterrupted(threadId, actionId);
         log.info("request_user_confirm: surface={} actionId={} (interrupt, await user)", surfaceId, actionId);
         return Optional.of(a2Ui.activitySnapshot(runId, threadId, state.activityMessageId(), ops));
     }

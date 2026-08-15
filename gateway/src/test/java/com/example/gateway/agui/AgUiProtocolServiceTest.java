@@ -589,7 +589,8 @@ class AgUiProtocolServiceTest {
                 new AllowAllThreadAccessPolicy(),
                 java.time.Duration.ofSeconds(10), "/tmp/ws", "deepseek-reasoner", "deepseek",
                 new ChatThreadStore(storeDir),
-                new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024));
+                new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
+                new RunMetricsService(storeDir.resolve("m-unused.log")));
         stub.eventStreams.add(textStep("m1", "ok"));
         custom.run(userMsg("t-model", "hi")).collectList().block(java.time.Duration.ofSeconds(10));
         assertEquals(1, stub.modelSets.size());
@@ -832,5 +833,90 @@ class AgUiProtocolServiceTest {
         stub.eventStreams.add(textStep("m1", "ok"));
         List<JsonNode> events = run(userMsg("t-noraw", "hi"));
         assertFalse(types(events).contains("RAW"));
+    }
+
+    // ---- P8: run 可观测性（结构化指标日志）----
+
+    /** run 完成/工具调用写结构化 JSON 行到 metrics 文件。 */
+    @Test
+    void runMetricsWrittenToFile() throws Exception {
+        java.nio.file.Path metricsFile = storeDir.resolve("run-metrics.log");
+        RunMetricsService metrics = new RunMetricsService(metricsFile);
+        AgUiProtocolService svc = new AgUiProtocolService(stub.client(),
+                new AguiEventTranslator(new FrontendToolBridge(),
+                        new A2UiBridgeService(new A2UiService(), surfaceRegistry)),
+                new FrontendToolBridge(),
+                new A2UiBridgeService(new A2UiService(), surfaceRegistry),
+                new A2UiActionHandler(),
+                new AllowAllThreadAccessPolicy(),
+                java.time.Duration.ofSeconds(10), AgUiProtocolService.DEFAULT_DATA_WORKSPACE,
+                "deepseek-chat", "deepseek",
+                new ChatThreadStore(storeDir),
+                new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
+                metrics);
+        String stream =
+                ocEvent("session.step.started", "{\"assistantMessageID\":\"m1\"}")
+                + ocEvent("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"bash\"}")
+                + ocEvent("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"text\":\"ls\"}")
+                + ocEvent("session.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":1,\"output\":2,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}");
+        stub.eventStreams.add(stream);
+        svc.run(userMsg("t-metrics", "ls")).collectList().block(java.time.Duration.ofSeconds(10));
+
+        List<String> lines = java.nio.file.Files.readAllLines(metricsFile);
+        assertFalse(lines.isEmpty(), "metrics file written");
+        JsonNode runLine = null;
+        JsonNode toolLine = null;
+        for (String l : lines) {
+            JsonNode n = MAPPER.readTree(l);
+            if ("run_finished".equals(n.path("type").asText())) runLine = n;
+            if ("tool_call".equals(n.path("type").asText())) toolLine = n;
+        }
+        assertNotNull(runLine, "run_finished 行存在");
+        assertEquals("t-metrics", runLine.path("threadId").asText());
+        assertEquals("completed", runLine.path("outcome").asText());
+        assertTrue(runLine.path("durationMs").asLong() >= 0);
+        assertNotNull(toolLine, "tool_call 行存在");
+        assertEquals("bash", toolLine.path("tool").asText());
+        assertEquals(1, metrics.totalRuns());
+        assertEquals(1.0, metrics.successRate(), 1e-9);
+    }
+
+    /** HITL：interrupt 记录起点，a2uiAction hitl_* 到达时写 hitl_wait。 */
+    @Test
+    void hitlWaitMetricRecorded() throws Exception {
+        java.nio.file.Path metricsFile = storeDir.resolve("run-metrics-hitl.log");
+        RunMetricsService metrics = new RunMetricsService(metricsFile);
+        metrics.hitlInterrupted("t-hitl-m", "act-9");
+        AgUiProtocolService svc = new AgUiProtocolService(stub.client(),
+                new AguiEventTranslator(new FrontendToolBridge(),
+                        new A2UiBridgeService(new A2UiService(), surfaceRegistry)),
+                new FrontendToolBridge(),
+                new A2UiBridgeService(new A2UiService(), surfaceRegistry),
+                new A2UiActionHandler(),
+                new AllowAllThreadAccessPolicy(),
+                java.time.Duration.ofSeconds(10), AgUiProtocolService.DEFAULT_DATA_WORKSPACE,
+                "deepseek-chat", "deepseek",
+                new ChatThreadStore(storeDir),
+                new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
+                metrics);
+        stub.eventStreams.add(textStep("m1", "好的，已确认"));
+        RunAgentInput input = new RunAgentInput("t-hitl-m", "run-hitl", null,
+                List.of(Map.of("role", "user", "content", "(clicked)")), null, null,
+                Map.of("a2uiAction", Map.of("action", Map.of(
+                        "name", "hitl_confirm",
+                        "surfaceId", "hitl-act-9",
+                        "context", Map.of("actionId", "act-9")))));
+        svc.run(input).collectList().block(java.time.Duration.ofSeconds(10));
+
+        List<String> lines = java.nio.file.Files.readAllLines(metricsFile);
+        JsonNode hitl = null;
+        for (String l : lines) {
+            JsonNode n = MAPPER.readTree(l);
+            if ("hitl_wait".equals(n.path("type").asText())) hitl = n;
+        }
+        assertNotNull(hitl, "hitl_wait 行存在");
+        assertEquals("act-9", hitl.path("actionId").asText());
+        assertEquals("confirm", hitl.path("decision").asText());
+        assertTrue(hitl.path("waitMs").asLong() >= 0);
     }
 }

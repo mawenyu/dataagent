@@ -639,11 +639,12 @@ class AguiEventTranslatorTest {
 
     /** vision-P3: 原生 request_user_confirm → HITL 确认卡片 ACTIVITY_SNAPSHOT 并中断 run。 */
     @Test
-    void nativeHitlConfirmRendersInterruptSurface() {
+    void nativeHitlConfirmRendersInterruptSurface() throws Exception {
         A2UiService a2UiService = new A2UiService();
         AguiEventTranslator t = new AguiEventTranslator(new FrontendToolBridge(),
                 new A2UiBridgeService(a2UiService, new A2UiSurfaceRegistry()),
-                List.of(new HitlConfirmHandler(a2UiService, new A2UiSurfaceRegistry())));
+                List.of(new HitlConfirmHandler(a2UiService, new A2UiSurfaceRegistry(),
+                        new RunMetricsService(java.nio.file.Files.createTempDirectory("hitl-m").resolve("m.log")))));
         List<JsonNode> events = t.translate("thread", "run", Set.of(), Flux.just(
                 oc("session.step.started", "{\"assistantMessageID\":\"m1\"}"),
                 oc("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c9\",\"name\":\"request_user_confirm\"}"),

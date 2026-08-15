@@ -52,7 +52,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,gateway
+        include: health,info,gateway,metrics
   endpoint:
     health:
       probes:
