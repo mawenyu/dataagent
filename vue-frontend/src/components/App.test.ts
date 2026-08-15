@@ -186,4 +186,82 @@ describe('App UI (需求4)', () => {
     // 失败轮被截掉后重发 → 请求体里该用户消息只出现一次
     expect(retryBody.split('分析本月销售').length - 1).toBe(1)
   })
+
+  it('P-E: 点模板卡填充并高亮该卡;一键清空按钮清空输入并移除高亮', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
+
+    // 填充前无清空按钮
+    expect(w.find('[data-testid="welcome-clear"]').exists()).toBe(false)
+
+    const first = w.findAll('.welcome-card')[0]
+    await first.trigger('click')
+    await nextTick()
+    expect(first.classes(), '点击后卡片应高亮').toContain('card-active')
+
+    // 一键清空
+    const clearBtn = w.find('[data-testid="welcome-clear"]')
+    expect(clearBtn.exists(), '填充后应出现清空按钮').toBe(true)
+    await clearBtn.trigger('click')
+    await nextTick()
+    expect((w.find('.welcome-input textarea').element as HTMLTextAreaElement).value).toBe('')
+    expect(w.findAll('.welcome-card')[0].classes()).not.toContain('card-active')
+    expect(w.find('[data-testid="welcome-clear"]').exists()).toBe(false)
+  })
+
+  it('P-E: 手动编辑输入后卡片高亮移除', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
+
+    await w.findAll('.welcome-card')[1].trigger('click')
+    await nextTick()
+    expect(w.findAll('.welcome-card')[1].classes()).toContain('card-active')
+    await w.find('.welcome-input textarea').setValue('改成我自己的问题')
+    await nextTick()
+    expect(w.findAll('.welcome-card')[1].classes()).not.toContain('card-active')
+  })
+
+  it('P-E: Enter 发送 / Shift+Enter 换行不发送', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
+    const runs = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent/run'))
+
+    const ta = w.find('.welcome-input textarea')
+    await ta.setValue('第一行\n第二行')
+    await ta.trigger('keydown.enter', { shiftKey: true })
+    for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    expect(runs().length, 'Shift+Enter 不应发送').toBe(0)
+
+    await ta.trigger('keydown.enter')
+    for (let i = 0; i < 8; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    expect(runs().length, 'Enter 应发送').toBe(1)
+    expect(String((runs()[0][1] as RequestInit)?.body ?? '')).toContain('第一行')
+  })
+
+  it('P-E: 输入框自适应高度 —— 内容矮时跟随,超过 3 行封顶并出现滚动', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
+    const ta = w.find('.welcome-input textarea').element as HTMLTextAreaElement
+
+    // jsdom 无布局,模拟 scrollHeight
+    Object.defineProperty(ta, 'scrollHeight', { value: 44, configurable: true })
+    await w.find('.welcome-input textarea').setValue('一行')
+    expect(ta.style.height).toBe('44px')
+    expect(ta.style.overflowY).toBe('hidden')
+
+    Object.defineProperty(ta, 'scrollHeight', { value: 200, configurable: true })
+    await w.find('.welcome-input textarea').setValue('一\n二\n三\n四\n五')
+    const h = parseInt(ta.style.height, 10)
+    expect(h, '超过 3 行应封顶').toBeLessThanOrEqual(90)
+    expect(h).toBeGreaterThan(44)
+    expect(ta.style.overflowY).toBe('auto')
+  })
 })

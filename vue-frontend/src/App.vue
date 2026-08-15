@@ -162,9 +162,49 @@ const promptTemplates = [
   },
 ]
 const welcomeTextarea = ref<HTMLTextAreaElement | null>(null)
-function fillTemplate(prompt: string, onUpdate: (v: string) => void) {
-  onUpdate(prompt)
-  void nextTick(() => welcomeTextarea.value?.focus())
+/** P-E: 当前高亮的模板卡标题(手动编辑/清空时移除) */
+const activeTemplate = ref<string | null>(null)
+
+/** P-E: 欢迎页输入框自适应高度 —— 跟随内容,超 3 行封顶出滚动条。 */
+const WELCOME_TA_MAX = 82 // 3 行 × 22px 行高 + 上下 padding 16px
+const WELCOME_TA_MIN = 40
+function autoGrowWelcome() {
+  const el = welcomeTextarea.value
+  if (!el) return
+  el.style.height = 'auto'
+  const h = Math.max(WELCOME_TA_MIN, Math.min(el.scrollHeight, WELCOME_TA_MAX))
+  el.style.height = `${h}px`
+  el.style.overflowY = el.scrollHeight > WELCOME_TA_MAX ? 'auto' : 'hidden'
+}
+
+function fillTemplate(sg: { title: string; prompt: string }, onUpdate: (v: string) => void) {
+  onUpdate(sg.prompt)
+  activeTemplate.value = sg.title
+  void nextTick(() => {
+    welcomeTextarea.value?.focus()
+    autoGrowWelcome()
+  })
+}
+
+/** 手动编辑: 转接文本 + 移除模板高亮 + 自适应高度。 */
+function onWelcomeInput(e: Event, onUpdate: (v: string) => void) {
+  activeTemplate.value = null
+  onUpdate((e.target as HTMLTextAreaElement).value)
+  autoGrowWelcome()
+}
+
+/** 一键清空: 清空文本 + 移除高亮 + 复位高度。 */
+function clearWelcome(onUpdate: (v: string) => void) {
+  onUpdate('')
+  activeTemplate.value = null
+  void nextTick(() => {
+    const el = welcomeTextarea.value
+    if (el) {
+      el.style.height = ''
+      el.style.overflowY = 'hidden'
+      el.focus()
+    }
+  })
 }
 
 // 需求7-6 + P-B: run 超时/失败 → 内联错误卡（原因+重试）+ toast；
@@ -306,8 +346,9 @@ async function exportThread(id: string) {
                       v-for="sg in promptTemplates"
                       :key="sg.title"
                       class="welcome-card"
+                      :class="{ 'card-active': activeTemplate === sg.title }"
                       :title="`填充模板：${sg.prompt}`"
-                      @click="fillTemplate(sg.prompt, onUpdateModelValue)"
+                      @click="fillTemplate(sg, onUpdateModelValue)"
                     >
                       <strong>{{ sg.title }}</strong>
                       <span>{{ sg.desc }}</span>
@@ -364,12 +405,19 @@ async function exportThread(id: string) {
                       <textarea
                         ref="welcomeTextarea"
                         :value="modelValue"
-                        placeholder="输入你的数据问题，回车发送…"
+                        placeholder="输入你的数据问题，回车发送，Shift+Enter 换行…"
                         rows="1"
                         :disabled="isRunning"
-                        @input="onUpdateModelValue(($event.target as HTMLTextAreaElement).value)"
+                        @input="onWelcomeInput($event, onUpdateModelValue)"
                         @keydown.enter.exact.prevent="submitWelcome(modelValue, onSubmitMessage)"
                       ></textarea>
+                      <button
+                        v-if="(modelValue && modelValue.length > 0) || activeTemplate"
+                        class="welcome-clear"
+                        data-testid="welcome-clear"
+                        title="清空输入"
+                        @click="clearWelcome(onUpdateModelValue)"
+                      >✕</button>
                       <button
                         class="welcome-send"
                         :disabled="isRunning || welcomeAttachments.hasUploading.value || (!(modelValue && modelValue.trim()) && !welcomeAttachments.hasReady.value)"
@@ -730,6 +778,27 @@ body {
 }
 .welcome-card strong { font-size: 14px; color: #111827; }
 .welcome-card span { font-size: 12.5px; color: var(--muted-foreground); }
+/* P-E: 模板卡高亮态 */
+.welcome-card.card-active {
+  border-color: var(--accent);
+  background: #eef2ff;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+/* P-E: 一键清空按钮 */
+.welcome-clear {
+  flex: none;
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.welcome-clear:hover { background: #fef2f2; color: #ef4444; }
 
 /* ---- shimmer 加载动画（suggestion/加载占位通用） ---- */
 @keyframes shimmer {
