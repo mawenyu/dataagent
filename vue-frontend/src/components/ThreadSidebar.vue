@@ -87,6 +87,53 @@ function toggleArchive(t: ThreadMeta) {
 const activeThreads = computed(() => visibleThreads.value.filter((t) => !archived.value.has(t.id)))
 const archivedThreads = computed(() => visibleThreads.value.filter((t) => archived.value.has(t.id)))
 
+// ---- P-H: 多选批量操作(批量归档复用 P-G 语义;批量删除走确认 modal) ----
+const selectMode = ref(false)
+const selected = ref<Set<string>>(new Set())
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  selected.value = new Set()
+}
+function toggleSelect(id: string) {
+  const next = new Set(selected.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selected.value = next
+}
+const allSelected = computed(
+  () => activeThreads.value.length > 0 && activeThreads.value.every((t) => selected.value.has(t.id)),
+)
+function toggleSelectAll() {
+  selected.value = allSelected.value
+    ? new Set()
+    : new Set(activeThreads.value.map((t) => t.id))
+}
+/** 多选模式下点行 = 切换选中;普通模式 = 切换会话。 */
+function onRowClick(t: ThreadMeta) {
+  if (selectMode.value) {
+    toggleSelect(t.id)
+    return
+  }
+  emit('switch', t.id)
+}
+function batchArchive() {
+  if (selected.value.size === 0) return
+  const next = new Set(archived.value)
+  for (const id of selected.value) next.add(id)
+  archived.value = next
+  try {
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify([...next]))
+  } catch { /* 静默降级 */ }
+  selectMode.value = false
+  selected.value = new Set()
+}
+function requestBatchRemove() {
+  if (selected.value.size === 0) return
+  dialog.value = { kind: 'batch-remove', ids: [...selected.value] }
+  void nextTick(() => overlayEl.value?.focus())
+}
+
 const emit = defineEmits<{
   (e: 'new'): void
   (e: 'switch', id: string): void
@@ -98,6 +145,7 @@ const emit = defineEmits<{
 type DialogState =
   | { kind: 'remove'; thread: ThreadMeta }
   | { kind: 'rename'; thread: ThreadMeta }
+  | { kind: 'batch-remove'; ids: string[] }
   | null
 
 const dialog = ref<DialogState>(null)
@@ -129,6 +177,11 @@ function submitDialog() {
   if (!d) return
   if (d.kind === 'remove') {
     emit('remove', d.thread.id)
+  } else if (d.kind === 'batch-remove') {
+    for (const id of d.ids) emit('remove', id)
+    // 批量删除确认后退出多选
+    selectMode.value = false
+    selected.value = new Set()
   } else {
     const title = renameDraft.value.trim()
     if (title && title !== d.thread.title) {
@@ -145,7 +198,16 @@ const renameInvalid = () => !renameDraft.value.trim()
   <aside class="sidebar" data-testid="thread-sidebar">
     <div class="sidebar-head">
       <span class="sidebar-title">会话</span>
-      <button class="new-btn" data-testid="new-thread" title="新建会话" @click="emit('new')">+ 新建</button>
+      <span class="head-actions">
+        <button
+          class="new-btn"
+          :class="{ on: selectMode }"
+          data-testid="multiselect-toggle"
+          title="多选批量操作"
+          @click="toggleSelectMode"
+        >☑ 多选</button>
+        <button class="new-btn" data-testid="new-thread" title="新建会话" @click="emit('new')">+ 新建</button>
+      </span>
     </div>
     <!-- P7: 搜索过滤 -->
     <div class="search-wrap">
@@ -156,42 +218,72 @@ const renameInvalid = () => !renameDraft.value.trim()
         placeholder="搜索会话标题…"
       />
     </div>
+    <!-- P-H: 多选批量操作栏 -->
+    <div v-if="selectMode" class="bulk-bar" data-testid="bulk-bar">
+      <button class="bulk-btn" data-testid="bulk-select-all" @click="toggleSelectAll">
+        {{ allSelected ? '全不选' : '全选' }}
+      </button>
+      <span class="bulk-count" data-testid="bulk-count">已选 {{ selected.size }} 项</span>
+      <button
+        class="bulk-btn"
+        data-testid="bulk-archive"
+        :disabled="selected.size === 0"
+        @click="batchArchive"
+      >归档</button>
+      <button
+        class="bulk-btn danger"
+        data-testid="bulk-delete"
+        :disabled="selected.size === 0"
+        @click="requestBatchRemove"
+      >删除</button>
+      <button class="bulk-btn" data-testid="bulk-cancel" @click="toggleSelectMode">取消</button>
+    </div>
     <div class="thread-list">
       <div
         v-for="t in activeThreads"
         :key="t.id"
         class="thread-item"
-        :class="{ active: t.id === currentId, pinned: pinned.has(t.id) }"
+        :class="{ active: t.id === currentId, pinned: pinned.has(t.id), selecting: selectMode }"
         :data-thread-id="t.id"
-        @click="emit('switch', t.id)"
+        @click="onRowClick(t)"
         @dblclick="startRename(t)"
       >
+        <input
+          v-if="selectMode"
+          type="checkbox"
+          class="select-box"
+          :data-testid="`select-${t.id}`"
+          :checked="selected.has(t.id)"
+          @click.stop="toggleSelect(t.id)"
+        />
         <span class="thread-title" :title="t.title">{{ t.title }}</span>
-        <button
-          class="icon-btn pin-btn"
-          :class="{ on: pinned.has(t.id) }"
-          :data-testid="`pin-${t.id}`"
-          :title="pinned.has(t.id) ? '取消置顶' : '置顶'"
-          @click.stop="togglePin(t)"
-        >📌</button>
-        <button
-          class="icon-btn archive-btn"
-          :data-testid="`archive-${t.id}`"
-          title="归档会话(移入底部归档区)"
-          @click.stop="toggleArchive(t)"
-        >📥</button>
-        <button
-          class="icon-btn export-btn"
-          :data-testid="`export-${t.id}`"
-          title="导出会话为 Markdown"
-          @click.stop="emit('export', t.id)"
-        >⤓</button>
-        <button
-          class="icon-btn del-btn"
-          :data-testid="`del-${t.id}`"
-          title="删除会话"
-          @click.stop="confirmRemove(t)"
-        >×</button>
+        <template v-if="!selectMode">
+          <button
+            class="icon-btn pin-btn"
+            :class="{ on: pinned.has(t.id) }"
+            :data-testid="`pin-${t.id}`"
+            :title="pinned.has(t.id) ? '取消置顶' : '置顶'"
+            @click.stop="togglePin(t)"
+          >📌</button>
+          <button
+            class="icon-btn archive-btn"
+            :data-testid="`archive-${t.id}`"
+            title="归档会话(移入底部归档区)"
+            @click.stop="toggleArchive(t)"
+          >📥</button>
+          <button
+            class="icon-btn export-btn"
+            :data-testid="`export-${t.id}`"
+            title="导出会话为 Markdown"
+            @click.stop="emit('export', t.id)"
+          >⤓</button>
+          <button
+            class="icon-btn del-btn"
+            :data-testid="`del-${t.id}`"
+            title="删除会话"
+            @click.stop="confirmRemove(t)"
+          >×</button>
+        </template>
       </div>
       <div v-if="threads.length === 0" class="empty">暂无会话</div>
       <div v-else-if="activeThreads.length === 0 && archivedThreads.length === 0" class="empty">无匹配会话</div>
@@ -263,6 +355,16 @@ const renameInvalid = () => !renameDraft.value.trim()
               <button class="dlg-btn danger" data-testid="dialog-confirm" @click="submitDialog">删除</button>
             </div>
           </template>
+          <template v-else-if="dialog.kind === 'batch-remove'">
+            <h3 class="dlg-title">批量删除会话</h3>
+            <p class="dlg-body">
+              删除选中的 {{ dialog.ids.length }} 个会话？这些会话的消息记录与工作目录将一并删除，此操作不可撤销。
+            </p>
+            <div class="dlg-actions">
+              <button class="dlg-btn" data-testid="dialog-cancel" @click="closeDialog">取消</button>
+              <button class="dlg-btn danger" data-testid="dialog-confirm" @click="submitDialog">删除</button>
+            </div>
+          </template>
           <template v-else>
             <h3 class="dlg-title">重命名会话</h3>
             <input
@@ -316,6 +418,34 @@ const renameInvalid = () => !renameDraft.value.trim()
   cursor: pointer;
 }
 .new-btn:hover { background: #e0e7ff; }
+.head-actions { display: flex; gap: 6px; }
+.new-btn.on { background: #4338ca; color: #ffffff; border-color: #4338ca; }
+
+/* ---- P-H: 多选批量操作 ---- */
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 14px 8px;
+  flex-wrap: wrap;
+}
+.bulk-btn {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: #ffffff;
+  color: #4b5563;
+  cursor: pointer;
+}
+.bulk-btn:hover:not(:disabled) { background: #f1f5f9; }
+.bulk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.bulk-btn.danger { color: #ef4444; border-color: #fecaca; }
+.bulk-btn.danger:hover:not(:disabled) { background: #fef2f2; }
+.bulk-count { flex: 1; text-align: center; font-size: 11.5px; color: #6b7280; white-space: nowrap; }
+.select-box { flex: none; accent-color: #6366f1; cursor: pointer; }
+.thread-item.selecting { user-select: none; }
 .thread-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
 .thread-item {
   display: flex;

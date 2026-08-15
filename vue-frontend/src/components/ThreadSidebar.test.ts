@@ -278,3 +278,107 @@ describe('ThreadSidebar P-G（会话归档）', () => {
     expect(list.text()).not.toContain('销售周报')
   })
 })
+
+describe('ThreadSidebar P-H（多选批量操作）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    localStorage.clear()
+  })
+
+  const many = [
+    { id: 'a', title: '销售分析', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'b', title: '库存盘点', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'c', title: '销售周报', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'd', title: '客户清单', sessionId: null, createdAt: '', updatedAt: '' },
+  ]
+
+  it('进入多选模式: 出现 checkbox 与批量栏;勾选计数;取消退出', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    expect(w.find('[data-testid="select-a"]').exists()).toBe(false)
+
+    await w.find('[data-testid="multiselect-toggle"]').trigger('click')
+    expect(w.find('[data-testid="select-a"]').exists()).toBe(true)
+    expect(w.find('[data-testid="bulk-bar"]').exists()).toBe(true)
+    expect(w.find('[data-testid="bulk-count"]').text()).toContain('0')
+
+    await w.find('[data-testid="select-a"]').trigger('click')
+    await w.find('[data-testid="select-c"]').trigger('click')
+    expect(w.find('[data-testid="bulk-count"]').text()).toContain('2')
+
+    await w.find('[data-testid="bulk-cancel"]').trigger('click')
+    expect(w.find('[data-testid="select-a"]').exists()).toBe(false)
+    expect(w.find('[data-testid="bulk-bar"]').exists()).toBe(false)
+  })
+
+  it('多选模式下点击行 = 切换选中,不触发会话切换', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    await w.find('[data-testid="multiselect-toggle"]').trigger('click')
+    await w.find('.thread-list .thread-item[data-thread-id="b"]').trigger('click')
+    expect(w.emitted('switch')).toBeUndefined()
+    expect(w.find('[data-testid="bulk-count"]').text()).toContain('1')
+  })
+
+  it('批量归档: 选中项移入归档区(复用 P-G 语义),多选模式自动退出', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' }, attachTo: document.body })
+    await w.find('[data-testid="multiselect-toggle"]').trigger('click')
+    await w.find('[data-testid="select-a"]').trigger('click')
+    await w.find('[data-testid="select-b"]').trigger('click')
+    await w.find('[data-testid="bulk-archive"]').trigger('click')
+
+    expect(w.find('.thread-list').text()).not.toContain('销售分析')
+    expect(w.find('.thread-list').text()).not.toContain('库存盘点')
+    expect(w.find('[data-testid="archive-toggle"]').text()).toContain('2')
+    const stored = JSON.parse(localStorage.getItem('dataagent.archivedThreads') ?? '[]')
+    expect(stored).toEqual(expect.arrayContaining(['a', 'b']))
+    // 自动退出多选
+    expect(w.find('[data-testid="bulk-bar"]').exists()).toBe(false)
+  })
+
+  it('批量删除: 弹确认 modal(含数量),确认后逐项 emit remove', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' }, attachTo: document.body })
+    await w.find('[data-testid="multiselect-toggle"]').trigger('click')
+    await w.find('[data-testid="select-b"]').trigger('click')
+    await w.find('[data-testid="select-d"]').trigger('click')
+    await w.find('[data-testid="bulk-delete"]').trigger('click')
+
+    const dlg = document.body.querySelector('[data-testid="thread-dialog"]')
+    expect(dlg).toBeTruthy()
+    expect(dlg!.textContent).toContain('2')
+    expect(w.emitted('remove'), '确认前不发 remove').toBeUndefined()
+
+    ;(dlg!.querySelector('[data-testid="dialog-confirm"]') as HTMLButtonElement).click()
+    await nextTick()
+    expect(w.emitted('remove')).toEqual([['b'], ['d']])
+    expect(document.body.querySelector('[data-testid="thread-dialog"]')).toBeNull()
+    expect(w.find('[data-testid="bulk-bar"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('批量删除 modal 取消: 不发 remove,保持多选状态', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' }, attachTo: document.body })
+    await w.find('[data-testid="multiselect-toggle"]').trigger('click')
+    await w.find('[data-testid="select-b"]').trigger('click')
+    await w.find('[data-testid="bulk-delete"]').trigger('click')
+    ;(document.body.querySelector('[data-testid="dialog-cancel"]') as HTMLButtonElement).click()
+    await nextTick()
+    expect(w.emitted('remove')).toBeUndefined()
+    // 取消仅关弹窗,多选与选中保留(用户可继续操作)
+    expect(w.find('[data-testid="bulk-bar"]').exists()).toBe(true)
+    expect(w.find('[data-testid="bulk-count"]').text()).toContain('1')
+    w.unmount()
+  })
+
+  it('全选/取消全选;无选中时批量按钮禁用', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    await w.find('[data-testid="multiselect-toggle"]').trigger('click')
+    expect((w.find('[data-testid="bulk-archive"]').element as HTMLButtonElement).disabled).toBe(true)
+    expect((w.find('[data-testid="bulk-delete"]').element as HTMLButtonElement).disabled).toBe(true)
+
+    await w.find('[data-testid="bulk-select-all"]').trigger('click')
+    expect(w.find('[data-testid="bulk-count"]').text()).toContain('4')
+    expect((w.find('[data-testid="bulk-archive"]').element as HTMLButtonElement).disabled).toBe(false)
+
+    await w.find('[data-testid="bulk-select-all"]').trigger('click')
+    expect(w.find('[data-testid="bulk-count"]').text()).toContain('0')
+  })
+})
