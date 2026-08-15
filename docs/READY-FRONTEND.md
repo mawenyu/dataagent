@@ -48,5 +48,6 @@ F1 主链路 / F2 功能项 / F4 全部在 task6 及之前已完成；本次补�
 | `48229ba` | **P-K token/上下文可观测**：顶栏新增 tokens 徽章（每会话分桶累计 input+output+reasoning，悬停见 step 数与输入/输出/推理/缓存明细，切会话各自保留）；context 徽章分级变色（≥80% 琥珀 / ≥95% 红）+ 升级一次性 toast（red 档建议新建会话+导出）；数据源 gateway context_usage 实测载荷吻合，零 mock 零 gateway 改动 |
 | `fb06dda`* | **P-L 工具卡面板体验**：长参数/结果超 600 字符默认截断（'展开全部(共 N 字符)'/收起，per-block 独立，不干扰卡片整体折叠）；工具卡头部新增状态点（running 蓝/done 绿/failed 红/interrupted 琥珀，与 F3/P9 状态语义同源，data-state 可断言）。（*改动被并行 vision 会话的 P13 提交一并带走，内容已核验完整并在 origin/main） |
 | `7efd139`*+`64fb750` | **P-M 导出增强**：MD 消息小节带时间、工具摘要附耗时+结果状态（✓完成/✗失败，缺字段不渲染兼容旧历史）、用户消息 📎 附件清单、文件名标题 slug；新增 JSON 格式选项（结构化 thread+归一消息，toolCall 平铺并配对 result）；导出按钮改格式菜单（MD/JSON）。gateway 转换层补 createdAt/durationMs/status/attachments（*被 vision P14 提交带走，8091 临时实例实测真实历史字段全中：durationMs 464/status completed） |
+| `97c2e77` | **P-N 目录树导航**：gateway 真支持子目录（resolvePath 逐段白名单/深度≤8/前导斜杠归一，list ?path= + dirs，{*name} 嵌套下载/改/删，upload ?path=，共享根隐藏 threads/）；FilesPanel 点目录进入 + 面包屑返回 + ▸/▾ 就地折叠展开（懒加载打平渲染），上传落当前目录；大文件(>1MB)预览改为下载提示 modal（不拉内容）。8091 冒烟 200/404/200/204 证据 docs/evidence/pn-dirtree-smoke.txt；gateway 164 绿 |
 
-**验证**：vue-frontend vitest 29 文件 201 绿 + gateway 159 绿;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
+**验证**：vue-frontend vitest 29 文件 212 绿 + gateway 164 绿;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
