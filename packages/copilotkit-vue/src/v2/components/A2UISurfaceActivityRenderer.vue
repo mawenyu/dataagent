@@ -94,7 +94,20 @@ function processOperations(operations: A2UIOperation[]) {
       const filtered = existing
         ? ops.filter((op) => !(op as any)?.createSurface)
         : ops;
-      processor.processMessages(filtered as any);
+      // dataagent fork fix (2026-08-16, P10 生命周期): 逐 op 容错处理 ——
+      // 缺失 target（未创建/已关闭的 surface）、重复 createSurface 等单条
+      // 坏 op 只跳过 + console.warn，不再整批进错误框（此前一条坏 op
+      // 会 throw 中断整批，同批正常 surface 也渲染不出来）。
+      for (const op of filtered) {
+        try {
+          processor.processMessages([op] as any);
+        } catch (opErr) {
+          console.warn(
+            `[A2UI Vue] op skipped (surface=${surfaceId}):`,
+            opErr instanceof Error ? opErr.message : opErr,
+          );
+        }
+      }
     }
     error.value = null;
   } catch (err) {

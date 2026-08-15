@@ -96,3 +96,20 @@ AG-UI 的 HITL 模式（interrupt → 用户决策 → resume 为新 run）落�
 - 实测 4 段真实 run：2026-08-15-p6-wizard-{step1,step2,hitl,done}.sse；
   截图 READY-VISION-p6-wizard.png（双步同框画廊 batch=wizard）
 - 无新增代码 —— 纯既有协议能力组合（action 回传 + surface replace + HITL）
+
+## 六、surface 生命周期（vision-P10，2026-08-16 实测）
+
+三类事件全链路（协议 ↔ gateway ↔ 前端渲染）：
+
+| 事件 | 协议形态 | gateway | 前端渲染 | 证据 |
+|---|---|---|---|---|
+| 更新 | updateComponents（按 id merge） | render_a2ui 同 surfaceId | 就地更新（DOM 差分） | vitest 生命周期#1 + 2026-08-15-canvas-*.sse |
+| 替换 | createSurface 重发 → 渲染层滤重 | surfaceRegistry 同 messageId replace | lastOpsHash 去重，幂等无闪烁 | vitest #2（同 id 重发） |
+| 关闭 | deleteSurface | **新增**：render_a2ui components 传空数组 = 关闭语义（validate 放行/execute 发 deleteSurface op，复用原 messageId） | model.deleteSurface 移除整面；对已关闭面的迟到 update 跳过+warn | vitest #4/#5 + 2026-08-16-p10-surface-lifecycle.sse（真实 run: create→update→delete×2 幂等） |
+
+边界与渲染正确性（fork A2UISurfaceActivityRenderer 修补）：
+- **逐 op 容错**：缺失 target（未创建/已关闭 surface 的 update）、重复 createSurface 等
+  单条坏 op 跳过 + console.warn —— 此前一条坏 op throw 中断整批（同批正常 surface 也渲染不出）
+- 嵌套关闭：深层嵌套 + 数据绑定的 surface 整面关闭无残留无报错（vitest #5）
+- **协议发现**：嵌套数据绑定路径必须 JSON-pointer 形式（/deep/value），点号（deep.value）不解析
+- deleteSurface 对不存在 surface 为幂等 no-op（web_core 语义）

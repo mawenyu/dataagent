@@ -67,6 +67,14 @@ public class A2UiService {
         return op;
     }
 
+    /** P10: 关闭 surface（生命周期第三事件）。 */
+    public ObjectNode deleteSurface(String surfaceId) {
+        ObjectNode op = MAPPER.createObjectNode();
+        op.put("version", VERSION);
+        op.putObject("deleteSurface").put("surfaceId", surfaceId);
+        return op;
+    }
+
     public ObjectNode updateDataModel(String surfaceId, String path, JsonNode value) {
         ObjectNode op = MAPPER.createObjectNode();
         op.put("version", VERSION);

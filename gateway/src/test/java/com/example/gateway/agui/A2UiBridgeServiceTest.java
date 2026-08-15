@@ -365,8 +365,8 @@ class A2UiBridgeServiceTest {
         assertNotNull(bridge.validate(MAPPER.readTree(
                 "{\"surfaceId\":\"bad id!\",\"components\":[{\"component\":\"Text\",\"id\":\"root\",\"text\":\"x\"}]}")),
                 "非法 surfaceId");
-        assertNotNull(bridge.validate(MAPPER.readTree(
-                "{\"surfaceId\":\"s1\",\"components\":[]}")), "空组件数组");
+        assertNull(bridge.validate(MAPPER.readTree(
+                "{\"surfaceId\":\"s1\",\"components\":[]}")), "空组件数组 = 关闭语义（P10 起合法）");
         assertNotNull(bridge.validate(MAPPER.readTree(
                 "{\"surfaceId\":\"s1\",\"components\":[{\"component\":\"Text\",\"text\":\"x\"}]}")),
                 "缺 id");
@@ -410,5 +410,35 @@ class A2UiBridgeServiceTest {
                   {"component":"Text","id":"t","text":"x"}
                 ]}""";
         assertNotNull(bridge.validate(MAPPER.readTree(args)));
+    }
+
+    // ---- P10: surface 关闭（空 components = deleteSurface）----
+
+    @Test
+    void emptyComponentsClosesSurface() throws Exception {
+        String args = """
+                {"surfaceId":"sales-board","components":[]}""";
+        Optional<ServerSentEvent<String>> out = bridge.execute("run", "t", MAPPER.readTree(args));
+        assertTrue(out.isPresent(), "空 components = 关闭语义，必须产出事件");
+        JsonNode root = MAPPER.readTree(out.get().data());
+        assertEquals("ACTIVITY_SNAPSHOT", root.path("type").asText());
+        assertEquals("a2ui-sales-board", root.path("messageId").asText(), "复用原 messageId 原位关闭");
+        JsonNode ops = root.path("content").path("a2ui_operations");
+        boolean hasDelete = false;
+        for (JsonNode op : ops) {
+            if (op.has("deleteSurface")) {
+                hasDelete = true;
+                assertEquals("sales-board", op.path("deleteSurface").path("surfaceId").asText());
+            }
+        }
+        assertTrue(hasDelete, "deleteSurface op 存在: " + ops);
+    }
+
+    @Test
+    void validateAllowsEmptyComponentsAsClose() throws Exception {
+        assertNull(bridge.validate(MAPPER.readTree(
+                "{\"surfaceId\":\"s1\",\"components\":[]}")), "空数组 = 合法关闭");
+        // 但 components 缺失/非数组仍拒绝
+        assertNotNull(bridge.validate(MAPPER.readTree("{\"surfaceId\":\"s1\"}")));
     }
 }

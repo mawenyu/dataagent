@@ -379,7 +379,9 @@ public class A2UiBridgeService {
             return "invalid surfaceId '" + surfaceId + "'";
         }
         JsonNode comps = args.path("components");
-        if (!comps.isArray() || comps.isEmpty()) return "components missing/empty";
+        if (!comps.isArray()) return "components missing/not an array";
+        // P10: 空数组 = 关闭 surface（deleteSurface），合法
+        if (comps.isEmpty()) return null;
         ArrayNode flat = flattenComponents((ArrayNode) comps);
         if (flat == null) return "components malformed (child without id)";
         ArrayNode normalized = normalizeComponents(flat);
@@ -421,6 +423,15 @@ public class A2UiBridgeService {
             return Optional.empty();
         }
         String surfaceId = args.path("surfaceId").asText("");
+        // P10: 空 components = 关闭 surface —— 发 deleteSurface op，复用原
+        // messageId 原位移除（前端渲染层协议原生支持）
+        JsonNode compsNode = args.path("components");
+        if (compsNode.isArray() && compsNode.isEmpty()) {
+            List<ObjectNode> closeOps = List.of(a2UiService.deleteSurface(surfaceId));
+            log.info("render_a2ui: close surface={}", surfaceId);
+            return Optional.of(a2UiService.activitySnapshot(runId, threadId,
+                    "a2ui-" + surfaceId, closeOps));
+        }
         // 2026-08-15 实测：模型常把子组件对象嵌进 children 数组（v0.9 约定是
         // 扁平列表 + children 为 id 数组），还带显式 null 属性。先拍平 + 剥 null，
         // 再校验白名单 —— 嵌套组件因此同样过白名单，不能绕过。

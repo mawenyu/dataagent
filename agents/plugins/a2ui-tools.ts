@@ -45,6 +45,7 @@ export default Plugin.define({
           `在用户聊天中渲染一个 A2UI UI surface（看板/表单/卡片等）。` +
           `组件只能用 catalog 白名单: ${CATALOG_COMPONENTS}。` +
           `components 是扁平数组（每个含 component+id，children 用 id 引用，root 的 id 必须是 "root"），` +
+          `components 传空数组 = 关闭该 surface（从聊天中移除看板）；` +
           `数据尽量放 data 并用 {path} 绑定。数字报告类需求优先用 render_report。` +
           ` 关键 props 契约（严格遵守，不要自创字段名）：` +
           `Text{text,variant?}; Image{url,description?}; Icon{name}; Video/AudioPlayer{url}; ` +
