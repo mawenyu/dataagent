@@ -273,7 +273,12 @@ public class AgUiProtocolService {
                     reactor.core.Disposable conn = ((reactor.core.publisher.ConnectableFlux<ServerSentEvent<String>>) hot).connect();
                     return ensureModel(sessionId)
                                 .then(sendPrompt(sessionId, finalPrompt))
-                                .thenMany(translator.translate(finalThreadId, finalRunId, frontendToolNames, hot))
+                                .thenMany(translator.translate(finalThreadId, finalRunId, frontendToolNames, hot,
+                                        // AG-UI shared state: 会话初始快照（模型/工作区/contextSize），
+                                        // 客户端 useAgent().state 可见；contextSize 由 STATE_DELTA 续更
+                                        Map.of("threadId", finalThreadId, "model", modelId,
+                                                "provider", providerId, "workspace", dataWorkspace,
+                                                "contextSize", 0)))
                                 .doFinally(sig -> conn.dispose())
                                 // 需求7-6: never let a run hang silently — idle timeout
                                 // (question/permission waits, provider stalls) terminates

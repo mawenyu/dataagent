@@ -5,6 +5,7 @@ import { CopilotKitProvider, CopilotChat } from '@copilotkit/vue'
 import { dataAgent } from './agents/dataAgent'
 import { dataAgentCatalog } from './a2ui/dataAgentCatalog'
 import { useContextUsage } from './composables/useContextUsage'
+import { useAgentState } from './composables/useAgentState'
 import { useThreads } from './composables/useThreads'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
@@ -24,6 +25,8 @@ dataAgent.subscribe({ onRunFinalized: () => { void threadsApi.refresh() } })
 
 // 需求7-5: context 用量徽章（gateway 在每个 step 结束发 CUSTOM context_usage）
 const { contextSize, label: contextLabel } = useContextUsage(dataAgent)
+// AG-UI shared state（task4）: STATE_SNAPSHOT 的 model 显示为顶栏徽章
+const { state: agentState } = useAgentState(dataAgent)
 
 // ---- Frontend tool: showNotification (executed in the browser) ----
 type NotificationType = 'info' | 'success' | 'warning' | 'error'
@@ -101,6 +104,12 @@ function handleChatError({ error }: { error: Error }) {
         </div>
       </div>
       <div class="topbar-right">
+        <span
+          v-if="agentState.model"
+          class="badge model-badge"
+          data-testid="model-badge"
+          :title="`provider: ${agentState.provider ?? '-'} · workspace: ${agentState.workspace ?? '-'}`"
+        >{{ agentState.model }}</span>
         <span
           v-if="contextSize > 0"
           class="badge context-badge"

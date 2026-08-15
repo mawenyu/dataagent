@@ -97,6 +97,17 @@ public class AguiEventTranslator {
 
     public Flux<ServerSentEvent<String>> translate(String threadId, String runId, Set<String> frontendTools,
                                                    Flux<ServerSentEvent<String>> opencodeEvents) {
+        return translate(threadId, runId, frontendTools, opencodeEvents, null);
+    }
+
+    /**
+     * @param initialState 非空时在 RUN_STARTED 之后立刻发 STATE_SNAPSHOT（AG-UI
+     *        shared state：客户端 useAgent().state 可见），并在每次 step 结算出
+     *        token 用量时发 STATE_DELTA（JSON Patch replace /contextSize）。
+     */
+    public Flux<ServerSentEvent<String>> translate(String threadId, String runId, Set<String> frontendTools,
+                                                   Flux<ServerSentEvent<String>> opencodeEvents,
+                                                   Map<String, Object> initialState) {
         AtomicBoolean sawOutput = new AtomicBoolean(false);
         AtomicBoolean terminalEmitted = new AtomicBoolean(false);
         // 需求7: AG-UI 客户端状态机要求 STEP_FINISHED/RUN_FINISHED 与 STEP_STARTED 严格配对。
@@ -115,6 +126,13 @@ public class AguiEventTranslator {
         Set<String> toolCallEnded = ConcurrentHashMap.newKeySet();
 
         ServerSentEvent<String> runStarted = sse(agEvent("RUN_STARTED", runId, threadId));
+
+        Flux<ServerSentEvent<String>> head = Flux.just(runStarted);
+        if (initialState != null && !initialState.isEmpty()) {
+            ObjectNode snap = base("STATE_SNAPSHOT", runId, threadId);
+            snap.set("snapshot", MAPPER.valueToTree(initialState));
+            head = Flux.concat(head, Flux.just(sse(snap)));
+        }
 
         Flux<ServerSentEvent<String>> body = restoreOrder(opencodeEvents)
                 .concatMap(event -> {
@@ -267,6 +285,14 @@ public class AguiEventTranslator {
                                 v.put("contextSize", input + cacheRead);
                                 v.put("finish", finish);
                                 out.add(sse(usage));
+                                // AG-UI shared state: JSON Patch 增量更新 contextSize
+                                ObjectNode deltaEv = base("STATE_DELTA", runId, threadId);
+                                var patch = deltaEv.putArray("delta");
+                                ObjectNode op = patch.addObject();
+                                op.put("op", "replace");
+                                op.put("path", "/contextSize");
+                                op.put("value", input + cacheRead);
+                                out.add(sse(deltaEv));
                             }
                             if ("tool-calls".equals(finish)) return Flux.fromIterable(out);
                             if (terminalEmitted.compareAndSet(false, true)) {
@@ -368,7 +394,7 @@ public class AguiEventTranslator {
                     return d != null && (d.contains("\"RUN_FINISHED\"") || d.contains("\"RUN_ERROR\""));
                 });
 
-        return Flux.concat(Flux.just(runStarted), body);
+        return Flux.concat(head, body);
     }
 
     // ------------------------------------------------------------------

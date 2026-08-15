@@ -485,6 +485,38 @@ class AguiEventTranslatorTest {
         assertEquals("RUN_FINISHED", types.get(types.size() - 1));
     }
 
+
+    /** AG-UI STATE_SNAPSHOT: RUN_STARTED 之后立刻给客户端完整初始状态。 */
+    @Test
+    void initialStateEmittedAsSnapshotAfterRunStarted() {
+        List<JsonNode> events = translator.translate("thread", "run", Set.of(),
+                        Flux.just(oc("session.step.ended", "{}")),
+                        java.util.Map.of("model", "deepseek-reasoner", "workspace", "workspace"))
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        List<String> types = types(events);
+        assertEquals("RUN_STARTED", types.get(0));
+        assertEquals("STATE_SNAPSHOT", types.get(1), "snapshot right after RUN_STARTED");
+        JsonNode snap = events.get(1);
+        assertEquals("deepseek-reasoner", snap.path("snapshot").path("model").asText());
+        assertEquals("workspace", snap.path("snapshot").path("workspace").asText());
+    }
+
+    /** AG-UI STATE_DELTA: step 结算出 token 用量时以 JSON Patch 增量更新 contextSize。 */
+    @Test
+    void contextUsageAlsoEmittedAsStateDelta() {
+        List<JsonNode> events = translate(Flux.just(
+                oc("session.step.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.step.ended", "{\"assistantMessageID\":\"m1\",\"finish\":\"stop\",\"tokens\":{\"input\":100,\"output\":5,\"reasoning\":3,\"cache\":{\"read\":23,\"write\":0}}}")));
+        JsonNode delta = events.stream()
+                .filter(e -> "STATE_DELTA".equals(e.path("type").asText())).findFirst().orElseThrow();
+        JsonNode patch = delta.path("delta").get(0);
+        assertEquals("replace", patch.path("op").asText());
+        assertEquals("/contextSize", patch.path("path").asText());
+        assertEquals(123, patch.path("value").asInt(), "input+cacheRead");
+    }
+
     private static String json(String s) {        try {
             return MAPPER.writeValueAsString(s);
         } catch (Exception e) {
