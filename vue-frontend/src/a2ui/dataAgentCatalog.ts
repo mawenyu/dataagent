@@ -119,6 +119,8 @@ function renderBarChart(props: ChartProps) {
   const H = 180
   const padL = 8
   const barW = data.length ? (W - padL * 2) / data.length : W
+  // P22: 标签抽取步长（最多 ~12 个）
+  const labelEvery = Math.max(1, Math.ceil(data.length / 12))
   const bars = data.map((d, i) => {
     const v = Number(d[props.yField]) || 0
     const bh = (v / max) * (H - 30)
@@ -127,14 +129,16 @@ function renderBarChart(props: ChartProps) {
       h('rect', {
         key: 'b' + i, x, y: H - 20 - bh, width: barW * 0.7, height: bh, rx: 3, fill: CHART_PALETTE[i % CHART_PALETTE.length],
       }),
-      h('text', {
+      // P22: 大数据集标签抽取（>24 条时最多 12 个标签，防糊成一片）
+      (labelEvery === 1 || i % labelEvery === 0) ? h('text', {
         key: 'l' + i, x: x + barW * 0.35, y: H - 6, 'text-anchor': 'middle',
         style: 'font-size:10px;fill:#6b7280',
-      }, String(d[props.xField] ?? '')),
-      h('text', {
+      }, String(d[props.xField] ?? '')) : null,
+      // P22: 数值标签同样抽取（大数据集不逐柱标值）
+      (labelEvery === 1 || i % labelEvery === 0) ? h('text', {
         key: 'v' + i, x: x + barW * 0.35, y: H - 24 - bh, 'text-anchor': 'middle',
         style: 'font-size:10px;fill:#374151',
-      }, String(v)),
+      }, String(v)) : null,
     ]
   })
   return chartFrame(props.title, h('svg', { viewBox: `0 0 ${W} ${H}`, style: { width: '100%' } }, bars.flat()))
@@ -154,13 +158,18 @@ function renderLineChart(props: ChartProps) {
     const y = H - 25 - ((Number(d[props.yField]) || 0) - min) / span * (H - 50)
     return { x, y, label: String(d[props.xField] ?? ''), v: Number(d[props.yField]) || 0 }
   })
+  // P22: 大数据集抽取 —— 点标记与 x 标签限量（>60 点不画圆点，标签 ≤12 个）
+  const markerEvery = Math.max(1, Math.ceil(data.length / 60))
+  const labelEvery = Math.max(1, Math.ceil(data.length / 12))
+  const showMarkers = data.length <= 200
   const children: VNode[] = [
     h('polyline', {
       points: points.map((p) => `${p.x},${p.y}`).join(' '),
       fill: 'none', stroke: '#6366f1', 'stroke-width': 2,
     }),
-    ...points.map((p, i) => h('circle', { key: 'c' + i, cx: p.x, cy: p.y, r: 3, fill: '#6366f1' })),
-    ...points.map((p, i) =>
+    ...points.filter((_p, i) => showMarkers && i % markerEvery === 0)
+      .map((p, i) => h('circle', { key: 'c' + i, cx: p.x, cy: p.y, r: 3, fill: '#6366f1' })),
+    ...points.filter((_p, i) => i % labelEvery === 0).map((p, i) =>
       h('text', { key: 'x' + i, x: p.x, y: H - 8, 'text-anchor': 'middle', style: 'font-size:10px;fill:#6b7280' }, p.label)),
   ]
   return chartFrame(props.title, h('svg', { viewBox: `0 0 ${W} ${H}`, style: { width: '100%' } }, children))

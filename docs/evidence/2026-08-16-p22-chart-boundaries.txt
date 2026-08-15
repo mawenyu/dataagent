@@ -1,0 +1,14 @@
+== P22 图表组件真实数据边界（2026-08-16）==
+
+边界结论（vitest chartBoundaries.test.ts 5 例锁定）:
+- 空数据集: Bar/Line/Pie 优雅空态（标题在、无 NaN/Infinity/undefined 泄漏进 SVG 属性）
+- 单点: 折线单点/单柱/单瓣整圆饼（frac>=0.9999 特例路径）无 NaN
+- 全零数据: 除零防护（total||1 / max||1）不产 NaN
+- 1000+ 点（1200 点×2 图）: jsdom 613.7ms→抽取后 259.3ms，不卡死
+- 真实 e2e（2026-08-16-p22-empty-charts.sse）: 筛选不存在品类"量子计算机"
+  → 0 条 → agent 如实渲染空图表（data=[]）+ Badge"记录数: 0" + 叙事诚实
+
+改进（实测驱动）:
+- BarChart/LineChart 大样本标签抽取: x 标签 ≤12、柱状数值标签 ≤12、
+  折线 >200 点省略圆点标记 —— 此前 1200 点会生成 2400+ text 节点糊成一片
+截图: READY-VISION-p22-empty.png（空态）/ READY-VISION-p22-huge.png（1200 点）
