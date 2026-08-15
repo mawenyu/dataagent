@@ -6,6 +6,8 @@
 defineProps<{
   message: string
   busy?: boolean
+  /** P-I: 结构化错误码(如 "502"/"RUN_TIMEOUT"),有则显示徽章 */
+  code?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -18,7 +20,10 @@ const emit = defineEmits<{
   <div class="run-error-card" data-testid="run-error-card" role="alert">
     <span class="rec-icon" aria-hidden="true">⚠️</span>
     <div class="rec-body">
-      <strong>运行中断</strong>
+      <strong>
+        运行中断
+        <span v-if="code" class="rec-code" data-testid="run-error-code">{{ code }}</span>
+      </strong>
       <p data-testid="run-error-message">{{ message }}</p>
     </div>
     <button
@@ -47,6 +52,19 @@ const emit = defineEmits<{
 .rec-icon { font-size: 16px; flex: none; }
 .rec-body { flex: 1; min-width: 0; }
 .rec-body strong { display: block; font-size: 13px; color: #991b1b; }
+.rec-code {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #b91c1c;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 5px;
+  padding: 1px 6px;
+  vertical-align: 1px;
+}
 .rec-body p {
   margin: 2px 0 0;
   font-size: 12.5px;

@@ -23,3 +23,13 @@ describe('RunErrorCard (P-B)', () => {
     expect(w.emitted('retry')).toBeUndefined()
   })
 })
+
+describe('RunErrorCard 错误码 (P-I)', () => {
+  it('有 code 时显示结构化错误码徽章;无 code 不渲染', async () => {
+    const w = mount(RunErrorCard, { props: { message: '网关错误,服务暂时不可用', code: '502' } })
+    expect(w.find('[data-testid="run-error-code"]').text()).toBe('502')
+
+    await w.setProps({ code: null })
+    expect(w.find('[data-testid="run-error-code"]').exists()).toBe(false)
+  })
+})

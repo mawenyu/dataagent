@@ -264,4 +264,67 @@ describe('App UI (需求4)', () => {
     expect(h).toBeGreaterThan(44)
     expect(ta.style.overflowY).toBe('auto')
   })
+
+  it('P-I: 断网顶栏显示离线徽章,恢复后消失', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 8; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    expect(w.find('[data-testid="offline-badge"]').exists()).toBe(false)
+
+    window.dispatchEvent(new Event('offline'))
+    await nextTick()
+    expect(w.find('[data-testid="offline-badge"]').exists()).toBe(true)
+    expect(w.find('[data-testid="offline-badge"]').text()).toContain('离线')
+
+    window.dispatchEvent(new Event('online'))
+    await nextTick()
+    expect(w.find('[data-testid="offline-badge"]').exists()).toBe(false)
+  })
+
+  it('P-I: 离线期间 run 中断 → 网络恢复后自动续跑(自动重发最后一条用户消息)', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+
+    // 先断网,再发消息(run 必然失败,且失败发生在离线态)
+    window.dispatchEvent(new Event('offline'))
+    await nextTick()
+    await w.find('.welcome-input textarea').setValue('分析离线销售')
+    await w.find('.welcome-send').trigger('click')
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+    const runs = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent/run'))
+    expect(runs().length).toBe(1)
+    expect(w.find('[data-testid="run-error-card"]').exists()).toBe(true)
+
+    // 网络恢复 → 自动续跑
+    window.dispatchEvent(new Event('online'))
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+    expect(runs().length, '恢复在线后应自动重发').toBe(2)
+    expect(String((runs()[1][1] as RequestInit)?.body ?? '')).toContain('分析离线销售')
+    expect(w.find('.toast-stack').text()).toContain('网络已恢复')
+    expect(w.find('[data-testid="offline-badge"]').exists()).toBe(false)
+  })
+
+  it('P-I: 在线时的普通失败不触发自动续跑(仅手动重试)', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+
+    await w.find('.welcome-input textarea').setValue('普通问题')
+    await w.find('.welcome-send').trigger('click')
+    for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 15)) }
+    const runs = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent/run'))
+    expect(runs().length).toBe(1)
+    expect(w.find('[data-testid="run-error-card"]').exists()).toBe(true)
+
+    // 在线→离线→在线一轮,不应自动重发(失败时是在线的)
+    window.dispatchEvent(new Event('offline'))
+    await nextTick()
+    window.dispatchEvent(new Event('online'))
+    for (let i = 0; i < 8; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    expect(runs().length).toBe(1)
+  })
 })

@@ -23,6 +23,30 @@ export function isAbortError(input: { code?: string; message?: string } | undefi
   return code === 'abort' || message.includes('aborted') || message.includes('abort')
 }
 
+/**
+ * P-I: gateway 5xx 等结构化错误解析 —— 从显式 code 或消息文本（如
+ * "HTTP 502 Bad Gateway"）提取错误码,并给出用户可读的友好文案;
+ * 非结构化消息原样透传。
+ */
+export function parseRunError(input: { code?: string; message?: string }): {
+  code: string | null
+  message: string
+} {
+  const raw = input.message?.trim() || ''
+  const extracted = /HTTP\s+(\d{3})/i.exec(raw)?.[1] ?? null
+  const code = input.code ?? extracted
+  if (extracted) {
+    const status = Number(extracted)
+    if (status >= 500 && status < 600) {
+      return { code, message: `网关错误(${extracted}),服务暂时不可用 —— 请稍后重试` }
+    }
+    if (status === 413) return { code, message: '请求过大(413) —— 消息或附件超出网关限制' }
+    if (status === 429) return { code, message: '请求过于频繁(429) —— 请稍候再试' }
+    return { code, message: `请求失败(HTTP ${extracted})` }
+  }
+  return { code, message: raw || '未知错误' }
+}
+
 export function useRunErrorRecovery(deps: {
   /** 解析当前线程实际渲染的 agent（registry 的 per-thread clone 优先）。 */
   resolveAgent: () => AgentLike | undefined | null
@@ -31,13 +55,17 @@ export function useRunErrorRecovery(deps: {
   run: (agent: AgentLike) => Promise<void>
 }) {
   const runError = ref<string | null>(null)
+  /** P-I: 结构化错误码(如 "502"/"RUN_TIMEOUT"),无则 null */
+  const runErrorCode = ref<string | null>(null)
   const retrying = ref(false)
 
-  function reportError(message: string) {
+  function reportError(message: string, code?: string | null) {
     runError.value = message
+    runErrorCode.value = code ?? null
   }
   function clear() {
     runError.value = null
+    runErrorCode.value = null
   }
 
   interface ChatMessageLike {
@@ -82,5 +110,5 @@ export function useRunErrorRecovery(deps: {
 
   watch(deps.threadId, clear)
 
-  return { runError, retrying, reportError, clear, retryLastMessage }
+  return { runError, runErrorCode, retrying, reportError, clear, retryLastMessage }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { useRunErrorRecovery, isAbortError } from './runErrorRecovery'
+import { useRunErrorRecovery, isAbortError, parseRunError } from './runErrorRecovery'
 
 /** P-B: run 失败/中断的内联恢复 —— 错误卡状态 + 原线程重发最后一条用户消息。 */
 
@@ -107,5 +107,51 @@ describe('useRunErrorRecovery (P-B)', () => {
     threadId.value = 't-2'
     await Promise.resolve()
     expect(api.runError.value).toBeNull()
+  })
+})
+
+describe('parseRunError (P-I)', () => {
+  it('消息内 HTTP 状态码提取 + 5xx 友好文案', () => {
+    const r = parseRunError({ message: 'HTTP 502 Bad Gateway' })
+    expect(r.code).toBe('502')
+    expect(r.message).toContain('网关')
+    expect(r.message).toContain('502')
+  })
+
+  it('显式 code 优先于消息提取', () => {
+    const r = parseRunError({ code: 'RUN_TIMEOUT', message: 'HTTP 500' })
+    expect(r.code).toBe('RUN_TIMEOUT')
+  })
+
+  it('5xx 各码归一为网关/服务不可用;413/429 专属文案', () => {
+    expect(parseRunError({ message: 'HTTP 500' }).message).toContain('服务暂时不可用')
+    expect(parseRunError({ message: 'HTTP 504' }).message).toContain('服务暂时不可用')
+    expect(parseRunError({ message: 'HTTP 413' }).message).toContain('过大')
+    expect(parseRunError({ message: 'HTTP 429' }).message).toContain('频繁')
+  })
+
+  it('非结构化消息原样透传,code 为 null', () => {
+    const r = parseRunError({ message: 'model timeout after 120s' })
+    expect(r.code).toBeNull()
+    expect(r.message).toBe('model timeout after 120s')
+  })
+
+  it('空输入兜底', () => {
+    const r = parseRunError({})
+    expect(r.code).toBeNull()
+    expect(r.message).toBe('未知错误')
+  })
+})
+
+describe('useRunErrorRecovery 错误码 (P-I)', () => {
+  it('reportError 携带 code 时 runErrorCode 同步;clear 一并清除', () => {
+    const agent = { messages: [], setMessages() {}, addMessage() {} }
+    const api = useRunErrorRecovery({ resolveAgent: () => agent, threadId: ref('t'), run: async () => {} })
+    api.reportError('网关错误', '502')
+    expect(api.runError.value).toBe('网关错误')
+    expect(api.runErrorCode.value).toBe('502')
+    api.clear()
+    expect(api.runError.value).toBeNull()
+    expect(api.runErrorCode.value).toBeNull()
   })
 })

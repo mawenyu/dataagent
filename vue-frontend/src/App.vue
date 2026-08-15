@@ -12,7 +12,8 @@ import { buildAttachmentsConfig, ATTACH_ACCEPT } from './composables/chatAttachm
 import { useWelcomeAttachments } from './composables/welcomeAttachments'
 import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
 import { buildThreadMarkdown, downloadMarkdown, exportFilename } from './composables/exportThread'
-import { useRunErrorRecovery, isAbortError } from './composables/runErrorRecovery'
+import { useRunErrorRecovery, isAbortError, parseRunError } from './composables/runErrorRecovery'
+import { useNetworkStatus } from './composables/networkStatus'
 import RunErrorCard from './components/RunErrorCard.vue'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
@@ -217,11 +218,28 @@ const errorRecovery = useRunErrorRecovery({
 })
 dataAgent.subscribe({ onRunStartedEvent: () => errorRecovery.clear() })
 
+// P-I: 网络断线检测 —— 顶栏离线徽章;离线期间中断的 run 在恢复后自动续跑
+const pendingAutoResume = ref(false)
+const { online } = useNetworkStatus({
+  onOnline: () => {
+    if (!pendingAutoResume.value) return
+    pendingAutoResume.value = false
+    pushToast({ title: '网络已恢复', message: '正在自动重试中断的运行…', type: 'info' })
+    void errorRecovery.retryLastMessage()
+  },
+})
+
 function handleChatError({ error, code }: { error: Error; code?: string }) {
   if (isAbortError({ code, message: error?.message })) return
-  const message = `${error?.message ?? '未知错误'} —— 可点消息流尾部错误卡重试`
-  errorRecovery.reportError(error?.message ?? '未知错误')
-  pushToast({ title: '运行中断', message, type: 'error' })
+  // P-I: 结构化错误码(5xx 等)友好文案 + 徽章;离线期间的失败标记为待恢复
+  const parsed = parseRunError({ code, message: error?.message })
+  errorRecovery.reportError(parsed.message, parsed.code)
+  if (!online.value) pendingAutoResume.value = true
+  pushToast({
+    title: '运行中断',
+    message: `${parsed.message} —— 可点消息流尾部错误卡重试`,
+    type: 'error',
+  })
 }
 
 // P-A: 会话导出 —— 拉 gateway 历史消息 → 前端生成 Markdown Blob 下载
@@ -265,6 +283,12 @@ async function exportThread(id: string) {
         </div>
       </div>
       <div class="topbar-right">
+        <span
+          v-if="!online"
+          class="badge offline-badge"
+          data-testid="offline-badge"
+          title="网络连接已断开,恢复后自动续跑中断的运行"
+        >● 离线</span>
         <span
           v-if="agentState.model"
           class="badge model-badge"
@@ -433,6 +457,7 @@ async function exportThread(id: string) {
                 v-if="errorRecovery.runError.value"
                 class="run-error-overlay"
                 :message="errorRecovery.runError.value"
+                :code="errorRecovery.runErrorCode.value"
                 :busy="errorRecovery.retrying.value"
                 @retry="errorRecovery.retryLastMessage()"
                 @dismiss="errorRecovery.clear()"
@@ -551,6 +576,17 @@ body {
   background: #ecfdf5;
   border-color: #a7f3d0;
   font-variant-numeric: tabular-nums;
+}
+/* P-I: 离线徽章(琥珀呼吸点) */
+.offline-badge {
+  color: #b45309;
+  background: #fffbeb;
+  border-color: #fde68a;
+  animation: offline-pulse 1.6s ease-in-out infinite;
+}
+@keyframes offline-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 /* ---- Chat area ---- */
