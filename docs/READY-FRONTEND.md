@@ -28,3 +28,16 @@ F1 主链路 / F2 功能项 / F4 全部在 task6 及之前已完成；本次补�
 
 - gateway :8090 UP（/actuator/health）、vite dev :3001 LISTEN
 - 部署提示：fork dist 已由 prebuild 重构建（含 F3 渲染器）；vite dev 如在跑旧 dist 需重启或等 HMR 失效后刷新页面
+
+---
+
+## 追加：P 批（2026-08-15 晚，全部已推送 origin/main）
+
+| commit | 内容 |
+|---|---|
+| `8416f99` | **P-A 会话导出**：列表项 ⤓ 按钮 → 拉 `/chat/threads/{id}/messages` → 前端生成 Markdown Blob 下载（角色小节 👤/🤖/🧠、工具调用按 toolCallId 配对摘要、超长截断标注、头部含会话/导出时间） |
+| `b0e518c` | **P-B 错误恢复 UX**：run 失败/中断 → 消息流尾部内联错误卡（原因 + 重试 + ×，零原生弹窗）；重试 = 截掉失败轮后在原线程 clone 重发最后一条用户消息（多模态 parts 原样保留、不重复入列）；用户主动 abort 不弹 |
+| `1011ce1` | **P-C 文件预览 modal**：csv 表格（引号感知解析、首行 sticky、500 行截断）/ json 美化 / md 轻量渲染（先转义后变换，XSS 安全）/ txt·log 原文；Teleport + ESC/遮罩关闭；顺手清掉 FilesPanel 的 alert/confirm（内联 notice + 删除两段确认） |
+| `b81e809` | **P-D Prompt 模板**：欢迎页 4 模板卡（销售分析/可视化看板/周报生成/数据清洗），点击填充输入框（非直接发送）+ 聚焦，可编辑后回车发出 |
+
+**验证**：vue-frontend vitest 24 文件 140 全绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
