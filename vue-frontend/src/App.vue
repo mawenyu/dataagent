@@ -8,7 +8,8 @@ import { useContextUsage } from './composables/useContextUsage'
 import { useAgentState } from './composables/useAgentState'
 import { useThreads } from './composables/useThreads'
 import { useWorkspaceFiles } from './composables/useWorkspaceFiles'
-import { buildAttachmentsConfig } from './composables/chatAttachments'
+import { buildAttachmentsConfig, ATTACH_ACCEPT } from './composables/chatAttachments'
+import { useWelcomeAttachments } from './composables/welcomeAttachments'
 import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
@@ -56,6 +57,30 @@ const chatAttachments = buildAttachmentsConfig({
   downloadUrl: (name) => workspaceFilesApi.downloadUrl(name),
   onFailed: (e) => pushToast({ title: '附件上传失败', message: e.message, type: 'error' }),
 })
+
+// F1b: 欢迎页附件 —— welcome-screen 槽整视图替换（自绘输入区），fork 附件
+// 队列不参与，单独维护 chip；复用同一条会话级上传链路（currentId 始终存在，
+// gateway 懒建会话目录），发送时附件名拼进消息文本带给 agent
+const welcomeAttachments = useWelcomeAttachments({
+  upload: (file) => workspaceFilesApi.upload(file),
+  onFailed: (message) => pushToast({ title: '附件上传失败', message, type: 'error' }),
+  threadId: threadsApi.currentId,
+})
+const welcomeDrag = ref(false)
+const welcomeFileInput = ref<HTMLInputElement | null>(null)
+function onWelcomeFilesPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  void welcomeAttachments.addFiles(input.files ?? [])
+  input.value = '' // 允许再次选择同一文件
+}
+function onWelcomeDrop(e: DragEvent) {
+  welcomeDrag.value = false
+  void welcomeAttachments.addFiles(e.dataTransfer?.files ?? [])
+}
+function submitWelcome(modelValue: string | undefined, onSubmitMessage: (m: string) => void) {
+  const msg = welcomeAttachments.consumeForSubmit(modelValue ?? '')
+  if (msg !== null) onSubmitMessage(msg)
+}
 
 const frontendTools = [
   {
@@ -232,20 +257,67 @@ function handleChatError({ error }: { error: Error }) {
                     </button>
                   </div>
                   <!-- welcome-screen 槽替换整个视图（含输入框），所以这里自绘输入区 -->
-                  <div class="welcome-input">
-                    <textarea
-                      :value="modelValue"
-                      placeholder="输入你的数据问题，回车发送…"
-                      rows="1"
-                      :disabled="isRunning"
-                      @input="onUpdateModelValue(($event.target as HTMLTextAreaElement).value)"
-                      @keydown.enter.exact.prevent="onSubmitMessage(modelValue)"
-                    ></textarea>
-                    <button
-                      class="welcome-send"
-                      :disabled="isRunning || !modelValue || !modelValue.trim()"
-                      @click="onSubmitMessage(modelValue)"
-                    >发送</button>
+                  <!-- F1b: 自绘输入区同样支持 ChatGPT 式附件（📎 + 拖拽 + chip） -->
+                  <div
+                    class="welcome-input"
+                    :class="{ 'drag-over': welcomeDrag }"
+                    data-testid="welcome-input"
+                    @dragover.prevent="welcomeDrag = true"
+                    @dragleave="welcomeDrag = false"
+                    @drop.prevent="onWelcomeDrop"
+                  >
+                    <div
+                      v-if="welcomeAttachments.items.value.length"
+                      class="welcome-chips"
+                      data-testid="welcome-chips"
+                    >
+                      <span
+                        v-for="a in welcomeAttachments.items.value"
+                        :key="a.id"
+                        class="welcome-chip"
+                        :data-status="a.status"
+                      >
+                        📄 {{ a.name }}
+                        <span v-if="a.status === 'uploading'" class="chip-status">上传中…</span>
+                        <span v-else-if="a.status === 'error'" class="chip-status err">失败</span>
+                        <button
+                          class="chip-remove"
+                          :aria-label="`移除附件 ${a.name}`"
+                          @click="welcomeAttachments.remove(a.id)"
+                        >×</button>
+                      </span>
+                    </div>
+                    <div class="welcome-input-row">
+                      <button
+                        class="welcome-attach"
+                        data-testid="welcome-attach"
+                        title="添加附件（CSV/JSON/XLSX/图片等，≤50MB）"
+                        :disabled="isRunning"
+                        @click="welcomeFileInput?.click()"
+                      >📎</button>
+                      <input
+                        ref="welcomeFileInput"
+                        type="file"
+                        multiple
+                        hidden
+                        :accept="ATTACH_ACCEPT"
+                        data-testid="welcome-file-input"
+                        @change="onWelcomeFilesPicked"
+                      />
+                      <textarea
+                        :value="modelValue"
+                        placeholder="输入你的数据问题，回车发送…"
+                        rows="1"
+                        :disabled="isRunning"
+                        @input="onUpdateModelValue(($event.target as HTMLTextAreaElement).value)"
+                        @keydown.enter.exact.prevent="submitWelcome(modelValue, onSubmitMessage)"
+                      ></textarea>
+                      <button
+                        class="welcome-send"
+                        :disabled="isRunning || welcomeAttachments.hasUploading.value || (!(modelValue && modelValue.trim()) && !welcomeAttachments.hasReady.value)"
+                        @click="submitWelcome(modelValue, onSubmitMessage)"
+                      >发送</button>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -465,6 +537,7 @@ body {
 }
 .welcome-input {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   width: 100%;
   max-width: 640px;
@@ -475,6 +548,46 @@ body {
   padding: 8px;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
+.welcome-input.drag-over { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.welcome-input-row { display: flex; gap: 8px; align-items: center; }
+.welcome-attach {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.welcome-attach:hover:not(:disabled) { background: var(--muted); }
+.welcome-attach:disabled { opacity: 0.45; cursor: not-allowed; }
+.welcome-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 0; }
+.welcome-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px 4px 10px;
+}
+.welcome-chip[data-status='error'] { border-color: #fecaca; background: #fef2f2; }
+.chip-status { color: var(--muted-foreground); font-size: 11.5px; }
+.chip-status.err { color: #dc2626; }
+.chip-remove {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.chip-remove:hover { color: #dc2626; }
 .welcome-input:focus-within { border-color: #c7d2fe; box-shadow: 0 0 0 3px var(--ring); }
 .welcome-input textarea {
   flex: 1;
