@@ -341,11 +341,41 @@ function resolveToolMessage(
       (candidate as ToolMessage).toolCallId === toolCallId,
   ) as ToolMessage | undefined;
 }
+
+/**
+ * P11: v-memo 签名 —— @ag-ui/client 对流式 delta 是**原地修改**
+ * （o.content += delta，对象身份不变），不能用对象 identity 做 memo key。
+ * 内容长度签名：流式中活动消息长度增长 → 仅它重渲染；历史消息签名稳定
+ * → 整树跳过（500+ 消息下每次 tick 不再全量重渲染）。
+ * toolCalls 长度覆盖工具调用卡片递增；tool 结果到达走 messages.length。
+ */
+function memoSignature(message: Message): string {
+  const m = message as Message & {
+    toolCalls?: { function?: { arguments?: unknown } }[];
+  };
+  const c = m.content;
+  const contentLen =
+    typeof c === "string" ? c.length : Array.isArray(c) ? c.length : 0;
+  // 工具参数同样是原地流式增长的（arguments += delta）——必须计入签名，
+  // 否则工具卡参数流式期间不重渲染
+  const toolSig = (m.toolCalls ?? [])
+    .map((t) =>
+      typeof t?.function?.arguments === "string"
+        ? (t.function.arguments as string).length
+        : 0,
+    )
+    .join(",");
+  return `${m.id}:${m.role}:${contentLen}:${m.toolCalls?.length ?? 0}:${toolSig}`;
+}
 </script>
 
 <template>
   <div data-copilotkit class="cpk:flex cpk:flex-col" v-bind="$attrs">
-    <template v-for="message in deduplicatedMessages" :key="message.id">
+    <template
+      v-for="message in deduplicatedMessages"
+      :key="message.id"
+      v-memo="[memoSignature(message), props.isRunning, props.messages.length]"
+    >
       <slot
         v-if="componentSlots['message-before']"
         name="message-before"
