@@ -964,4 +964,45 @@ describe("useDefaultRenderTool", () => {
       expect(screen.getByTestId("copilot-tool-render-result-pre").textContent).toBe("done");
     });
   });
+
+  // gateway `session.tool.failed` → TOOL_CALL_RESULT content 前缀契约
+  // （AguiEventTranslator.java "工具执行失败: "）：工具级失败不是 run 级
+  // RUN_ERROR，卡片仍以 complete 收尾，必须按内容前缀识别为失败态。
+  describe("tool-level failure result (gateway session.tool.failed contract)", () => {
+    it("complete + 失败前缀结果 → ✗失败 / 红点 / data-run-end=failed，而非 ✓Done", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      render(DefaultRenderer as never, {
+        props: {
+          name: "read",
+          toolCallId: "tf-1",
+          parameters: { path: "sales-2026-08.csv" },
+          status: "complete",
+          result: "工具执行失败: 文件不存在: sales-2026-08.csv",
+        },
+      });
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe("失败");
+      expect(screen.getByTestId("copilot-tool-render-status-icon").textContent).toBe("✗");
+      expect(
+        screen.getByTestId("copilot-tool-render-status-dot").getAttribute("data-state"),
+      ).toBe("failed");
+      expect(
+        screen.getByTestId("copilot-tool-render").getAttribute("data-run-end"),
+      ).toBe("failed");
+    });
+
+    it("前缀只认行首：结果中段含同样字样不误判", async () => {
+      const DefaultRenderer = getDefaultRenderer();
+      render(DefaultRenderer as never, {
+        props: {
+          name: "bash",
+          toolCallId: "tf-2",
+          parameters: {},
+          status: "complete",
+          result: "grep 完成：日志中出现 0 次 '工具执行失败: ' 字样",
+        },
+      });
+      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe("Done");
+      expect(screen.getByTestId("copilot-tool-render-status-icon").textContent).toBe("✓");
+    });
+  });
 });

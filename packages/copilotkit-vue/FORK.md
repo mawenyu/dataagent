@@ -60,6 +60,13 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     (`group`/`group-hover`, matching user message); regenerate button gains
     `data-testid="copilot-regenerate-button"`. Copy buttons were already
     upstream default UI on both sides.
+13. `src/v2/hooks/use-default-render-tool.ts` (F3 补全, mainline) —
+    tool-level failure detection: a `complete` call whose result starts with
+    the gateway `session.tool.failed` contract prefix `"工具执行失败: "`
+    (AguiEventTranslator) now renders the failed state (✗失败 / red dot /
+    `data-run-end=failed`) instead of a misleading ✓Done. Prefix is matched
+    at line start only. Covered by 2 new cases in
+    `use-default-render-tool.test.ts`.
 
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)

@@ -144,6 +144,21 @@ const STATUS_DOT_COLORS = {
   interrupted: "#d97706",
 } as const;
 
+/**
+ * 工具级失败结果前缀 —— gateway AguiEventTranslator 对 `session.tool.failed`
+ * 下发的 TOOL_CALL_RESULT content 固定以 `"工具执行失败: "` 开头
+ * （AgUiProtocolServiceTest.toolFailureEmitsToolCallResult 锁定该契约）。
+ * 工具级失败不产生 RUN_ERROR，卡片仍以 complete 收尾；按行首前缀识别，
+ * 结果中段出现同样字样不算（如 grep 命中日志）。
+ */
+const TOOL_FAILURE_RESULT_PREFIX = "工具执行失败: ";
+
+function isFailureResult(result: unknown): boolean {
+  return (
+    typeof result === "string" && result.startsWith(TOOL_FAILURE_RESULT_PREFIX)
+  );
+}
+
 /** Inline SVG spinner (SMIL-animated, no CSS keyframes needed). */
 function renderSpinner() {  return h(
     "svg",
@@ -321,7 +336,10 @@ const DefaultToolCallRenderer = defineComponent({
     });
 
     const failedState = computed<RunEnd>(() => {
-      if (props.status === "complete") return null;
+      if (props.status === "complete") {
+        // 工具级失败（session.tool.failed）：run 正常收尾，但结果本身是错误。
+        return isFailureResult(props.result) ? "failed" : null;
+      }
       return runEnd.value;
     });
 
