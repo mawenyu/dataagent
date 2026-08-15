@@ -584,7 +584,8 @@ async function exportThread(id: string, format: 'md' | 'json') {
                       <textarea
                         ref="welcomeTextarea"
                         :value="modelValue"
-                        placeholder="输入你的数据问题，回车发送，Shift+Enter 换行…"
+                        placeholder="输入你的数据问题…"
+                        title="回车发送，Shift+Enter 换行"
                         rows="1"
                         :disabled="isRunning"
                         @input="onWelcomeInput($event, onUpdateModelValue)"

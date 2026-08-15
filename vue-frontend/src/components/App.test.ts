@@ -458,3 +458,16 @@ describe('App P-R（切换会话骨架屏）', () => {
     w.unmount()
   })
 })
+
+describe('移动端 UI 细节', () => {
+  it('welcome 占位文案单行容纳(≤16 字,390px 不截断),完整提示进 title', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    const ta = w.find('.welcome-input textarea')
+    const ph = ta.attributes('placeholder') ?? ''
+    expect(ph.length, '移动端 rows=1 单行须容纳占位文案').toBeLessThanOrEqual(16)
+    expect(ta.attributes('title') ?? '', '完整快捷键提示移到 title').toContain('Shift+Enter')
+  })
+})
