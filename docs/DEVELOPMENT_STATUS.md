@@ -21,10 +21,10 @@
 
 8. AguiEventTranslator.translate ~310 行单方法；全局/会话级文件端点复制粘贴；历史拉取两处重复。
 9. 无统一错误映射；ChatThreadStore 磁盘故障 → 500；event loop 阻塞 IO（Files.write / store 全文件锁）。
-10. 每事件 `new ObjectMapper()`（AgUiProtocolService 3 处）。
-11. 死代码：WorkspaceFileService.sizeOf、A2UiActionHandler.parse、A2UiService.BASIC_CATALOG_ID。
+10. ~~每事件 `new ObjectMapper()`（AgUiProtocolService 3 处）~~ ✅ a8f4354。
+11. ~~死代码：WorkspaceFileService.sizeOf、A2UiActionHandler.parse、A2UiService.BASIC_CATALOG_ID~~ ✅ 2fb571d（parse/ParsedAction 连带清理，-43 行）。
 12. fork 10 个既有失败测试（并行线在途，非本线债）。
-13. 根目录陈旧顶层 `dist/`（非部署源）。
+13. ~~根目录陈旧顶层 `dist/`~~ ✅ 已不存在（复核 2026-08-16）。
 
 ### P3
 
@@ -34,10 +34,13 @@
 
 - [x] git 清理：运行时产物入 gitignore，MASTER-PROMPT 入库（b205b6d）
 - [x] 五文档：CURRENT/TARGET_ARCHITECTURE、PRODUCT_REQUIREMENTS、本文件、ACCEPTANCE_TESTS
-- [ ] P0-1 密钥外移（含启动脚本 source + 实测重启验证）
-- [ ] P0-2 escape 修复（Jackson 序列化 + 反斜杠用例）
-- [ ] P0-3 CLAUDE.md
-- [ ] P1-4/5/6/7 清理与文档
+- [x] P0-1 密钥外移（6c6df31）/ P0-2 escape 修复（64a71f2）/ P0-3 CLAUDE.md（0000cae）
+- [x] P1-4/5 agents 清理（514c13f）/ P1-7 原生弹窗清零（db7bc07）
+- [x] P1-6 文档漂移修正（e2d0dba：DELIVERY-README 6 处 + workspace spec PUT/409/50MB + example provider 占位）
+- [x] P2-10 ObjectMapper 去重（a8f4354）/ P2-11 死代码清除（2fb571d）—— gateway 178 绿
+- [x] F3 补全：工具级失败结果渲染失败态（f972413，fork 目标文件 30/30 绿，FORK.md 条目 13）
+- [x] 验收 Test 4 补齐：`scripts/test-datasource-missing.sh` 真链路 5/5（509ee4b）—— 删 CSV → 工具失败前缀契约 + RUN_FINISHED
+- [x] 根 README 补建（abfb0ac）；前端 build + 245 绿 + 部署 /var/www/blog/agui 200
 
 ## 下一步（修完 P0/P1 后）
 
