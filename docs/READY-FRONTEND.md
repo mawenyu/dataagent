@@ -42,5 +42,6 @@ F1 主链路 / F2 功能项 / F4 全部在 task6 及之前已完成；本次补�
 | `a5c6c69` | **P-E 模板库/输入增强**：模板卡点击后高亮（card-active，编辑/清空自动移除）+ 一键清空按钮（✕，复位高度并聚焦）；欢迎页输入框自适应高度（下限 40px、超 3 行 82px 封顶出滚动条）+ Enter 发送 / Shift+Enter 换行 |
 | `7dd674d` | **P-F 主输入框核验+patch**：排查确认 fork 主输入框 Enter 发送/Shift+Enter 换行/IME 守卫/自适应增高均为 upstream 既有（有测试）；真实缺口=maxRows 默认 5 → 改 3 行封顶（inline `FORK-PATCH(P-F)` 注释），FORK.md 补条目 10/11 + 升级 re-apply 流程修正；新增 2 用例钉住 auto-grow 封顶防升级回退 |
 | `a3c77d0` | **P-G 会话归档**：主列表项 📥 归档 → 底部"已归档 · N"折叠区（默认折叠、可展开）；归档区支持取消归档/导出/删除/重命名/切换，当前会话归档后仍高亮；搜索对归档区同效；localStorage 持久化（与 P7 置顶同一纯表现层设计） |
+| `b408991` | **P-H 多选批量操作**：头部"☑ 多选"进入多选模式（行首 checkbox、点行=选中不跳会话），批量栏全选/计数/归档/删除/取消；批量归档复用 P-G 语义（同一 localStorage），批量删除走 F2 确认 modal（含数量，逐项 emit remove），取消 modal 保留多选状态 |
 
-**验证**：vue-frontend vitest 24 文件 152 全绿;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
+**验证**：vue-frontend vitest 25 文件 163 全绿;fork CopilotChatInput 47/47 绿；vite build ✓；P-A 导出契约对真实历史（含 reasoning/render_a2ui/tool）校验吻合；P-B 集成测试实证"失败 → 卡 → 重试 → 二次 /agent/run 且用户消息仅一份"。A2UI surface 渲染器持续未触碰。
