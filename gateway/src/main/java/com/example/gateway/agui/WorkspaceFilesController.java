@@ -64,14 +64,16 @@ public class WorkspaceFilesController {
     /** GET /files/{*name} — 下载/查看内容(P-N: 支持子目录相对路径)。 */
     @GetMapping("/files/{*name}")
     public ResponseEntity<Resource> download(@PathVariable String name) {
-        return files.read(name)
-                .map(res -> {
-                    String contentType = guessContentType(name);
-                    return ResponseEntity.ok()
-                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
-                            .contentType(MediaType.parseMediaType(contentType))
-                            .body(res);
-                })
+        return downloadImpl(files, name);
+    }
+
+    /** 下载共享实现：200 带 Content-Disposition / 猜测 Content-Type；不存在 404。 */
+    private ResponseEntity<Resource> downloadImpl(WorkspaceFileService svc, String name) {
+        return svc.read(name)
+                .map(res -> ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
+                        .contentType(MediaType.parseMediaType(guessContentType(name)))
+                        .body(res))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -79,10 +81,18 @@ public class WorkspaceFilesController {
     @PostMapping(value = "/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ResponseEntity<ObjectNode>> upload(@RequestPart("file") FilePart file,
                                                    @RequestParam(required = false) String path) {
+        return uploadImpl(files, file, path);
+    }
+
+    /**
+     * 上传共享实现：文件名/路径白名单 400、超限 413、空文件 400，
+     * 成功 200 {name,size}（P-N: 可入子目录,目录须已存在）。
+     */
+    private Mono<ResponseEntity<ObjectNode>> uploadImpl(WorkspaceFileService svc, FilePart file, String path) {
         String name = file.filename();
         final String rel = (path == null || path.isBlank()) ? name : path + "/" + name;
-        if (files.resolve(name).isEmpty() || files.resolvePath(rel).isEmpty()
-                || (path != null && !path.isBlank() && !files.resolvePath(path).filter(Files::isDirectory).isPresent())) {
+        if (svc.resolve(name).isEmpty() || svc.resolvePath(rel).isEmpty()
+                || (path != null && !path.isBlank() && !svc.resolvePath(path).filter(Files::isDirectory).isPresent())) {
             return Mono.just(ResponseEntity.badRequest().body(err("invalid file name or path")));
         }
         return DataBufferUtils.join(file.content())
@@ -93,10 +103,10 @@ public class WorkspaceFilesController {
                     return bytes;
                 })
                 .map(bytes -> {
-                    if (bytes.length > files.maxUploadBytes()) {
+                    if (bytes.length > svc.maxUploadBytes()) {
                         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
                     }
-                    return files.store(rel, bytes)
+                    return svc.store(rel, bytes)
                             .map(info -> {
                                 ObjectNode ok = MAPPER.createObjectNode();
                                 ok.put("name", info.name());
@@ -114,20 +124,48 @@ public class WorkspaceFilesController {
      */
     @PutMapping(value = "/files/{*name}", consumes = {MediaType.TEXT_PLAIN_VALUE, MediaType.ALL_VALUE})
     public ResponseEntity<ObjectNode> put(@PathVariable String name, @RequestBody(required = false) byte[] body) {
-        if (files.resolvePath(name).isEmpty()) {
+        return putImpl(files, name, body, null, false);
+    }
+
+    /**
+     * PUT 共享实现：非法名 400 / 空 400 / 超限 413 / baseModified 乐观并发不符 409；
+     * 成功 200 {name,size[,modifiedAt]}（modifiedAt 仅会话级端点回显，保持既有响应契约）。
+     */
+    private ResponseEntity<ObjectNode> putImpl(WorkspaceFileService svc, String name, byte[] body,
+                                               Long baseModified, boolean includeModifiedAt) {
+        if (svc.resolvePath(name).isEmpty()) {
             return ResponseEntity.badRequest().body(err("invalid file name"));
         }
         if (body == null || body.length == 0) {
             return ResponseEntity.badRequest().body(err("empty file"));
         }
-        if (body.length > files.maxUploadBytes()) {
+        if (body.length > svc.maxUploadBytes()) {
             return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
         }
-        return files.store(name, body)
+        if (baseModified != null) {
+            long actual = svc.resolvePath(name)
+                    .filter(Files::isRegularFile)
+                    .map(p -> {
+                        try {
+                            return Files.getLastModifiedTime(p).toMillis();
+                        } catch (java.io.IOException e) {
+                            return -1L;
+                        }
+                    })
+                    .orElse(-1L);
+            if (actual == -1L || actual != baseModified) {
+                ObjectNode conflict = err("conflict");
+                conflict.put("message", "file modified since read (baseModified mismatch)");
+                conflict.put("currentModified", actual);
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(conflict);
+            }
+        }
+        return svc.store(name, body)
                 .map(info -> {
                     ObjectNode ok = MAPPER.createObjectNode();
                     ok.put("name", info.name());
                     ok.put("size", info.size());
+                    if (includeModifiedAt) ok.put("modifiedAt", info.modifiedAt().toString());
                     return ResponseEntity.ok(ok);
                 })
                 .orElse(ResponseEntity.badRequest().body(err("store failed")));
@@ -136,8 +174,13 @@ public class WorkspaceFilesController {
     /** DELETE /files/{*name} — 删除(P-N: 支持子目录相对路径)。 */
     @DeleteMapping("/files/{*name}")
     public ResponseEntity<Void> delete(@PathVariable String name) {
-        if (files.resolvePath(name).isEmpty()) return ResponseEntity.badRequest().build();
-        return files.delete(name) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+        return deleteImpl(files, name);
+    }
+
+    /** 删除共享实现：非法路径 400；成功 204 / 不存在 404。 */
+    private ResponseEntity<Void> deleteImpl(WorkspaceFileService svc, String name) {
+        if (svc.resolvePath(name).isEmpty()) return ResponseEntity.badRequest().build();
+        return svc.delete(name) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 
     // ==================== task6: 会话级文件 API（workspace 会话隔离） ====================
@@ -156,11 +199,7 @@ public class WorkspaceFilesController {
     @GetMapping("/chat/threads/{threadId}/files/{*name}")
     public ResponseEntity<Resource> downloadThreadFile(@PathVariable String threadId, @PathVariable String name) {
         return files.forThread(threadId)
-                .flatMap(svc -> svc.read(name))
-                .map(res -> ResponseEntity.ok()
-                        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
-                        .contentType(MediaType.parseMediaType(guessContentType(name)))
-                        .body(res))
+                .map(svc -> downloadImpl(svc, name))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -173,33 +212,7 @@ public class WorkspaceFilesController {
         if (svc.isEmpty()) {
             return Mono.just(ResponseEntity.badRequest().body(err("invalid threadId")));
         }
-        String name = file.filename();
-        final String rel = (path == null || path.isBlank()) ? name : path + "/" + name;
-        if (svc.get().resolve(name).isEmpty() || svc.get().resolvePath(rel).isEmpty()
-                || (path != null && !path.isBlank() && !svc.get().resolvePath(path).filter(Files::isDirectory).isPresent())) {
-            return Mono.just(ResponseEntity.badRequest().body(err("invalid file name or path")));
-        }
-        return DataBufferUtils.join(file.content())
-                .map(buf -> {
-                    byte[] bytes = new byte[buf.readableByteCount()];
-                    buf.read(bytes);
-                    DataBufferUtils.release(buf);
-                    return bytes;
-                })
-                .map(bytes -> {
-                    if (bytes.length > svc.get().maxUploadBytes()) {
-                        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
-                    }
-                    return svc.get().store(rel, bytes)
-                            .map(info -> {
-                                ObjectNode ok = MAPPER.createObjectNode();
-                                ok.put("name", info.name());
-                                ok.put("size", info.size());
-                                return ResponseEntity.ok(ok);
-                            })
-                            .orElse(ResponseEntity.badRequest().body(err("empty file or store failed")));
-                })
-                .defaultIfEmpty(ResponseEntity.badRequest().body(err("empty file")));
+        return uploadImpl(svc.get(), file, path);
     }
 
     /**
@@ -216,46 +229,15 @@ public class WorkspaceFilesController {
                                                     Long baseModified) {
         var svc = files.forThread(threadId);
         if (svc.isEmpty()) return ResponseEntity.badRequest().body(err("invalid threadId"));
-        if (svc.get().resolvePath(name).isEmpty()) return ResponseEntity.badRequest().body(err("invalid file name"));
-        if (body == null || body.length == 0) return ResponseEntity.badRequest().body(err("empty file"));
-        if (body.length > svc.get().maxUploadBytes()) {
-            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
-        }
-        if (baseModified != null) {
-            long actual = svc.get().resolvePath(name)
-                    .filter(Files::isRegularFile)
-                    .map(p -> {
-                        try {
-                            return Files.getLastModifiedTime(p).toMillis();
-                        } catch (java.io.IOException e) {
-                            return -1L;
-                        }
-                    })
-                    .orElse(-1L);
-            if (actual == -1L || actual != baseModified) {
-                ObjectNode conflict = err("conflict");
-                conflict.put("message", "file modified since read (baseModified mismatch)");
-                conflict.put("currentModified", actual);
-                return ResponseEntity.status(HttpStatus.CONFLICT).body(conflict);
-            }
-        }
-        return svc.get().store(name, body)
-                .map(info -> {
-                    ObjectNode ok = MAPPER.createObjectNode();
-                    ok.put("name", info.name());
-                    ok.put("size", info.size());
-                    ok.put("modifiedAt", info.modifiedAt().toString());
-                    return ResponseEntity.ok(ok);
-                })
-                .orElse(ResponseEntity.badRequest().body(err("store failed")));
+        return putImpl(svc.get(), name, body, baseModified, true);
     }
 
     /** DELETE /chat/threads/{threadId}/files/{*name} — 删除(P-N: 支持子目录)。 */
     @DeleteMapping("/chat/threads/{threadId}/files/{*name}")
     public ResponseEntity<Void> deleteThreadFile(@PathVariable String threadId, @PathVariable String name) {
         var svc = files.forThread(threadId);
-        if (svc.isEmpty() || svc.get().resolvePath(name).isEmpty()) return ResponseEntity.badRequest().build();
-        return svc.get().delete(name) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+        if (svc.isEmpty()) return ResponseEntity.badRequest().build();
+        return deleteImpl(svc.get(), name);
     }
 
     private static ObjectNode err(String msg) {
