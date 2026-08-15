@@ -53,6 +53,7 @@
 | 多轮连续对话 | threadId→sessionId 持久映射，上下文完整 | scripts/test-multi-turn.sh 5 轮 7 断言（记得暗号） |
 | run 超时兜底 | agui.run-idle-timeout(默认120s) 空闲判挂起 → RUN_ERROR + interrupt/abort | 单测 hungRunTimesOutWithRunError + 实测 |
 | context/token 用量 | step.ended tokens → CUSTOM context_usage（input+cacheRead）；顶栏徽章 | 多轮 6089→10613 逐轮增长 |
+| shared state | RUN_STARTED 后 STATE_SNAPSHOT{threadId,model,provider,workspace,contextSize}；step 结算发 STATE_DELTA（JSON Patch replace /contextSize）；顶栏模型徽章 | docs/evidence/2026-08-15-state-events.sse |
 | frontend tools | RunAgentInput.tools → <client_tools> prompt 契约 → TOOL_CALL_* 结束 run → 浏览器执行 → role=tool 续跑 | scripts/test-frontend-tool.sh 5 断言 |
 | generative UI | useRenderTool 命名渲染器 render_a2ui（surface 构建卡：shimmer→组件徽标），优先于通配 * | RenderA2uiToolCall.test.ts + bundle grep |
 
@@ -62,7 +63,7 @@
 |---|---|---|
 | render_a2ui surface | <server_tools> prompt 契约 → A2UiBridgeService 校验/拍平 → ACTIVITY_SNAPSHOT(a2ui-surface) | docs/evidence/2026-08-15-a2ui-dashboard-flat.sse（7 组件看板） |
 | a2uiAction 回传 | 前端 action → forwardedProps.a2uiAction → A2UI_ACTION prompt → 真实 agent 续跑 + 同名 surfaceId 就地更新 | docs/evidence/2026-08-15-a2ui-action.sse |
-| 组件库 | basic catalog 18 组件 + 业务组件 MetricCard/DataTable/BarChart/LineChart/InsightCard/WarningCard/ActionButton | dataAgentCatalog.test.ts 真实 DOM 渲染 |
+| 组件库 | basic catalog 18 组件 + 业务组件 MetricCard/DataTable/BarChart/LineChart/PieChart/InsightCard/WarningCard/ActionButton/Badge/Markdown | scripts/test-a2ui-all-components.sh 31 断言（4 组真实 agent 渲染） |
 | 表单组件 | TextField/ChoicePicker/CheckBox/Slider/DateTimeInput，输入绑定 data model，提交 action context 引用 {path} 绑定 | scripts/test-a2ui-form.sh 8 断言 |
 | 数据绑定 | {path} 绑定由 GenericBinder 按 schema 解析；chart data / table rows / metric value 均可绑定 | catalog 测试 + 实测 |
 
