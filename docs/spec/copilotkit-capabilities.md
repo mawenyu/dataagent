@@ -55,7 +55,7 @@ slugline 长 slide 由模型写内容（结构小、内容纯文本，JSON 风�
 - 单测：slides → Tabs 结构断言；空 slides 拒绝
 - curl 实测："把本月销售分析做成 5 页演示" → Tabs surface
 
-## B3. update_canvas（research-canvas 模式）
+## B3. update_canvas（research-canvas 模式）✅ 已完成（2026-08-15）
 
 模型输出 `{title, sections:[{heading, markdown}], append?}`；gateway 展开为
 A2UI Column of Card+Markdown sections。同名 surfaceId 重复调用 = 就地更新（覆盖或
