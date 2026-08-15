@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref, toRef } from 'vue'
 import { formatSize, useWorkspaceFiles } from '../composables/useWorkspaceFiles'
+import { isPreviewable } from '../composables/filePreview'
 import SpreadsheetEditor from './SpreadsheetEditor.vue'
+import FilePreviewModal from './FilePreviewModal.vue'
 
 /**
  * workspace 文件面板（spec: docs/spec/workspace-files.md）：
- * 列表 / 文本预览 / 上传 / 下载 / 删除。与会话栏同栏位 Tab 切换（App.vue 驱动）。
+ * 列表 / 在线预览 / 上传 / 下载 / 删除。与会话栏同栏位 Tab 切换（App.vue 驱动）。
  * task5-B4：.csv 文件可"表格编辑"打开 SpreadsheetEditor（PUT 覆盖写保存）。
  * task6：threadId prop —— 面板显示当前会话的隔离 workspace（spec: workspace-isolation.md）。
+ * P-C：预览升级为全屏 modal（csv 表格 / json 美化 / md 渲染，Teleport+ESC）；
+ *      同时清掉原生 alert/confirm —— 错误走内联 notice，删除走两段确认。
  */
 const props = defineProps<{ threadId?: string }>()
 const api = useWorkspaceFiles(toRef(props, 'threadId'))
@@ -15,6 +19,8 @@ onMounted(() => api.refresh())
 
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement>()
+/** 内联提示（上传/删除/编辑器错误、不可预览提示）—— 不用原生弹窗 */
+const notice = ref('')
 
 function pickFile() { fileInput.value?.click() }
 
@@ -22,22 +28,43 @@ async function onPick(e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0]
   if (!f) return
   uploading.value = true
+  notice.value = ''
   try {
     await api.upload(f)
   } catch (err: any) {
-    window.alert(`上传失败：${err?.message ?? err}`)
+    notice.value = `上传失败：${err?.message ?? err}`
   } finally {
     uploading.value = false
     ;(e.target as HTMLInputElement).value = ''
   }
 }
 
+function onNameClick(name: string) {
+  notice.value = ''
+  if (!isPreviewable(name)) {
+    notice.value = `「${name}」不支持在线预览，请下载查看`
+    return
+  }
+  void api.previewFile(name)
+}
+
+// 两段确认删除：第一次点击 × → 按钮变"确认删除？"(3s 超时复位);再点才真删
+const confirmingDel = ref<string | null>(null)
+let confirmTimer: number | undefined
 async function confirmRemove(name: string) {
-  if (!window.confirm(`删除文件「${name}」？agent 将再也读不到它。`)) return
+  if (confirmingDel.value !== name) {
+    confirmingDel.value = name
+    window.clearTimeout(confirmTimer)
+    confirmTimer = window.setTimeout(() => { confirmingDel.value = null }, 3000)
+    return
+  }
+  confirmingDel.value = null
+  window.clearTimeout(confirmTimer)
+  notice.value = ''
   try {
     await api.remove(name)
   } catch (err: any) {
-    window.alert(`删除失败：${err?.message ?? err}`)
+    notice.value = `删除失败：${err?.message ?? err}`
   }
 }
 
@@ -45,11 +72,12 @@ async function confirmRemove(name: string) {
 const editing = ref<{ name: string; content: string } | null>(null)
 function isCsv(name: string) { return name.toLowerCase().endsWith('.csv') }
 async function openEditor(name: string) {
+  notice.value = ''
   try {
     const content = await api.readFile(name)
     editing.value = { name, content }
   } catch (err: any) {
-    window.alert(`打开编辑器失败：${err?.message ?? err}`)
+    notice.value = `打开编辑器失败：${err?.message ?? err}`
   }
 }
 function closeEditor() { editing.value = null }
@@ -72,9 +100,10 @@ function formatTime(iso: string) {
     </div>
     <p class="hint">本会话独立文件区，agent 可直接读取做分析</p>
     <div v-if="api.error.value" class="error">{{ api.error }}</div>
+    <div v-if="notice" class="error" data-testid="files-notice">{{ notice }}</div>
     <div class="file-list">
       <div v-for="f in api.files.value" :key="f.name" class="file-item" :data-file="f.name">
-        <button class="file-name" :title="f.name" @click="api.previewFile(f.name)">{{ f.name }}</button>
+        <button class="file-name" :title="f.name" @click="onNameClick(f.name)">{{ f.name }}</button>
         <span class="file-meta">{{ formatSize(f.size) }} · {{ formatTime(f.modifiedAt) }}</span>
         <span class="file-actions">
           <button
@@ -85,22 +114,27 @@ function formatTime(iso: string) {
             @click="openEditor(f.name)"
           >✎</button>
           <a class="act" :href="api.downloadUrl(f.name)" :download="f.name" title="下载">⬇</a>
-          <button class="act del" :data-testid="`del-${f.name}`" title="删除" @click="confirmRemove(f.name)">×</button>
+          <button
+            class="act del"
+            :class="{ confirming: confirmingDel === f.name }"
+            :data-testid="`del-${f.name}`"
+            :title="confirmingDel === f.name ? '再次点击确认删除' : '删除'"
+            @click="confirmRemove(f.name)"
+          >{{ confirmingDel === f.name ? '确认删除？' : '×' }}</button>
         </span>
       </div>
       <div v-if="!api.loading.value && api.files.value.length === 0" class="empty">
         暂无文件，点击"上传"添加 CSV/数据文件
       </div>
     </div>
-    <!-- 文本预览 -->
-    <div v-if="api.preview.value" class="preview" data-testid="file-preview">
-      <div class="preview-head">
-        <strong>{{ api.preview.value.name }}</strong>
-        <button class="act" title="关闭预览" @click="api.closePreview()">×</button>
-      </div>
-      <pre class="preview-body">{{ api.preview.value.content }}</pre>
-      <p v-if="api.preview.value.truncated" class="hint">（内容超过 256KB，仅显示前 256KB）</p>
-    </div>
+    <!-- P-C: 在线预览 modal(csv 表格 / json 美化 / md 渲染;Teleport + ESC) -->
+    <FilePreviewModal
+      v-if="api.preview.value"
+      :name="api.preview.value.name"
+      :content="api.preview.value.content"
+      :truncated="api.preview.value.truncated"
+      @close="api.closePreview()"
+    />
     <!-- task5-B4: CSV 表格编辑器（弹层卡片） -->
     <SpreadsheetEditor
       v-if="editing"
@@ -137,7 +171,7 @@ function formatTime(iso: string) {
 }
 .file-name:hover { color: #4338ca; }
 .file-meta { font-size: 11px; color: #9ca3af; white-space: nowrap; }
-.file-actions { display: flex; gap: 2px; opacity: 0; }
+.file-actions { display: flex; gap: 2px; opacity: 0; align-items: center; }
 .file-item:hover .file-actions { opacity: 1; }
 .act {
   border: none; background: transparent; color: #9ca3af; font-size: 14px;
@@ -145,19 +179,15 @@ function formatTime(iso: string) {
 }
 .act:hover { color: #4338ca; background: #eef2ff; }
 .act.del:hover { color: #ef4444; background: #fef2f2; }
+/* P-C: 两段确认态 */
+.act.del.confirming {
+  opacity: 1;
+  font-size: 11.5px;
+  color: #ffffff;
+  background: #ef4444;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.act.del.confirming:hover { background: #dc2626; }
 .empty { padding: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; }
-.preview {
-  border-top: 1px solid var(--border, #e5e7eb);
-  max-height: 45%; display: flex; flex-direction: column;
-}
-.preview-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 14px; font-size: 12.5px; color: #111827;
-}
-.preview-body {
-  margin: 0; padding: 8px 14px 12px; overflow: auto;
-  font-size: 11.5px; line-height: 1.5; color: #374151;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: pre-wrap; word-break: break-all;
-}
 </style>

@@ -1,11 +1,12 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import FilesPanel from './FilesPanel.vue'
 
 /**
  * workspace 文件面板（spec: docs/spec/workspace-files.md）：
- * 列表渲染 / 预览 / 上传(multipart) / 下载链接 / 删除确认。
+ * 列表渲染 / 预览(P-C: Teleported modal) / 上传(multipart) / 下载链接 /
+ * 删除(P-C: 两段确认,不再用原生 confirm)。
  */
 function mockFetchOnce(body: any, init?: { ok?: boolean; status?: number }) {
   return vi.fn().mockResolvedValue({
@@ -14,6 +15,10 @@ function mockFetchOnce(body: any, init?: { ok?: boolean; status?: number }) {
     json: () => Promise.resolve(body),
     arrayBuffer: () => Promise.resolve(new TextEncoder().encode(typeof body === 'string' ? body : JSON.stringify(body)).buffer),
   })
+}
+
+function previewModal() {
+  return document.body.querySelector('[data-testid="file-preview-modal"]')
 }
 
 const FILE_LIST = {
@@ -25,6 +30,7 @@ const FILE_LIST = {
 
 describe('FilesPanel (task5-A workspace 文件管理)', () => {
   beforeEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { document.body.innerHTML = '' })
 
   it('renders the file list with name/size', async () => {
     vi.stubGlobal('fetch', mockFetchOnce(FILE_LIST))
@@ -35,7 +41,7 @@ describe('FilesPanel (task5-A workspace 文件管理)', () => {
     expect(wrapper.text()).toContain('notes.md')
   })
 
-  it('previews file content on click', async () => {
+  it('P-C: 点文件名开预览 modal,csv 渲染为表格;ESC 关闭', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(FILE_LIST) })
       .mockResolvedValueOnce({
@@ -43,12 +49,37 @@ describe('FilesPanel (task5-A workspace 文件管理)', () => {
         arrayBuffer: () => Promise.resolve(new TextEncoder().encode('区域,销售额\n华北,388082').buffer),
       })
     vi.stubGlobal('fetch', fetchMock)
-    const wrapper = mount(FilesPanel)
+    const wrapper = mount(FilesPanel, { attachTo: document.body })
     await nextTick(); await nextTick(); await nextTick()
     await wrapper.find('[data-file="sales-2026-08.csv"] .file-name').trigger('click')
     await nextTick(); await nextTick()
     expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/files/sales-2026-08.csv')
-    expect(wrapper.find('[data-testid="file-preview"]').text()).toContain('华北,388082')
+    const dlg = previewModal()
+    expect(dlg, '预览应开 modal(Teleport 到 body)').toBeTruthy()
+    const table = dlg!.querySelector('[data-testid="file-preview-table"] table')!
+    expect([...table.querySelectorAll('th')].map((e) => e.textContent)).toEqual(['区域', '销售额'])
+    expect(table.textContent).toContain('388082')
+    // ESC 关闭
+    ;(document.body.querySelector('[data-testid="file-preview-overlay"]') as HTMLElement)
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await nextTick()
+    expect(previewModal()).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('P-C: 不可预览类型(xlsx)给内联提示,不发预览请求', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ files: [{ name: 'book.xlsx', size: 9, modifiedAt: '2026-08-15T01:00:00Z' }] }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel)
+    await nextTick(); await nextTick(); await nextTick()
+    await wrapper.find('[data-file="book.xlsx"] .file-name').trigger('click')
+    await nextTick()
+    expect(fetchMock).toHaveBeenCalledTimes(1) // 只有列表请求
+    expect(wrapper.find('[data-testid="files-notice"]').text()).toContain('不支持在线预览')
+    expect(previewModal()).toBeNull()
   })
 
   it('uploads via multipart POST and refreshes', async () => {
@@ -71,8 +102,7 @@ describe('FilesPanel (task5-A workspace 文件管理)', () => {
     expect(wrapper.text()).toContain('up.csv')
   })
 
-  it('deletes after confirmation', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('P-C: 删除两段确认 —— 第一次点击变"确认删除？",再点才真删', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(FILE_LIST) })
       .mockResolvedValueOnce({ ok: true, status: 204 })
@@ -80,7 +110,16 @@ describe('FilesPanel (task5-A workspace 文件管理)', () => {
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mount(FilesPanel)
     await nextTick(); await nextTick(); await nextTick()
+
+    // 第一次点击: 不进 DELETE,按钮变确认态
     await wrapper.find('[data-testid="del-sales-2026-08.csv"]').trigger('click')
+    await nextTick()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const btn = wrapper.find('[data-testid="del-sales-2026-08.csv"]')
+    expect(btn.text()).toBe('确认删除？')
+
+    // 第二次点击: 真删并刷新
+    await btn.trigger('click')
     await nextTick(); await nextTick(); await nextTick()
     expect(fetchMock.mock.calls[1][1].method).toBe('DELETE')
     expect(wrapper.text()).not.toContain('sales-2026-08.csv')

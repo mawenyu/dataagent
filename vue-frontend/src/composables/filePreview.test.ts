@@ -1,0 +1,105 @@
+import { describe, expect, it } from 'vitest'
+import {
+  isPreviewable,
+  parseCsvPreview,
+  prettyJson,
+  renderMarkdownLite,
+} from './filePreview'
+
+/** P-C: 文件在线预览的纯函数层 —— CSV 解析 / JSON 美化 / 轻量 Markdown 渲染。 */
+
+describe('isPreviewable', () => {
+  it('csv/json/md/txt/log/tsv 可预览,xlsx/png 等不可', () => {
+    expect(isPreviewable('a.csv')).toBe(true)
+    expect(isPreviewable('B.JSON')).toBe(true)
+    expect(isPreviewable('notes.md')).toBe(true)
+    expect(isPreviewable('x.txt')).toBe(true)
+    expect(isPreviewable('y.log')).toBe(true)
+    expect(isPreviewable('z.tsv')).toBe(true)
+    expect(isPreviewable('book.xlsx')).toBe(false)
+    expect(isPreviewable('p.png')).toBe(false)
+    expect(isPreviewable('noext')).toBe(false)
+  })
+})
+
+describe('parseCsvPreview', () => {
+  it('基础逗号拆分 + CRLF 归一', () => {
+    expect(parseCsvPreview('a,b\r\n1,2\r\n')).toEqual([['a', 'b'], ['1', '2']])
+  })
+
+  it('引号字段: 内含逗号/换行/转义双引号', () => {
+    const text = 'name,note\r\n"张,三","第一行\n第二行"\r\n"a""b",x'
+    expect(parseCsvPreview(text)).toEqual([
+      ['name', 'note'],
+      ['张,三', '第一行\n第二行'],
+      ['a"b', 'x'],
+    ])
+  })
+
+  it('空行忽略,尾部空行去掉', () => {
+    expect(parseCsvPreview('a,b\n\n\n1,2\n')).toEqual([['a', 'b'], ['1', '2']])
+  })
+
+  it('空文本 → 空数组', () => {
+    expect(parseCsvPreview('')).toEqual([])
+  })
+})
+
+describe('prettyJson', () => {
+  it('合法 JSON 美化缩进', () => {
+    expect(prettyJson('{"a":1}')).toBe('{\n  "a": 1\n}')
+  })
+
+  it('非法 JSON 原样返回', () => {
+    expect(prettyJson('{oops')).toBe('{oops')
+  })
+})
+
+describe('renderMarkdownLite', () => {
+  it('标题/加粗/斜体/行内代码', () => {
+    const html = renderMarkdownLite('# 标题\n**粗** 和 *斜* 和 `code`')
+    expect(html).toContain('<h1>标题</h1>')
+    expect(html).toContain('<strong>粗</strong>')
+    expect(html).toContain('<em>斜</em>')
+    expect(html).toContain('<code>code</code>')
+  })
+
+  it('XSS 防护: HTML 先转义,脚本不执行', () => {
+    const html = renderMarkdownLite('<script>alert(1)</script>**ok**')
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).toContain('<strong>ok</strong>')
+  })
+
+  it('代码块: 内容不再做行内变换', () => {
+    const html = renderMarkdownLite('```\n**not-bold** <b>x</b>\n```')
+    expect(html).toContain('<pre><code>')
+    expect(html).toContain('**not-bold**')
+    expect(html).toContain('&lt;b&gt;')
+  })
+
+  it('无序列表', () => {
+    const html = renderMarkdownLite('- 甲\n- 乙')
+    expect(html).toContain('<ul>')
+    expect(html).toContain('<li>甲</li>')
+    expect(html).toContain('<li>乙</li>')
+  })
+
+  it('GFM 表格', () => {
+    const html = renderMarkdownLite('| 区域 | 额 |\n| --- | --- |\n| 华北 | 100 |')
+    expect(html).toContain('<table>')
+    expect(html).toContain('<th>区域</th>')
+    expect(html).toContain('<td>华北</td>')
+  })
+
+  it('链接仅放行 http/https,文本转义', () => {
+    const html = renderMarkdownLite('[官网](https://example.com) [坏](javascript:alert(1))')
+    expect(html).toContain('<a href="https://example.com"')
+    expect(html).not.toContain('javascript:')
+  })
+
+  it('普通段落换行保留为 <br>', () => {
+    const html = renderMarkdownLite('第一行\n第二行')
+    expect(html).toContain('第一行<br>')
+  })
+})
