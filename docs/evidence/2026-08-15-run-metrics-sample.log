@@ -1,0 +1,2 @@
+{"ts":"2026-08-15T15:04:50.506247016Z","type":"tool_call","runId":"r1","threadId":"vision-p8-metrics","tool":"shell","durationMs":2167}
+{"ts":"2026-08-15T15:04:50.627801816Z","type":"run_finished","runId":"r1","threadId":"vision-p8-metrics","outcome":"completed","durationMs":14012}
