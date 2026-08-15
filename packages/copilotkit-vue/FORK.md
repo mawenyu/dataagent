@@ -52,6 +52,15 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     product input spec (auto-grow, scroll past 3 rows). Enter-to-send /
     Shift+Enter-newline / IME guard are upstream behavior, unchanged.
 
+12. `src/v2/components/chat/CopilotChatMessageView.vue` +
+    `CopilotChatAssistantMessage.vue` (P-S, mainline) — message-level actions:
+    regenerate wired (last assistant message only, truncates that answer and
+    re-runs via `core.runAgent`); per-message time captions (history
+    `createdAt` ?? first-seen); assistant toolbar becomes hover-only
+    (`group`/`group-hover`, matching user message); regenerate button gains
+    `data-testid="copilot-regenerate-button"`. Copy buttons were already
+    upstream default UI on both sides.
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 

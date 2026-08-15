@@ -342,6 +342,54 @@ function resolveToolMessage(
   ) as ToolMessage | undefined;
 }
 
+// ---- P-S: 消息级操作 ----
+
+/** 仅最后一条 assistant 消息且非运行中可重新生成。 */
+function canRegenerate(message: Message): boolean {
+  if (props.isRunning) return false;
+  return props.messages[props.messages.length - 1]?.id === message.id;
+}
+
+/** 重新生成: 截掉该 assistant 回答(及其后残留)后重发 run。 */
+async function handleRegenerate(message: Message) {
+  if (!canRegenerate(message)) return;
+  const agent = resolvedThreadAgent.value;
+  if (!agent) return;
+  const msgs = [...(agent.messages ?? [])];
+  const idx = msgs.findIndex((m) => m.id === message.id);
+  if (idx < 0) return;
+  agent.setMessages(msgs.slice(0, idx));
+  try {
+    await copilotkit.value.runAgent({ agent });
+  } catch {
+    // 失败由 core onError 通道呈现(P-B 错误卡)
+  }
+}
+
+/** 首见时间(live 消息的时间戳来源;history 消息自带 createdAt)。 */
+const firstSeenAt = new Map<string, number>();
+
+/** P-S: 消息时间戳 —— createdAt(history) ?? 首次渲染时间(live)。 */
+function messageTimeLabel(message: Message): string {
+  const m = message as Message & { createdAt?: unknown };
+  let ts: number | null = null;
+  if (typeof m.createdAt === "string") {
+    const parsed = Date.parse(m.createdAt);
+    if (!Number.isNaN(parsed)) ts = parsed;
+  }
+  if (ts === null) {
+    if (!firstSeenAt.has(message.id)) firstSeenAt.set(message.id, Date.now());
+    ts = firstSeenAt.get(message.id)!;
+  }
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  return sameDay
+    ? `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /**
  * P11: v-memo 签名 —— @ag-ui/client 对流式 delta 是**原地修改**
  * （o.content += delta，对象身份不变），不能用对象 identity 做 memo key。
@@ -405,6 +453,7 @@ function memoSignature(message: Message): string {
           :message="message"
           :messages="messages"
           :is-running="isRunning"
+          v-bind="canRegenerate(message) ? { onRegenerate: handleRegenerate } : {}"
         >
           <template
             v-for="slotName in forwardedSlotNames"
@@ -414,6 +463,13 @@ function memoSignature(message: Message): string {
             <slot :name="slotName" v-bind="slotProps" />
           </template>
         </CopilotChatAssistantMessage>
+        <div
+          class="cpk:flex cpk:justify-start"
+          data-testid="copilot-message-time"
+          style="font-size: 11px; color: #9ca3af; margin: 2px 6px 0"
+        >
+          {{ messageTimeLabel(message) }}
+        </div>
       </slot>
 
       <slot
@@ -430,6 +486,13 @@ function memoSignature(message: Message): string {
             <slot :name="slotName" v-bind="slotProps" />
           </template>
         </CopilotChatUserMessage>
+        <div
+          class="cpk:flex cpk:justify-end"
+          data-testid="copilot-message-time"
+          style="font-size: 11px; color: #9ca3af; margin: 2px 6px 0"
+        >
+          {{ messageTimeLabel(message) }}
+        </div>
       </slot>
 
       <slot

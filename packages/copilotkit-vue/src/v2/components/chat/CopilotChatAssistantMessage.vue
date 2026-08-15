@@ -743,7 +743,7 @@ onBeforeUnmount(() => {
     <div
       data-copilotkit
       data-testid="copilot-assistant-message"
-      class="cpk:prose cpk:max-w-full cpk:break-words cpk:dark:prose-invert"
+      class="cpk:prose cpk:max-w-full cpk:break-words cpk:dark:prose-invert cpk:group"
       :data-message-id="message.id"
       v-bind="$attrs"
     >
@@ -792,7 +792,7 @@ onBeforeUnmount(() => {
         :should-show-toolbar="shouldShowToolbar"
       >
         <div
-          class="cpk:w-full cpk:bg-transparent cpk:flex cpk:items-center cpk:-ml-[5px] cpk:-mt-[0px]"
+          class="cpk:w-full cpk:bg-transparent cpk:flex cpk:items-center cpk:-ml-[5px] cpk:-mt-[0px] cpk:invisible cpk:group-hover:visible"
         >
           <div class="cpk:flex cpk:items-center cpk:gap-1">
             <slot
@@ -873,6 +873,7 @@ onBeforeUnmount(() => {
             >
               <button
                 type="button"
+                data-testid="copilot-regenerate-button"
                 :class="toolbarButtonClass"
                 :aria-label="labels.assistantMessageToolbarRegenerateLabel"
                 :title="labels.assistantMessageToolbarRegenerateLabel"
