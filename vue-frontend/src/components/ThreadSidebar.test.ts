@@ -197,3 +197,84 @@ describe('ThreadSidebar P7（搜索过滤 + 置顶）', () => {
     expect(items[0].classes()).toContain('pinned')
   })
 })
+
+describe('ThreadSidebar P-G（会话归档）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    localStorage.clear()
+  })
+
+  const many = [
+    { id: 'a', title: '销售分析', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'b', title: '库存盘点', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'c', title: '销售周报', sessionId: null, createdAt: '', updatedAt: '' },
+    { id: 'd', title: '客户清单', sessionId: null, createdAt: '', updatedAt: '' },
+  ]
+
+  it('归档后从主列表消失,进入底部"已归档"折叠区(默认折叠),不触发切换', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' }, attachTo: document.body })
+    await w.find('[data-testid="archive-b"]').trigger('click')
+
+    // 主列表 3 项且无 b
+    const items = w.findAll('.thread-list .thread-item')
+    expect(items).toHaveLength(3)
+    expect(w.find('.thread-list').text()).not.toContain('库存盘点')
+    expect(w.emitted('switch')).toBeUndefined()
+
+    // 底部归档区出现,默认折叠(列表不渲染),计数 1
+    const toggle = w.find('[data-testid="archive-toggle"]')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.text()).toContain('已归档')
+    expect(toggle.text()).toContain('1')
+    expect(w.find('[data-testid="archive-list"]').isVisible()).toBe(false)
+
+    // 展开后可见
+    await toggle.trigger('click')
+    const archived = w.find('[data-testid="archive-list"]')
+    expect(archived.isVisible()).toBe(true)
+    expect(archived.text()).toContain('库存盘点')
+  })
+
+  it('取消归档: 会话回到主列表,归档区清空后整区消失', async () => {
+    localStorage.setItem('dataagent.archivedThreads', JSON.stringify(['b']))
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    await w.find('[data-testid="archive-toggle"]').trigger('click')
+    await w.find('[data-testid="unarchive-b"]').trigger('click')
+
+    expect(w.find('.thread-list').text()).toContain('库存盘点')
+    expect(w.find('[data-testid="archive-toggle"]').exists()).toBe(false)
+    expect(JSON.parse(localStorage.getItem('dataagent.archivedThreads') ?? '[]')).not.toContain('b')
+  })
+
+  it('localStorage 持久化: 重挂载后归档态保留', async () => {
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    await w.find('[data-testid="archive-c"]').trigger('click')
+    expect(JSON.parse(localStorage.getItem('dataagent.archivedThreads') ?? '[]')).toContain('c')
+
+    const w2 = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    expect(w2.find('.thread-list').text()).not.toContain('销售周报')
+    await w2.find('[data-testid="archive-toggle"]').trigger('click')
+    expect(w2.find('[data-testid="archive-list"]').text()).toContain('销售周报')
+  })
+
+  it('归档当前会话: 在归档区仍保持 active 高亮', async () => {
+    localStorage.setItem('dataagent.archivedThreads', JSON.stringify(['a']))
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    await w.find('[data-testid="archive-toggle"]').trigger('click')
+    const item = w.find('[data-testid="archive-list"] .thread-item')
+    expect(item.classes()).toContain('active')
+  })
+
+  it('搜索对归档区同样生效', async () => {
+    localStorage.setItem('dataagent.archivedThreads', JSON.stringify(['c', 'd']))
+    const w = mount(ThreadSidebar, { props: { threads: many, currentId: 'a' } })
+    expect(w.find('[data-testid="archive-toggle"]').text()).toContain('2')
+    await w.find('[data-testid="thread-search"]').setValue('客户')
+    // 归档区只剩"客户清单"
+    expect(w.find('[data-testid="archive-toggle"]').text()).toContain('1')
+    await w.find('[data-testid="archive-toggle"]').trigger('click')
+    const list = w.find('[data-testid="archive-list"]')
+    expect(list.text()).toContain('客户清单')
+    expect(list.text()).not.toContain('销售周报')
+  })
+})

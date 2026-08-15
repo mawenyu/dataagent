@@ -59,6 +59,34 @@ const visibleThreads = computed(() => {
   return [...filtered].sort((a, b) => Number(pinned.value.has(b.id)) - Number(pinned.value.has(a.id)))
 })
 
+// ---- P-G: 归档(localStorage 持久化,纯表现层,与网关数据无关) ----
+const ARCHIVE_KEY = 'dataagent.archivedThreads'
+function loadArchived(): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ARCHIVE_KEY) ?? '[]')
+    return new Set(Array.isArray(raw) ? raw : [])
+  } catch {
+    return new Set()
+  }
+}
+const archived = ref<Set<string>>(loadArchived())
+/** 归档区折叠态(默认折叠,会话内状态不持久化) */
+const archiveOpen = ref(false)
+
+function toggleArchive(t: ThreadMeta) {
+  const next = new Set(archived.value)
+  if (next.has(t.id)) next.delete(t.id)
+  else next.add(t.id)
+  archived.value = next
+  try {
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify([...next]))
+  } catch { /* localStorage 不可用时静默降级 */ }
+}
+
+/** 主列表 = 可见列表去掉已归档;归档区继承同一搜索过滤。 */
+const activeThreads = computed(() => visibleThreads.value.filter((t) => !archived.value.has(t.id)))
+const archivedThreads = computed(() => visibleThreads.value.filter((t) => archived.value.has(t.id)))
+
 const emit = defineEmits<{
   (e: 'new'): void
   (e: 'switch', id: string): void
@@ -130,7 +158,7 @@ const renameInvalid = () => !renameDraft.value.trim()
     </div>
     <div class="thread-list">
       <div
-        v-for="t in visibleThreads"
+        v-for="t in activeThreads"
         :key="t.id"
         class="thread-item"
         :class="{ active: t.id === currentId, pinned: pinned.has(t.id) }"
@@ -147,6 +175,12 @@ const renameInvalid = () => !renameDraft.value.trim()
           @click.stop="togglePin(t)"
         >📌</button>
         <button
+          class="icon-btn archive-btn"
+          :data-testid="`archive-${t.id}`"
+          title="归档会话(移入底部归档区)"
+          @click.stop="toggleArchive(t)"
+        >📥</button>
+        <button
           class="icon-btn export-btn"
           :data-testid="`export-${t.id}`"
           title="导出会话为 Markdown"
@@ -160,7 +194,50 @@ const renameInvalid = () => !renameDraft.value.trim()
         >×</button>
       </div>
       <div v-if="threads.length === 0" class="empty">暂无会话</div>
-      <div v-else-if="visibleThreads.length === 0" class="empty">无匹配会话</div>
+      <div v-else-if="activeThreads.length === 0 && archivedThreads.length === 0" class="empty">无匹配会话</div>
+    </div>
+
+    <!-- P-G: 归档折叠区(默认折叠,钉在侧边栏底部) -->
+    <div v-if="archivedThreads.length > 0" class="archive-section">
+      <button
+        class="archive-toggle"
+        data-testid="archive-toggle"
+        :aria-expanded="archiveOpen"
+        @click="archiveOpen = !archiveOpen"
+      >
+        <span class="chev">{{ archiveOpen ? '▾' : '▸' }}</span> 已归档 · {{ archivedThreads.length }}
+      </button>
+      <div v-show="archiveOpen" class="archive-list" data-testid="archive-list">
+        <div
+          v-for="t in archivedThreads"
+          :key="t.id"
+          class="thread-item archived"
+          :class="{ active: t.id === currentId }"
+          :data-thread-id="t.id"
+          @click="emit('switch', t.id)"
+          @dblclick="startRename(t)"
+        >
+          <span class="thread-title" :title="t.title">{{ t.title }}</span>
+          <button
+            class="icon-btn unarchive-btn"
+            :data-testid="`unarchive-${t.id}`"
+            title="取消归档"
+            @click.stop="toggleArchive(t)"
+          >📤</button>
+          <button
+            class="icon-btn export-btn"
+            :data-testid="`export-${t.id}`"
+            title="导出会话为 Markdown"
+            @click.stop="emit('export', t.id)"
+          >⤓</button>
+          <button
+            class="icon-btn del-btn"
+            :data-testid="`del-${t.id}`"
+            title="删除会话"
+            @click.stop="confirmRemove(t)"
+          >×</button>
+        </div>
+      </div>
     </div>
 
     <Teleport to="body">
@@ -293,6 +370,35 @@ const renameInvalid = () => !renameDraft.value.trim()
 .export-btn:hover { color: #6366f1; background: #eef2ff; }
 .del-btn:hover { color: #ef4444; background: #fef2f2; }
 .empty { padding: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; }
+
+/* ---- P-G: 归档折叠区 ---- */
+.archive-section {
+  flex: none;
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding: 6px 8px 10px;
+}
+.archive-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  text-align: left;
+}
+.archive-toggle:hover { background: #f1f5f9; }
+.archive-toggle .chev { font-size: 10px; color: #9ca3af; }
+.archive-list { max-height: 180px; overflow-y: auto; }
+.thread-item.archived { color: #6b7280; }
+.thread-item.archived .thread-title { font-style: normal; opacity: 0.85; }
+.archive-btn:hover { color: #4338ca; background: #eef2ff; }
+.unarchive-btn:hover { color: #4338ca; background: #eef2ff; }
 
 /* ---- F2: 自绘 modal(scoped 样式经 :deep 不适用 Teleport,故用全局类名但加 dlg- 前缀避免冲突) ---- */
 </style>
