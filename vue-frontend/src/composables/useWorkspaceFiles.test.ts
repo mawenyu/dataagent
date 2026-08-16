@@ -29,6 +29,39 @@ describe('useWorkspaceFiles (task6 会话隔离)', () => {
     expect(api.files.value.map((f) => f.name)).toEqual(['a.csv'])
   })
 
+  it('冷启动竞态: threadId 为空时 upload 等待就绪,不落 legacy 共享根', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(listResponse([]))
+    vi.stubGlobal('fetch', fetchMock)
+    const tid = ref('')
+    const api = useWorkspaceFiles(tid)
+    const file = new File(['x'], 'cold.csv')
+    // threadId 尚未就绪就发起上传 —— 不能立刻 fetch(会落 legacy)
+    const p = api.upload(file)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('cold.csv') || String(u).includes('POST')), '就绪前不得发请求').toHaveLength(0)
+    // threadId 就绪 → 请求落在会话级路径
+    tid.value = 'thread-late'
+    await p
+    const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === 'POST')
+    expect(String(post![0])).toBe('/agui-api/chat/threads/thread-late/files')
+  })
+
+  it('冷启动竞态: threadId 一直不就绪 → upload 超时抛错(不静默落 legacy)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(listResponse([]))
+      vi.stubGlobal('fetch', fetchMock)
+      const api = useWorkspaceFiles(ref(''))
+      const p = api.upload(new File(['x'], 'never.csv'))
+      const assertion = expect(p).rejects.toThrow('会话未就绪')
+      await vi.advanceTimersByTimeAsync(11_000)
+      await assertion
+      expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === 'POST')).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('传 threadId 后所有 API 按会话隔离', async () => {
     const fetchMock = vi.fn().mockResolvedValue(listResponse(['t1.csv']))
     vi.stubGlobal('fetch', fetchMock)

@@ -1,6 +1,5 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import { ATTACH_ACCEPT, ATTACH_MAX_SIZE } from './chatAttachments'
-
 /**
  * F1b: 欢迎页 ChatGPT 式附件上传（task6-B 主输入框链路的欢迎页补完）。
  *
@@ -62,11 +61,40 @@ export function useWelcomeAttachments(deps: {
     return null
   }
 
+  /**
+   * 冷启动竞态防护（多模态预览 e2e 实测发现）：fresh 首屏 useThreads.init()
+   * 完成前 threadId=''。若此刻加 chip，随后的 threadId watch 会把 chip 抹掉，
+   * 而 upload 一旦发出文件就落错目录 ——  chip 与上传都必须等会话 id 就绪。
+   */
+  function awaitThreadId(): Promise<void> {
+    const tid = deps.threadId
+    if (!tid || tid.value) return Promise.resolve()
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        stop()
+        reject(new Error('会话未就绪，请稍后重试'))
+      }, 10_000)
+      const stop = watch(tid, (v) => {
+        if (v) {
+          clearTimeout(timer)
+          stop()
+          resolve()
+        }
+      })
+    })
+  }
+
   async function addFiles(list: FileList | File[]): Promise<void> {
     for (const file of Array.from(list ?? [])) {
       const problem = validate(file)
       if (problem) {
         deps.onFailed(problem)
+        continue
+      }
+      try {
+        await awaitThreadId()
+      } catch (e: any) {
+        deps.onFailed(e?.message ?? '会话未就绪')
         continue
       }
       const item: WelcomeAttachment = {

@@ -21,6 +21,23 @@ function setup(overrides?: { upload?: (f: File) => Promise<void>; onFailed?: (ms
 }
 
 describe('useWelcomeAttachments (F1b)', () => {
+  it('冷启动竞态: threadId 为空时 chip 与上传都等就绪,不被 watch 清掉', async () => {
+    const upload = vi.fn(async () => {})
+    const onFailed = vi.fn()
+    const threadId = ref('')
+    const api = useWelcomeAttachments({ upload, onFailed, threadId })
+    const p = api.addFiles([makeFile('cold.csv')])
+    await new Promise((r) => setTimeout(r, 30))
+    // 就绪前: 不加 chip、不上传（否则 threadId watch 会把 chip 抹掉,文件却传了）
+    expect(api.items.value).toHaveLength(0)
+    expect(upload).not.toHaveBeenCalled()
+    threadId.value = 't-late'
+    await p
+    expect(api.items.value).toHaveLength(1)
+    expect(api.items.value[0].status).toBe('ready')
+    expect(upload).toHaveBeenCalledTimes(1)
+  })
+
   it('选中文件即上传,成功后 chip 为 ready', async () => {
     const { api, upload } = setup()
     await api.addFiles([makeFile('sales.csv', 2048)])
@@ -87,7 +104,8 @@ describe('useWelcomeAttachments (F1b)', () => {
     const blocked = new Promise<void>((r) => { release = r })
     const { api } = setup({ upload: vi.fn(() => blocked) })
     const adding = api.addFiles([makeFile('a.csv')])
-    // 上传未决时 chip 为 uploading
+    // 上传未决时 chip 为 uploading（awaitThreadId 就绪检查后异步落 chip,先等一拍）
+    await new Promise((r) => setTimeout(r, 0))
     expect(api.items.value[0].status).toBe('uploading')
     expect(api.consumeForSubmit('你好')).toBeNull()
     release()
