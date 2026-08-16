@@ -1,5 +1,5 @@
 import { defineComponent } from "vue";
-import { render, screen } from "@testing-library/vue";
+import { render, screen, waitFor } from "@testing-library/vue";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type {
@@ -139,7 +139,7 @@ describe("CopilotChatMessageView duplicate message deduplication", () => {
     return render(Host);
   }
 
-  it("preserves assistant text content when later duplicate has empty content (multi-tool-call scenario)", () => {
+  it("preserves assistant text content when later duplicate has empty content (multi-tool-call scenario)", async () => {
     const messages: Message[] = [
       {
         id: "user-1",
@@ -188,12 +188,15 @@ describe("CopilotChatMessageView duplicate message deduplication", () => {
       "copilot-assistant-message",
     );
     expect(assistantMessages).toHaveLength(1);
-    expect(assistantMessages[0]?.textContent).toContain(
-      "Let me record that...",
-    );
+    // P28-A: StreamMarkdown 异步加载,文本到盘经 waitFor
+    await waitFor(() => {
+      expect(assistantMessages[0]?.textContent).toContain(
+        "Let me record that...",
+      );
+    });
   });
 
-  it("uses latest content when all assistant duplicates have non-empty content", () => {
+  it("uses latest content when all assistant duplicates have non-empty content", async () => {
     const messages: Message[] = [
       {
         id: "user-1",
@@ -218,9 +221,12 @@ describe("CopilotChatMessageView duplicate message deduplication", () => {
       "copilot-assistant-message",
     );
     expect(assistantMessages).toHaveLength(1);
-    expect(assistantMessages[0]?.textContent).toContain(
-      "Full response from the assistant.",
-    );
+    // P28-A: StreamMarkdown 异步加载,文本到盘经 waitFor
+    await waitFor(() => {
+      expect(assistantMessages[0]?.textContent).toContain(
+        "Full response from the assistant.",
+      );
+    });
 
     const userMessages = screen.getAllByTestId("copilot-user-message");
     expect(userMessages).toHaveLength(1);

@@ -60,7 +60,9 @@ describe('P6-A 表单校验错误卡（checks 协议）', () => {
     expect(wrapper.text()).toContain('关键词必填')
     const input = wrapper.find('input')
     expect(input.exists()).toBe(true)
-    expect(input.attributes('style')).toContain('red') // 红框
+    // 红框：fork 目录统一调色板后错误边框是 danger 色 #dc2626（jsdom 归一化为
+    // rgb(220, 38, 38)），不断言字面量 'red' 以免与 fork 色值漂移
+    expect(input.attributes('style')).toMatch(/border:[^;]*(red|rgb\(220, 38, 38\)|#dc2626)/)
     const btn = wrapper.find('button')
     expect(btn.attributes('disabled')).toBeDefined()
   })

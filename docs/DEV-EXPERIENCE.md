@@ -7,6 +7,15 @@
 | `npm run test` | `vitest run` | 全量单测（CI/提交前用） |
 | `npm run test:watch` | `vitest` | 监听模式，TDD 红绿循环日常用 |
 | `npm run typecheck` | `tsc --noEmit -p tsconfig.typecheck.json` | 应用源码类型检查 |
+| `npm run budget` | `vite build --manifest && node scripts/check-bundle-budget.mjs` | bundle 预算断言（P28-A） |
+
+### bundle 性能预算（P28-A，CI 可挂）
+
+单入口**初始 JS gzip < 500KB**（entry chunk + 静态 imports 递归闭包，动态
+import 不计入；逐文件真实 gzip 求和）。任一入口超预算脚本 exit 1 报红。
+重依赖（图表/markdown 高亮类）一律 `defineAsyncComponent` / 动态 import
+懒加载，勿静态引入。基线与根因见
+`docs/evidence/2026-08-16-bundle-budget.md`。
 
 ### typecheck 的覆盖边界（已知债）
 

@@ -14,6 +14,18 @@ import { dataAgentCatalog } from '../a2ui/dataAgentCatalog'
  * useThreads.switchTo 正是这么做的）。本测试用真实 CopilotKitProvider +
  * CopilotChat 组件验证端到端渲染。
  */
+/** 轮询等待文本出现 —— FORK#19 起 assistant/reasoning 经 defineAsyncComponent
+ * 懒加载 streamdown-vue，渲染完成跨越动态 import，需要真实等待而非固定 tick。 */
+async function waitForText(w: { text: () => string }, s: string, timeoutMs = 3000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    await nextTick()
+    if (w.text().includes(s)) return
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  throw new Error(`timeout waiting for rendered text: ${s}`)
+}
+
 describe('切换会话历史渲染（需求1 用户重申）', () => {
   it('写入 per-thread clone 的历史消息渲染到 CopilotChat DOM', async () => {
     const agent = new HttpAgent({ url: '/unused-in-test' })
@@ -47,7 +59,8 @@ describe('切换会话历史渲染（需求1 用户重申）', () => {
 
     const text = w.text()
     expect(text).toContain('暗号甲：红枫77')
-    expect(text).toContain('收到，已记住暗号')
-    expect(text).toContain('用户给了暗号，记住即可')
+    // assistant / reasoning 走懒加载的 StreamMarkdown（FORK#19），等其真正落地
+    await waitForText(w, '收到，已记住暗号')
+    await waitForText(w, '用户给了暗号，记住即可')
   })
 })

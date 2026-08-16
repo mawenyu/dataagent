@@ -123,6 +123,15 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     `processOperations` and the `surfaceEntries` render path. Covered by
     `__tests__/A2UIBoundaryPayloads.test.ts` (10 cases incl. 300KB props).
 
+19. `src/v2/components/chat/CopilotChatAssistantMessage.vue` +
+    `CopilotChatReasoningMessage.vue` (P28-A, mainline) — `StreamMarkdown`
+    (streamdown-vue) 静态 import 改为 `defineAsyncComponent` 动态加载。
+    streamdown 静态链会把 shiki+mermaid 拖进入口 chunk（实测主入口初始
+    JS gzip 481KB，占 500KB 预算 96%）；改异步后首条 markdown 消息到达
+    时才加载，初始 JS 降出红线。行为差异仅首条消息 markdown 晚一个
+    microtask+网络往返渲染；三个同步断言的 fork 测试相应改 waitFor。
+    预算断言脚本：vue-frontend/scripts/check-bundle-budget.mjs。
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 

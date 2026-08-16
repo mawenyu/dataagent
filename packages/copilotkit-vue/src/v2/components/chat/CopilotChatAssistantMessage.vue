@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   computed,
+  defineAsyncComponent,
   defineComponent,
   getCurrentInstance,
   h,
@@ -9,7 +10,12 @@ import {
   ref,
 } from "vue";
 import type { AssistantMessage, Message } from "@ag-ui/core";
-import { StreamMarkdown } from "streamdown-vue";
+// FORK-PATCH(P28-A lazy-markdown): streamdown-vue 静态引入会把 shiki+mermaid
+// 拖进入口静态链(实测占初始 JS gzip ~430/481KB 的大头)。改异步组件后
+// 首条 assistant 消息到达时才加载 markdown 渲染器,初始包降出预算红线。
+const StreamMarkdown = defineAsyncComponent(() =>
+  import("streamdown-vue").then((m) => m.StreamMarkdown),
+);
 import { useCopilotChatConfiguration } from "../../providers/useCopilotChatConfiguration";
 import { CopilotChatDefaultLabels } from "../../providers/types";
 import {

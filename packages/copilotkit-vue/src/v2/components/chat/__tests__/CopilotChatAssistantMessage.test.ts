@@ -1105,7 +1105,7 @@ describe("CopilotChatAssistantMessage", () => {
       ).toBeDefined();
     });
 
-    it("hover-reveal image download button is not clickable while invisible (touch-safe)", () => {
+    it("hover-reveal image download button is not clickable while invisible (touch-safe)", async () => {
       // 实测 bug 类（ThreadSidebar/FilesPanel 同案）：opacity-0 但未禁
       // pointer-events 的按钮在触屏(无 hover)上拦截点击。
       const message: AssistantMessage = {
@@ -1132,6 +1132,12 @@ describe("CopilotChatAssistantMessage", () => {
         `,
       });
       renderWithProvider(Host);
+      // P28-A: StreamMarkdown 改异步组件,等动态 import 落地再断言
+      await waitFor(() => {
+        expect(
+          document.querySelector('button[title="Download image"]'),
+        ).toBeTruthy();
+      });
       const btn = document.querySelector('button[title="Download image"]');
       expect(btn).toBeTruthy();
       const cls = btn!.getAttribute("class") ?? "";
