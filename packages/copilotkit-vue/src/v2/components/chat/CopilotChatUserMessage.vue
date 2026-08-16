@@ -105,7 +105,10 @@ const flattenedContent = computed(() =>
 //（App 侧按文件名解析下载链）；无可用 URL 的 image/audio/video 跳过。
 interface UserAttachmentPart {
   type: string;
-  source: { type: "url" | "data"; value: string; mimeType?: string };
+  // 对齐 AttachmentRenderer source prop 的判别联合（data 必须带 mimeType）
+  source:
+    | { type: "data"; value: string; mimeType: string }
+    | { type: "url"; value: string; mimeType?: string };
   filename?: string;
 }
 const attachmentParts = computed<UserAttachmentPart[]>(() => {
@@ -125,13 +128,19 @@ const attachmentParts = computed<UserAttachmentPart[]>(() => {
     const hasUrl = typeof rawSource?.value === "string" && rawSource.value.length > 0;
     if (!hasUrl && type !== "document") continue; // 无源图片/音视频无法渲染
     const mimeType = typeof meta.mimeType === "string" ? meta.mimeType : rawSource?.mimeType;
-    out.push({
-      type,
-      source: hasUrl
-        ? { type: rawSource!.type === "data" ? "data" : "url", value: rawSource!.value!, mimeType }
-        : { type: "url", value: "", mimeType },
-      filename,
-    });
+    if (hasUrl && rawSource!.type === "data") {
+      out.push({
+        type,
+        source: { type: "data", value: rawSource!.value!, mimeType: mimeType ?? "" },
+        filename,
+      });
+    } else {
+      out.push({
+        type,
+        source: { type: "url", value: hasUrl ? rawSource!.value! : "", mimeType },
+        filename,
+      });
+    }
   }
   return out;
 });
