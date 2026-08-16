@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,41 +57,53 @@ public class ChatThreadsController {
         this.workspaceFiles = workspaceFiles;
     }
 
+    // P2-9b: ChatThreadStore 是 synchronized 单文件 JSON store（同步磁盘 IO），
+    // WorkspaceFileService.deleteThreadDir 递归删目录 —— WebFlux handler 线程即
+    // event loop，一律经 boundedElastic 下移；响应体/状态码契约不变。
+
     @GetMapping
-    public JsonNode list() {
-        ObjectNode res = MAPPER.createObjectNode();
-        res.set("data", ChatThreadStore.ChatThread.listToJson(store.listThreads()));
-        return res;
+    public Mono<JsonNode> list() {
+        return Mono.fromCallable(() -> {
+            ObjectNode res = MAPPER.createObjectNode();
+            res.set("data", ChatThreadStore.ChatThread.listToJson(store.listThreads()));
+            return (JsonNode) res;
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @PostMapping
-    public JsonNode create(@RequestBody(required = false) Map<String, String> body) {
+    public Mono<JsonNode> create(@RequestBody(required = false) Map<String, String> body) {
         String id = body != null && body.get("id") != null && !body.get("id").isBlank()
                 ? body.get("id") : UUID.randomUUID().toString();
         String title = body != null ? body.get("title") : null;
-        ObjectNode res = MAPPER.createObjectNode();
-        res.set("data", store.createThread(id, title).toJson());
-        return res;
+        return Mono.fromCallable(() -> {
+            ObjectNode res = MAPPER.createObjectNode();
+            res.set("data", store.createThread(id, title).toJson());
+            return (JsonNode) res;
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @PatchMapping("/{id}")
-    public ResponseEntity<JsonNode> rename(@PathVariable String id, @RequestBody Map<String, String> body) {
-        if (store.getThread(id).isEmpty()) return ResponseEntity.notFound().build();
-        store.renameThread(id, body.get("title"));
-        ObjectNode res = MAPPER.createObjectNode();
-        res.set("data", store.getThread(id).orElseThrow().toJson());
-        return ResponseEntity.ok(res);
+    public Mono<ResponseEntity<JsonNode>> rename(@PathVariable String id, @RequestBody Map<String, String> body) {
+        return Mono.<ResponseEntity<JsonNode>>fromCallable(() -> {
+            if (store.getThread(id).isEmpty()) return ResponseEntity.<JsonNode>notFound().build();
+            store.renameThread(id, body.get("title"));
+            ObjectNode res = MAPPER.createObjectNode();
+            res.set("data", store.getThread(id).orElseThrow().toJson());
+            return ResponseEntity.ok((JsonNode) res);
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<JsonNode> delete(@PathVariable String id) {
-        if (store.getThread(id).isEmpty()) return ResponseEntity.notFound().build();
-        store.deleteThread(id);
-        // task6: 级联删除会话工作目录（workspace/threads/{id}）
-        workspaceFiles.deleteThreadDir(id);
-        ObjectNode res = MAPPER.createObjectNode();
-        res.put("data", true);
-        return ResponseEntity.ok(res);
+    public Mono<ResponseEntity<JsonNode>> delete(@PathVariable String id) {
+        return Mono.<ResponseEntity<JsonNode>>fromCallable(() -> {
+            if (store.getThread(id).isEmpty()) return ResponseEntity.<JsonNode>notFound().build();
+            store.deleteThread(id);
+            // task6: 级联删除会话工作目录（workspace/threads/{id}）
+            workspaceFiles.deleteThreadDir(id);
+            ObjectNode res = MAPPER.createObjectNode();
+            res.put("data", true);
+            return ResponseEntity.ok((JsonNode) res);
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     /**
@@ -103,56 +116,63 @@ public class ChatThreadsController {
                                                  @RequestBody Map<String, String> body) {
         String messageId = body.get("messageId");
         String newId = body.getOrDefault("newThreadId", UUID.randomUUID().toString());
-        var parent = store.getThread(id);
-        if (parent.isEmpty()) return Mono.just(ResponseEntity.notFound().build());
-        if (messageId == null || messageId.isBlank()) {
-            ObjectNode err = MAPPER.createObjectNode();
-            err.put("error", "messageId required");
-            return Mono.just(ResponseEntity.badRequest().body(err));
-        }
-        // 有效消息序列 = 父会话自身前缀(分叉链)+ 其 session 消息
-        List<JsonNode> parentPrefix = store.forkPrefixMessages(id);
-        String sessionId = store.resolveSession(id);
-        Mono<List<JsonNode>> ownMessages = sessionId == null
-                ? Mono.just(List.of())
-                : messagesService.fetchAguiMessages(webClient, sessionId)
-                        .onErrorReturn(List.of());
-        return ownMessages.map(own -> {
-            List<JsonNode> all = new ArrayList<>(parentPrefix);
-            all.addAll(own);
-            boolean found = all.stream().anyMatch(m -> m.path("id").asText().equals(messageId));
-            if (!found) {
+        // P2-9b: store 读写在 defer+boundedElastic 内；分叉建档（写盘）在
+        // publishOn 之后的 map 中，不占用 WebClient 回调的 event loop。
+        return Mono.<ResponseEntity<JsonNode>>defer(() -> {
+            var parent = store.getThread(id);
+            if (parent.isEmpty()) return Mono.just(ResponseEntity.<JsonNode>notFound().build());
+            if (messageId == null || messageId.isBlank()) {
                 ObjectNode err = MAPPER.createObjectNode();
-                err.put("error", "messageId not found in thread history");
-                return ResponseEntity.badRequest().body((JsonNode) err);
+                err.put("error", "messageId required");
+                return Mono.just(ResponseEntity.badRequest().body((JsonNode) err));
             }
-            var prefix = messagesService.simplifyForFork(all, messageId);
-            var created = store.createBranch(newId, id, parent.get().title(), messageId, prefix);
-            ObjectNode res = MAPPER.createObjectNode();
-            res.set("data", created.toJson());
-            return ResponseEntity.ok((JsonNode) res);
-        });
+            // 有效消息序列 = 父会话自身前缀(分叉链)+ 其 session 消息
+            List<JsonNode> parentPrefix = store.forkPrefixMessages(id);
+            String sessionId = store.resolveSession(id);
+            Mono<List<JsonNode>> ownMessages = sessionId == null
+                    ? Mono.just(List.of())
+                    : messagesService.fetchAguiMessages(webClient, sessionId)
+                            .onErrorReturn(List.of());
+            return ownMessages.publishOn(Schedulers.boundedElastic()).map(own -> {
+                List<JsonNode> all = new ArrayList<>(parentPrefix);
+                all.addAll(own);
+                boolean found = all.stream().anyMatch(m -> m.path("id").asText().equals(messageId));
+                if (!found) {
+                    ObjectNode err = MAPPER.createObjectNode();
+                    err.put("error", "messageId not found in thread history");
+                    return ResponseEntity.badRequest().body((JsonNode) err);
+                }
+                var prefix = messagesService.simplifyForFork(all, messageId);
+                var created = store.createBranch(newId, id, parent.get().title(), messageId, prefix);
+                ObjectNode res = MAPPER.createObjectNode();
+                res.set("data", created.toJson());
+                return ResponseEntity.ok((JsonNode) res);
+            });
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/{id}/messages")
     public Mono<JsonNode> messages(@PathVariable String id) {
-        String sessionId = store.resolveSession(id);
-        List<ChatThreadStore.SurfaceRecord> surfaces = store.listSurfaces(id);
-        // P-Q: 分叉前缀(若有)始终并入历史头部
-        List<JsonNode> prefix = store.forkPrefixMessages(id);
-        if (sessionId == null) {
-            return Mono.just(messagesResponse(prefix, surfaces));
-        }
-        return messagesService.fetchAguiMessages(webClient, sessionId)
-                .map(msgs -> {
-                    List<JsonNode> merged = new ArrayList<>(prefix);
-                    merged.addAll(msgs);
-                    return messagesResponse(merged, surfaces);
-                })
-                .onErrorResume(e -> {
-                    log.warn("failed to load history for thread {} (session {}): {}", id, sessionId, e.getMessage());
-                    return Mono.just(messagesResponse(List.of(), surfaces));
-                });
+        // P2-9b: store 三次同步读（session/surfaces/分叉前缀）移出 event loop
+        return Mono.defer(() -> {
+            String sessionId = store.resolveSession(id);
+            List<ChatThreadStore.SurfaceRecord> surfaces = store.listSurfaces(id);
+            // P-Q: 分叉前缀(若有)始终并入历史头部
+            List<JsonNode> prefix = store.forkPrefixMessages(id);
+            if (sessionId == null) {
+                return Mono.just(messagesResponse(prefix, surfaces));
+            }
+            return messagesService.fetchAguiMessages(webClient, sessionId)
+                    .map(msgs -> {
+                        List<JsonNode> merged = new ArrayList<>(prefix);
+                        merged.addAll(msgs);
+                        return messagesResponse(merged, surfaces);
+                    })
+                    .onErrorResume(e -> {
+                        log.warn("failed to load history for thread {} (session {}): {}", id, sessionId, e.getMessage());
+                        return Mono.just(messagesResponse(List.of(), surfaces));
+                    });
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private JsonNode messagesResponse(List<JsonNode> messages, List<ChatThreadStore.SurfaceRecord> surfaces) {

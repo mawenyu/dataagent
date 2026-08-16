@@ -12,6 +12,7 @@ import org.springframework.web.reactive.function.BodyExtractors;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.List;
@@ -197,6 +198,23 @@ public class AgUiProtocolService {
             return Flux.just(sseRaw("{\"type\":\"RUN_ERROR\",\"message\":\"thread access denied\"}"));
         }
 
+        // P8: run 可观测性 —— 起点/终点/工具耗时结构化指标
+        // P2-9b: 建档/标题/touch（ChatThreadStore 同步磁盘 IO）与会话 workspace
+        // 懒建+播种（mkdir/拷贝）全部移到 boundedElastic；run 的组装不再在
+        // event loop 上做阻塞 IO。响应流契约不变。
+        return Mono.fromCallable(() -> prepareRun(input, threadId, runId))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMapMany(threadWorkspace -> doRun(input, uid, threadId, runId, threadWorkspace)
+                        // 逐事件副作用（surface 快照落盘 + 指标 JSON 行追加写）
+                        // 也是同步文件 IO —— 经 boundedElastic 下移，保持事件顺序
+                        .concatMap(e -> Mono.fromRunnable(() -> {
+                            persistSurfaceSnapshot(threadId, e);
+                            tapMetrics(runId, threadId, e);
+                        }).subscribeOn(Schedulers.boundedElastic()).thenReturn(e)));
+    }
+
+    /** P2-9b: run 的阻塞前置（store 建档/标题/touch + 会话 workspace 懒建）—— boundedElastic 上执行。 */
+    private String prepareRun(RunAgentInput input, String threadId, String runId) {
         // 需求1: 自动建档（前端可不显式 POST /chat/threads）+ 首条用户消息作标题
         if (threadStore.getThread(threadId).isEmpty()) {
             threadStore.createThread(threadId, null);
@@ -217,14 +235,8 @@ public class AgUiProtocolService {
         if (workspaceFiles.forThread(threadId).isPresent()) {
             threadWorkspace = dataWorkspace + "/" + WorkspaceFileService.THREADS_DIR + "/" + threadId;
         }
-
-        // P8: run 可观测性 —— 起点/终点/工具耗时结构化指标
         metrics.runStarted(runId, threadId);
-        return doRun(input, uid, threadId, runId, threadWorkspace)
-                .doOnNext(e -> {
-                    persistSurfaceSnapshot(threadId, e);
-                    tapMetrics(runId, threadId, e);
-                });
+        return threadWorkspace;
     }
 
     /** 需求1: 把 ACTIVITY_SNAPSHOT 的 surface 内容落盘，供历史回放重放看板。 */
@@ -544,6 +556,8 @@ public class AgUiProtocolService {
                 .bodyValue(Map.of())
                 .retrieve()
                 .bodyToMono(JsonNode.class)
+                // P2-9b: bindSession 是同步写盘，不能落在 WebClient 回调的 event loop 上
+                .publishOn(Schedulers.boundedElastic())
                 .map(node -> {
                     String sessionId = node.path("data").path("id").asText();
                     if (sessionId.isBlank()) throw new IllegalStateException("session create returned no id");

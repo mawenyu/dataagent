@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import org.springframework.core.io.buffer.DataBufferUtils;
 
@@ -37,10 +38,15 @@ public class WorkspaceFilesController {
         this.files = files;
     }
 
+    // P2-9b: WorkspaceFileService 全是同步 Files.*（list/stat/read/write/delete，
+    // forThread 还会 mkdir+播种拷贝）—— WebFlux handler 线程即 event loop，
+    // 端点一律 Mono.fromCallable + boundedElastic 下移；状态码/响应体契约不变。
+
     /** GET /files[?path=sub/dir] — 列出目录内容(P-N: dirs + files;path 缺省为根)。 */
     @GetMapping("/files")
-    public ObjectNode list(@RequestParam(required = false) String path) {
-        return listingJson(files, path);
+    public Mono<ObjectNode> list(@RequestParam(required = false) String path) {
+        return Mono.fromCallable(() -> listingJson(files, path))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** P-N: DirListing → JSON(dirs 字符串数组 + files 对象数组 + path 回显)。 */
@@ -63,8 +69,9 @@ public class WorkspaceFilesController {
 
     /** GET /files/{*name} — 下载/查看内容(P-N: 支持子目录相对路径)。 */
     @GetMapping("/files/{*name}")
-    public ResponseEntity<Resource> download(@PathVariable String name) {
-        return downloadImpl(files, name);
+    public Mono<ResponseEntity<Resource>> download(@PathVariable String name) {
+        return Mono.fromCallable(() -> downloadImpl(files, name))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** 下载共享实现：200 带 Content-Disposition / 猜测 Content-Type；不存在 404。 */
@@ -87,35 +94,40 @@ public class WorkspaceFilesController {
     /**
      * 上传共享实现：文件名/路径白名单 400、超限 413、空文件 400，
      * 成功 200 {name,size}（P-N: 可入子目录,目录须已存在）。
+     * P2-9b: 白名单 stat 在 defer 内（boundedElastic）执行；Files.write 落盘
+     * 经 publishOn 挪出 event loop。
      */
     private Mono<ResponseEntity<ObjectNode>> uploadImpl(WorkspaceFileService svc, FilePart file, String path) {
         String name = file.filename();
         final String rel = (path == null || path.isBlank()) ? name : path + "/" + name;
-        if (svc.resolve(name).isEmpty() || svc.resolvePath(rel).isEmpty()
-                || (path != null && !path.isBlank() && !svc.resolvePath(path).filter(Files::isDirectory).isPresent())) {
-            return Mono.just(ResponseEntity.badRequest().body(err("invalid file name or path")));
-        }
-        return DataBufferUtils.join(file.content())
-                .map(buf -> {
-                    byte[] bytes = new byte[buf.readableByteCount()];
-                    buf.read(bytes);
-                    DataBufferUtils.release(buf);
-                    return bytes;
-                })
-                .map(bytes -> {
-                    if (bytes.length > svc.maxUploadBytes()) {
-                        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
-                    }
-                    return svc.store(rel, bytes)
-                            .map(info -> {
-                                ObjectNode ok = MAPPER.createObjectNode();
-                                ok.put("name", info.name());
-                                ok.put("size", info.size());
-                                return ResponseEntity.ok(ok);
-                            })
-                            .orElse(ResponseEntity.badRequest().body(err("empty file or store failed")));
-                })
-                .defaultIfEmpty(ResponseEntity.badRequest().body(err("empty file")));
+        return Mono.defer(() -> {
+            if (svc.resolve(name).isEmpty() || svc.resolvePath(rel).isEmpty()
+                    || (path != null && !path.isBlank() && !svc.resolvePath(path).filter(Files::isDirectory).isPresent())) {
+                return Mono.just(ResponseEntity.badRequest().body(err("invalid file name or path")));
+            }
+            return DataBufferUtils.join(file.content())
+                    .publishOn(Schedulers.boundedElastic())
+                    .map(buf -> {
+                        byte[] bytes = new byte[buf.readableByteCount()];
+                        buf.read(bytes);
+                        DataBufferUtils.release(buf);
+                        return bytes;
+                    })
+                    .map(bytes -> {
+                        if (bytes.length > svc.maxUploadBytes()) {
+                            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(err("file too large"));
+                        }
+                        return svc.store(rel, bytes)
+                                .map(info -> {
+                                    ObjectNode ok = MAPPER.createObjectNode();
+                                    ok.put("name", info.name());
+                                    ok.put("size", info.size());
+                                    return ResponseEntity.ok(ok);
+                                })
+                                .orElse(ResponseEntity.badRequest().body(err("empty file or store failed")));
+                    })
+                    .defaultIfEmpty(ResponseEntity.badRequest().body(err("empty file")));
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     /**
@@ -123,8 +135,10 @@ public class WorkspaceFilesController {
      * 复用 POST 同款防护：文件名白名单 / 大小上限 / 空内容拒绝；文件不存在时新建。
      */
     @PutMapping(value = "/files/{*name}", consumes = {MediaType.TEXT_PLAIN_VALUE, MediaType.ALL_VALUE})
-    public ResponseEntity<ObjectNode> put(@PathVariable String name, @RequestBody(required = false) byte[] body) {
-        return putImpl(files, name, body, null, false);
+    public Mono<ResponseEntity<ObjectNode>> put(@PathVariable String name,
+                                                @RequestBody(required = false) byte[] body) {
+        return Mono.fromCallable(() -> putImpl(files, name, body, null, false))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /**
@@ -173,8 +187,9 @@ public class WorkspaceFilesController {
 
     /** DELETE /files/{*name} — 删除(P-N: 支持子目录相对路径)。 */
     @DeleteMapping("/files/{*name}")
-    public ResponseEntity<Void> delete(@PathVariable String name) {
-        return deleteImpl(files, name);
+    public Mono<ResponseEntity<Void>> delete(@PathVariable String name) {
+        return Mono.fromCallable(() -> deleteImpl(files, name))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** 删除共享实现：非法路径 400；成功 204 / 不存在 404。 */
@@ -188,19 +203,22 @@ public class WorkspaceFilesController {
 
     /** GET /chat/threads/{threadId}/files[?path=sub/dir] — 列出该会话目录内容(P-N: dirs+files)。 */
     @GetMapping("/chat/threads/{threadId}/files")
-    public ObjectNode listThreadFiles(@PathVariable String threadId,
-                                      @RequestParam(required = false) String path) {
-        return files.forThread(threadId)
-                .map(svc -> listingJson(svc, path))
-                .orElseGet(() -> err("invalid threadId"));
+    public Mono<ObjectNode> listThreadFiles(@PathVariable String threadId,
+                                            @RequestParam(required = false) String path) {
+        // P2-9b: forThread 首次会 mkdir+播种拷贝（阻塞 IO），随列表一并下移
+        return Mono.fromCallable(() -> files.forThread(threadId)
+                        .map(svc -> listingJson(svc, path))
+                        .orElseGet(() -> err("invalid threadId")))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** GET /chat/threads/{threadId}/files/{*name} — 下载/查看(P-N: 支持子目录)。 */
     @GetMapping("/chat/threads/{threadId}/files/{*name}")
-    public ResponseEntity<Resource> downloadThreadFile(@PathVariable String threadId, @PathVariable String name) {
-        return files.forThread(threadId)
-                .map(svc -> downloadImpl(svc, name))
-                .orElse(ResponseEntity.notFound().build());
+    public Mono<ResponseEntity<Resource>> downloadThreadFile(@PathVariable String threadId, @PathVariable String name) {
+        return Mono.fromCallable(() -> files.forThread(threadId)
+                        .map(svc -> downloadImpl(svc, name))
+                        .orElse(ResponseEntity.notFound().build()))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** POST /chat/threads/{threadId}/files — 上传（multipart，字段名 file）。 */
@@ -208,11 +226,13 @@ public class WorkspaceFilesController {
     public Mono<ResponseEntity<ObjectNode>> uploadThreadFile(@PathVariable String threadId,
                                                              @RequestPart("file") FilePart file,
                                                              @RequestParam(required = false) String path) {
-        var svc = files.forThread(threadId);
-        if (svc.isEmpty()) {
-            return Mono.just(ResponseEntity.badRequest().body(err("invalid threadId")));
-        }
-        return uploadImpl(svc.get(), file, path);
+        return Mono.defer(() -> {
+            var svc = files.forThread(threadId);
+            if (svc.isEmpty()) {
+                return Mono.just(ResponseEntity.badRequest().body(err("invalid threadId")));
+            }
+            return uploadImpl(svc.get(), file, path);
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     /**
@@ -223,21 +243,25 @@ public class WorkspaceFilesController {
      */
     @PutMapping(value = "/chat/threads/{threadId}/files/{*name}",
             consumes = {MediaType.TEXT_PLAIN_VALUE, MediaType.ALL_VALUE})
-    public ResponseEntity<ObjectNode> putThreadFile(@PathVariable String threadId, @PathVariable String name,
-                                                    @RequestBody(required = false) byte[] body,
-                                                    @org.springframework.web.bind.annotation.RequestParam(required = false)
-                                                    Long baseModified) {
-        var svc = files.forThread(threadId);
-        if (svc.isEmpty()) return ResponseEntity.badRequest().body(err("invalid threadId"));
-        return putImpl(svc.get(), name, body, baseModified, true);
+    public Mono<ResponseEntity<ObjectNode>> putThreadFile(@PathVariable String threadId, @PathVariable String name,
+                                                          @RequestBody(required = false) byte[] body,
+                                                          @org.springframework.web.bind.annotation.RequestParam(required = false)
+                                                          Long baseModified) {
+        return Mono.fromCallable(() -> {
+            var svc = files.forThread(threadId);
+            if (svc.isEmpty()) return ResponseEntity.badRequest().body(err("invalid threadId"));
+            return putImpl(svc.get(), name, body, baseModified, true);
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     /** DELETE /chat/threads/{threadId}/files/{*name} — 删除(P-N: 支持子目录)。 */
     @DeleteMapping("/chat/threads/{threadId}/files/{*name}")
-    public ResponseEntity<Void> deleteThreadFile(@PathVariable String threadId, @PathVariable String name) {
-        var svc = files.forThread(threadId);
-        if (svc.isEmpty()) return ResponseEntity.badRequest().build();
-        return deleteImpl(svc.get(), name);
+    public Mono<ResponseEntity<Void>> deleteThreadFile(@PathVariable String threadId, @PathVariable String name) {
+        return Mono.<ResponseEntity<Void>>fromCallable(() -> {
+            var svc = files.forThread(threadId);
+            if (svc.isEmpty()) return ResponseEntity.badRequest().build();
+            return deleteImpl(svc.get(), name);
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private static ObjectNode err(String msg) {

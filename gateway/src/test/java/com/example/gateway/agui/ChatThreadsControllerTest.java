@@ -37,18 +37,18 @@ class ChatThreadsControllerTest {
 
     @Test
     void createListRenameDelete() {
-        controller.create(Map.of("id", "t1", "title", "销售分析"));
-        controller.create(Map.of("id", "t2"));
-        JsonNode list = controller.list();
+        controller.create(Map.of("id", "t1", "title", "销售分析")).block();
+        controller.create(Map.of("id", "t2")).block();
+        JsonNode list = controller.list().block();
         assertEquals(2, list.path("data").size());
         assertEquals("t2", list.path("data").get(0).path("id").asText(), "newest first");
 
-        assertTrue(controller.rename("t1", Map.of("title", "八月销售")).getStatusCode().is2xxSuccessful());
+        assertTrue(controller.rename("t1", Map.of("title", "八月销售")).block().getStatusCode().is2xxSuccessful());
         assertEquals("八月销售", store.getThread("t1").orElseThrow().title());
-        assertTrue(controller.rename("ghost", Map.of("title", "x")).getStatusCode().is4xxClientError());
+        assertTrue(controller.rename("ghost", Map.of("title", "x")).block().getStatusCode().is4xxClientError());
 
-        assertTrue(controller.delete("t2").getStatusCode().is2xxSuccessful());
-        assertEquals(1, controller.list().path("data").size());
+        assertTrue(controller.delete("t2").block().getStatusCode().is2xxSuccessful());
+        assertEquals(1, controller.list().block().path("data").size());
     }
 
     @Test
@@ -93,13 +93,13 @@ class ChatThreadsControllerTest {
     /** task6: 删除会话级联删除其工作目录（spec: docs/spec/workspace-isolation.md）。 */
     @Test
     void deleteThreadCascadesWorkspaceDir() throws Exception {
-        controller.create(Map.of("id", "t-ws-del"));
+        controller.create(Map.of("id", "t-ws-del")).block();
         var svc = workspaceFiles.forThread("t-ws-del").orElseThrow();
         svc.store("data.csv", "x".getBytes());
         assertTrue(java.nio.file.Files.exists(
                 dir.resolve("workspace/threads/t-ws-del/data.csv")));
 
-        assertTrue(controller.delete("t-ws-del").getStatusCode().is2xxSuccessful());
+        assertTrue(controller.delete("t-ws-del").block().getStatusCode().is2xxSuccessful());
         assertFalse(java.nio.file.Files.exists(dir.resolve("workspace/threads/t-ws-del")),
                 "会话目录随会话删除");
     }
@@ -107,7 +107,7 @@ class ChatThreadsControllerTest {
     @org.junit.jupiter.api.Test
     void branchCreatesForkWithPrefixAndMessagesMerge() {
         // P-Q: POST /{id}/branch —— 截断分叉点之前的上下文为新会话前缀
-        controller.create(Map.of("id", "p1", "title", "销售分析"));
+        controller.create(Map.of("id", "p1", "title", "销售分析")).block();
         store.bindSession("p1", "ses_x");
         stub.sessionHistory.add("""
             {"data":[
@@ -133,7 +133,7 @@ class ChatThreadsControllerTest {
         assertEquals("回答1", arr.get(1).path("content").asText());
 
         // list 带分支来源(侧边栏标记)
-        JsonNode list = controller.list();
+        JsonNode list = controller.list().block();
         JsonNode b1Json = null;
         for (JsonNode t : list.path("data")) if ("b1".equals(t.path("id").asText())) b1Json = t;
         assertNotNull(b1Json);
@@ -142,7 +142,7 @@ class ChatThreadsControllerTest {
 
     @org.junit.jupiter.api.Test
     void branchRejectsUnknownMessageId() {
-        controller.create(Map.of("id", "p1"));
+        controller.create(Map.of("id", "p1")).block();
         store.bindSession("p1", "ses_x");
         stub.sessionHistory.add("{\"data\":[]}");
         var res = controller.branch("p1", Map.of("messageId", "ghost", "newThreadId", "b1")).block();
