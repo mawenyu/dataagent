@@ -261,6 +261,26 @@ class AguiEventTranslatorTest {
         assertTrue(sf >= 0 && re > sf, "STEP_FINISHED must precede RUN_ERROR when a step is active");
     }
 
+    /** TARGET_ARCH §2: RUN_ERROR 带结构化 code —— 上游失败统一 UPSTREAM_ERROR
+     * （前端 parseRunError 显式 code 优先于消息文本提取）。 */
+    @Test
+    void executionFailureRunErrorCarriesUpstreamErrorCode() {
+        List<JsonNode> events = translate(Flux.just(
+                oc("session.execution.failed", "{\"error\":{\"message\":\"HTTP 502 Bad Gateway\"}}")));
+        JsonNode err = events.stream().filter(e -> "RUN_ERROR".equals(e.path("type").asText())).findFirst().orElseThrow();
+        assertEquals("HTTP 502 Bad Gateway", err.path("message").asText(), "message 保持人话不变");
+        assertEquals("UPSTREAM_ERROR", err.path("code").asText());
+    }
+
+    @Test
+    void stepFailureRunErrorCarriesUpstreamErrorCode() {
+        List<JsonNode> events = translate(Flux.just(
+                oc("session.step.failed", "{\"assistantMessageID\":\"m1\",\"error\":{\"message\":\"boom\"}}")));
+        JsonNode err = events.stream().filter(e -> "RUN_ERROR".equals(e.path("type").asText())).findFirst().orElseThrow();
+        assertEquals("boom", err.path("message").asText());
+        assertEquals("UPSTREAM_ERROR", err.path("code").asText());
+    }
+
     /** 真实 OpenCode 流中 step 会重叠/孤儿化（实测证据：一次 run 内多个 started 先于 ended）。 */
     @Test
     void overlappingAndOrphanStepsAreAllClosedBeforeRunFinished() {

@@ -506,7 +506,13 @@ public class AguiEventTranslator {
         return out;
     }
 
-    /** 同 {@link #terminalFinish}，但终止事件为 RUN_ERROR（message 取自 error.message）。 */
+    /**
+     * 同 {@link #terminalFinish}，但终止事件为 RUN_ERROR（message 取自 error.message）。
+     *
+     * <p>TARGET_ARCH §2: 附结构化 {@code code=UPSTREAM_ERROR}（opencode
+     * session.execution.failed / step.failed 等上游失败统一归类），前端
+     * parseRunError 显式 code 优先于消息文本提取；message 保持人话不变。</p>
+     */
     private List<ServerSentEvent<String>> terminalError(RunState rs, JsonNode data) {
         if (!rs.terminalEmitted.compareAndSet(false, true)) return List.of();
         List<ServerSentEvent<String>> out = new ArrayList<>();
@@ -515,6 +521,7 @@ public class AguiEventTranslator {
         ObjectNode payload = base("RUN_ERROR", rs.runId, rs.threadId);
         String msg = data.path("error").path("message").asText("unknown error");
         payload.put("message", msg);
+        payload.put("code", AgUiProtocolService.ERROR_CODE_UPSTREAM);
         out.add(sse(payload));
         return out;
     }

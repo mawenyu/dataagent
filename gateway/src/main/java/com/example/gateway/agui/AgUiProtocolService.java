@@ -36,6 +36,18 @@ public class AgUiProtocolService {
 
     private static final Logger log = LoggerFactory.getLogger(AgUiProtocolService.class);
 
+    /**
+     * TARGET_ARCH §2: RUN_ERROR 结构化 code（前端 P-I parseRunError 显式 code
+     * 优先于消息文本提取消费）。
+     * <ul>
+     *   <li>{@link #ERROR_CODE_UPSTREAM} —— opencode session.execution.failed /
+     *       上游 4xx/5xx/超时等；无法归类时也归此</li>
+     *   <li>{@link #ERROR_CODE_RUN_TIMEOUT} —— run 超时兜底路径（idle timeout）</li>
+     * </ul>
+     */
+    static final String ERROR_CODE_UPSTREAM = "UPSTREAM_ERROR";
+    static final String ERROR_CODE_RUN_TIMEOUT = "RUN_TIMEOUT";
+
     /** LLM routed through OpenCode; overridable via agui.model.* (e.g. deepseek-reasoner for visible thinking). */
     static final String DEFAULT_MODEL_ID = "deepseek-chat";
     static final String DEFAULT_PROVIDER_ID = "deepseek";
@@ -409,12 +421,16 @@ public class AgUiProtocolService {
                                 // session run is aborted so it stops burning tokens.
                                 .timeout(runIdleTimeout)
                                 .onErrorResume(e -> {
-                                    String msg = (e instanceof TimeoutException)
+                                    boolean timeout = e instanceof TimeoutException;
+                                    String msg = timeout
                                             ? "运行超时（" + runIdleTimeout.getSeconds() + "s 无响应），agent 可能已挂起，请重试"
                                             : String.valueOf(e.getMessage());
                                     log.warn("AG-UI run aborted thread={} session={}: {}", finalThreadId, sessionId, msg);
+                                    // TARGET_ARCH §2: 超时兜底 → RUN_TIMEOUT；其余上游失败 → UPSTREAM_ERROR
                                     return abortSession(sessionId)
-                                            .thenMany(Flux.just(sseRaw(runErrorJson(msg))));
+                                            .thenMany(Flux.just(sseRaw(timeout
+                                                    ? runErrorJson(msg, ERROR_CODE_RUN_TIMEOUT)
+                                                    : runErrorJson(msg))));
                                 })
                                 .doOnSubscribe(s -> log.info("AG-UI run started thread={} run={} session={} user={}", finalThreadId, finalRunId, sessionId, userId))
                                 .doOnError(e -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage()))
@@ -736,9 +752,15 @@ public class AgUiProtocolService {
      * 直接消费 message)。
      */
     static String runErrorJson(String message) {
+        // 无法归类的 RUN_ERROR 一律 UPSTREAM_ERROR（TARGET_ARCH §2 契约）
+        return runErrorJson(message, ERROR_CODE_UPSTREAM);
+    }
+
+    static String runErrorJson(String message, String code) {
         com.fasterxml.jackson.databind.node.ObjectNode n = MAPPER.createObjectNode();
         n.put("type", "RUN_ERROR");
         n.put("message", message == null ? "" : message);
+        n.put("code", code == null ? ERROR_CODE_UPSTREAM : code);
         return n.toString();
     }
 }

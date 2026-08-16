@@ -393,6 +393,7 @@ class AgUiProtocolServiceTest {
         assertTrue(types(events).contains("RUN_ERROR"));
         JsonNode err = events.stream().filter(e -> "RUN_ERROR".equals(e.path("type").asText())).findFirst().orElseThrow();
         assertEquals("boom", err.path("message").asText());
+        assertEquals("UPSTREAM_ERROR", err.path("code").asText(), "上游失败 code=UPSTREAM_ERROR");
     }
 
     @Test
@@ -404,6 +405,17 @@ class AgUiProtocolServiceTest {
         JsonNode n = new ObjectMapper().readTree(json);
         assertEquals("RUN_ERROR", n.path("type").asText());
         assertEquals(nasty, n.path("message").asText(), "内容逐字符保留,无变异");
+    }
+
+    @Test
+    void runErrorJsonCarriesStructuredCode() throws Exception {
+        // TARGET_ARCH §2: 默认无法归类 → UPSTREAM_ERROR；显式 code（超时兜底 RUN_TIMEOUT）原样写入
+        ObjectMapper m = new ObjectMapper();
+        JsonNode def = m.readTree(AgUiProtocolService.runErrorJson("x"));
+        assertEquals("UPSTREAM_ERROR", def.path("code").asText(), "无法归类的 RUN_ERROR 默认 UPSTREAM_ERROR");
+        JsonNode timeout = m.readTree(AgUiProtocolService.runErrorJson("x", "RUN_TIMEOUT"));
+        assertEquals("RUN_TIMEOUT", timeout.path("code").asText());
+        assertEquals("x", timeout.path("message").asText(), "message 保持人话不变");
     }
 
     @Test
@@ -525,6 +537,7 @@ class AgUiProtocolServiceTest {
         assertTrue(types.contains("RUN_ERROR"), "hung run must surface RUN_ERROR");
         JsonNode err = events.stream().filter(e -> "RUN_ERROR".equals(e.path("type").asText())).findFirst().orElseThrow();
         assertTrue(err.path("message").asText().contains("超时"), "timeout message should be user-friendly");
+        assertEquals("RUN_TIMEOUT", err.path("code").asText(), "run 超时兜底路径 code=RUN_TIMEOUT");
         assertEquals(1, stub.aborts.size(), "hung OpenCode session must be aborted so it does not linger");
     }
 
