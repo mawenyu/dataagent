@@ -536,10 +536,12 @@ describe('能力主视图（导航 rail）', () => {
     const railCaps = w.find('[data-testid="rail-caps"]')
     expect(railCaps.exists(), '导航 rail 里有「能力」入口').toBe(true)
     expect(w.find('[data-testid="rail-chat"]').exists(), '导航 rail 里有「对话」入口').toBe(true)
+    expect(w.find('[data-testid="rail-files"]').exists(), '导航 rail 里有「文件」入口').toBe(true)
 
-    // 默认对话视图：聊天区可见、能力面板隐藏
+    // 默认对话视图：聊天区可见、能力/文件面板隐藏
     expect(w.find('[data-testid="chat-view"]').isVisible(), '默认聊天工作区可见').toBe(true)
     expect(w.find('[data-testid="caps-view"]').isVisible(), '默认能力面板隐藏').toBe(false)
+    expect(w.find('[data-testid="files-view"]').isVisible(), '默认文件面板隐藏').toBe(false)
 
     await railCaps.trigger('click')
     await nextTick()
@@ -564,12 +566,26 @@ describe('能力主视图（导航 rail）', () => {
     w.unmount()
   })
 
-  it('侧栏 tabs 只剩会话/文件（能力已提升为 rail 主视图）', async () => {
-    const w = mount(App)
+  it('点 rail「文件」→ FilesPanel 主视图显示；对话视图保持纯粹（无 tabs、只有会话列表）', async () => {
+    const w = mount(App, { attachTo: document.body })
     for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
-    expect(w.find('[data-testid="tab-threads"]').exists()).toBe(true)
-    expect(w.find('[data-testid="tab-files"]').exists()).toBe(true)
-    expect(w.find('[data-testid="tab-caps"]').exists(), '侧栏不再有能力 tab').toBe(false)
+
+    // 对话视图侧栏：无 tabs 条，ThreadSidebar 直接呈现（P0-b 纯净化）
+    expect(w.find('[data-testid="sidebar-tabs"]').exists(), '侧栏不再有 tabs 条').toBe(false)
+    expect(w.find('[data-testid="tab-threads"]').exists(), '会话 tab 已随 tabs 条移除').toBe(false)
+    expect(w.find('[data-testid="tab-files"]').exists(), '文件 tab 已提升为 rail 主视图').toBe(false)
+    expect(w.find('[data-testid="tab-caps"]').exists(), '能力 tab 早已提升').toBe(false)
+
+    // 文件主视图
+    await w.find('[data-testid="rail-files"]').trigger('click')
+    await nextTick()
+    expect(w.find('[data-testid="files-view"]').isVisible(), '文件主视图显示').toBe(true)
+    expect(w.find('[data-testid="chat-view"]').isVisible(), '聊天工作区隐藏').toBe(false)
+    expect(w.find('[data-testid="caps-view"]').isVisible(), '能力面板隐藏').toBe(false)
+    expect(w.find('[data-testid="files-panel"]').exists(), 'FilesPanel 已挂载').toBe(true)
+    expect(w.find('[data-testid="rail-files"]').attributes('aria-current')).toBe('page')
+    expect(w.find('[data-testid="rail-chat"]').attributes('aria-current')).toBeUndefined()
+    w.unmount()
   })
 })
 

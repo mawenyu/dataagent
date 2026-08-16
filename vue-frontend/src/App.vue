@@ -166,11 +166,9 @@ const frontendTools = [
 
 // 需求4: 侧边栏可折叠（移动端抽屉化）
 const sidebarOpen = ref(true)
-// P29: 产品化布局 —— 最左导航 rail 切换主视图（对话 / 能力）；
-// 对话视图内才是 会话/文件 侧栏 + 聊天工作区（Linear/Notion 式 icon rail）
-const mainView = ref<'chat' | 'caps'>('chat')
-// task5-A: 侧边栏 Tab（会话 / 文件面板；能力面板已提升为 rail 主视图）
-const sidebarTab = ref<'threads' | 'files'>('threads')
+// P29: 产品化布局 —— 最左导航 rail 切换主视图；P0-b: 三主视图（对话 / 文件 / 能力），
+// 对话视图保持纯粹：只有历史会话列表 + 聊天工作区（Linear/Notion 式 icon rail）
+const mainView = ref<'chat' | 'files' | 'caps'>('chat')
 function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
 function closeSidebarOnMobile() {
   if (window.innerWidth <= 720) sidebarOpen.value = false
@@ -199,7 +197,6 @@ useGlobalShortcuts({
   onFocusSearch: () => {
     mainView.value = 'chat'
     sidebarOpen.value = true
-    sidebarTab.value = 'threads'
     void nextTick(() => {
       document.querySelector<HTMLInputElement>('[data-testid="thread-search"]')?.focus()
     })
@@ -410,7 +407,7 @@ async function exportThread(id: string, format: 'md' | 'json') {
 
 <template>
   <div class="app-shell">
-    <!-- P29: 主导航 rail（Linear/Notion 式窄 icon 栏）—— 对话 / 能力 双主视图 -->
+    <!-- P29: 主导航 rail（Linear/Notion 式窄 icon 栏）—— P0-b: 对话 / 文件 / 能力 三主视图 -->
     <nav class="nav-rail" aria-label="主导航">
       <div class="rail-logo" aria-hidden="true">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -433,6 +430,19 @@ async function exportThread(id: string, format: 'md' | 'json') {
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
         </svg>
         <span>对话</span>
+      </button>
+      <button
+        class="rail-btn"
+        data-testid="rail-files"
+        :aria-current="mainView === 'files' ? 'page' : undefined"
+        title="文件"
+        @click="mainView = 'files'"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+        <span>文件</span>
       </button>
       <button
         class="rail-btn"
@@ -527,20 +537,8 @@ async function exportThread(id: string, format: 'md' | 'json') {
           <div class="chat-layout">
             <Transition name="drawer">
               <div v-if="sidebarOpen" class="sidebar-shell">
-                <div class="sidebar-tabs" data-testid="sidebar-tabs">
-                  <button
-                    :class="{ on: sidebarTab === 'threads' }"
-                    data-testid="tab-threads"
-                    @click="sidebarTab = 'threads'"
-                  >会话</button>
-                  <button
-                    :class="{ on: sidebarTab === 'files' }"
-                    data-testid="tab-files"
-                    @click="sidebarTab = 'files'"
-                  >文件</button>
-                </div>
+                <!-- P0-b: 对话视图纯粹化 —— 侧栏只剩会话列表（文件/能力均为 rail 主视图） -->
                 <ThreadSidebar
-                  v-if="sidebarTab === 'threads'"
                   :threads="threadsApi.threads.value"
                   :current-id="threadsApi.currentId.value"
                   @new="threadsApi.createNew()"
@@ -549,9 +547,6 @@ async function exportThread(id: string, format: 'md' | 'json') {
                   @rename="(id: string, title: string) => threadsApi.rename(id, title)"
                   @export="(id: string, format: 'md' | 'json') => exportThread(id, format)"
                 />
-                <aside v-else class="sidebar">
-                  <FilesPanel :thread-id="threadsApi.currentId.value" />
-                </aside>
               </div>
             </Transition>
             <div v-if="sidebarOpen" class="drawer-backdrop" @click="toggleSidebar"></div>
@@ -688,6 +683,14 @@ async function exportThread(id: string, format: 'md' | 'json') {
             </div>
           </div>
         </CopilotKitProvider>
+      </div>
+      <!-- P0-b: 文件主视图（rail 切换；绑定当前会话的隔离工作目录） -->
+      <div
+        v-show="mainView === 'files'"
+        class="caps-card"
+        data-testid="files-view"
+      >
+        <FilesPanel :thread-id="threadsApi.currentId.value" />
       </div>
       <!-- P29: 能力主视图（rail 切换；v-show 保活，返回对话不丢状态） -->
       <div
