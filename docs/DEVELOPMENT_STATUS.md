@@ -20,7 +20,7 @@
 ### P2（排入后续循环）
 
 8. ~~translate 单方法 / 文件端点双套 / 历史拉取重复~~ ✅ d27c6ad（translate → 36 行编排 + 7 事件族）/ 6cff803（端点共享实现委托）/ 403b73a（拉取收敛 ThreadMessagesService）。
-9. 无统一错误映射；ChatThreadStore 磁盘故障 → 500；event loop 阻塞 IO（Files.write / store 全文件锁）。
+9. ~~错误映射 / 阻塞 IO~~ ✅ c209fa0（@RestControllerAdvice：400/404/409/500 结构化 JSON，栈帧不外泄）/ 393319f（store+文件 IO 全量 boundedElastic，SSE 逐事件副作用 concatMap 下移）。189 绿。
 10. ~~每事件 `new ObjectMapper()`（AgUiProtocolService 3 处）~~ ✅ a8f4354。
 11. ~~死代码：WorkspaceFileService.sizeOf、A2UiActionHandler.parse、A2UiService.BASIC_CATALOG_ID~~ ✅ 2fb571d（parse/ParsedAction 连带清理，-43 行）。
 12. fork 10 个既有失败测试（并行线在途，非本线债）。
@@ -47,7 +47,9 @@
   - FilesPanel 同款（b869322）+ fork 图片下载按钮 touch-safe（8a2173c，FORK 条目 14）
   - welcome 占位文案移动端截断 → 单行 + title 提示（794cfaa）
   - 证据截图 docs/screenshots/2026-08-16-mobile-*.png；前端 248 绿
+- [x] P2-9 错误映射 + 阻塞 IO（c209fa0/393319f，189 绿）+ gateway 重启上生产 + test-multi-turn 7/7 真链路回归
+- [x] P3：`.opencode/opencode.jsonc` $schema 空键修复、demo.ts root 属主、agents/ 空壳目录清理
 
 ## 下一步（修完 P0/P1 后）
 
-P2-9 错误映射 + event loop 阻塞 IO（boundedElastic + @RestControllerAdvice）→ fork 既有失败清零（随并行线）。
+P2 清零。剩余：fork 既有失败（随并行线收敛）→ spreadsheetEdits 真实链路手动确认 → TARGET_ARCHITECTURE 差距项（见该文档）。

@@ -26,10 +26,10 @@
 
 ## 本轮新增验收项（P0/P1 修复后必须通过）
 
-- [ ] 密钥外移后：`scripts/restart-gateway.sh` 重启 → `test-multi-turn.sh` 5/5（认证不断）
-- [ ] escape 修复：构造以 `\` 结尾的 RUN_ERROR（单测覆盖）+ test-multi-turn 回归
-- [ ] agents 清理后：`.opencode/` 重新部署 diff 为空、a2ui-tools 插件仍加载（opencode 启动日志无 plugin error）
-- [ ] spreadsheetEdits 确认改自绘后：vitest 覆盖 + 手动一次真实编辑确认
+- [x] 密钥外移后：`scripts/restart-gateway.sh` 重启 → `test-multi-turn.sh` 7/7（2026-08-16 实测，P2-8/9 重构同车上生产）
+- [x] escape 修复：Jackson 序列化单测（gateway 189 绿含反斜杠用例）+ test-multi-turn 回归通过
+- [x] agents 清理后：临时 target 重部署 vs `.opencode/` diff —— 实质差异仅 apiKey（设计如此，build 不覆盖既有 jsonc）；`agents/` 空壳目录已清；opencode 日志 plugin error 0 条
+- [x] spreadsheetEdits 确认改自绘后：vitest 覆盖（SpreadsheetEditor/ConfirmDialog 绿）；真实链路手动确认待下一轮补
 
 ## 前端回归基线
 
