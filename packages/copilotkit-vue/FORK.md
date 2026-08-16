@@ -217,6 +217,26 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     覆盖槽不丢附件。
     Covered by `__tests__/CopilotChatUserMessage.test.ts` 新增
     "FORK#26 用户消息附件区渲染" describe（4 cases）。
+27. `src/v2/lib/use-idle-upgrade.ts` (new) + 两处 chat 组件接线
+    (2026-08-17, FORK#25 残余收口, architect-dispatched) — 流式结束的一次性
+    "升格渲染"（shiki 高亮 + mermaid 真渲染）延迟到主线程空闲：FORK#25 把
+    流式期降级做掉后，残余阻塞 = `isStreaming` 翻 false 的同一 commit 里
+    StreamMarkdown 同步全量 re-parse + shiki + mermaid layout（实测 reasoning
+    收尾 0.5~2.5s / answer 收尾 4.8s，证据
+    docs/evidence/2026-08-17-streaming-lag-recheck.txt）。`useIdleUpgrade`
+    返回 `upgradeReady`：流式中恒 false；active 翻 false 时挂
+    `requestIdleCallback`（带 timeout 2000ms 兜底；无 rIC 的 Safari/jsdom 走
+    setTimeout(50) 降级），idle 回调才置 true；重新进入流式复位并取消
+    pending；卸载/stop 后迟到回调（rIC timeout 竞态）不再写值；挂载即
+    非流式（历史回放）立即 true 保持现行行为。接线：两处组件渲染态改判
+    `renderDegraded = isStreaming || !upgradeReady`，喂 codeblock 降级 map
+    与 mermaid 降级副本的判定从 isStreaming 换成 renderDegraded ——
+    RUN_FINISHED 后 loading 立即解除、全文以降级形态（plain code + mermaid
+    源码文本）立即可读，真渲染升格 idle 静默进行。
+    Covered by `src/v2/lib/__tests__/use-idle-upgrade.test.ts`（8 cases：
+    rIC 打桩路径 + setTimeout 降级路径 + 卸载取消 + 复位 + 历史回放直通）；
+    两个 throttle 测试各新增"翻 false 同一 tick 仍降级、idle flush 后升格"
+    断言。
 
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)

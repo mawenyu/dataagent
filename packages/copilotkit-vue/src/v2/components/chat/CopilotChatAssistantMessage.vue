@@ -19,6 +19,7 @@ const StreamMarkdown = defineAsyncComponent(() =>
 import { useCopilotChatConfiguration } from "../../providers/useCopilotChatConfiguration";
 import { useThrottledContent } from "../../lib/use-throttled-content";
 import { degradeMermaidForStreaming } from "../../lib/degrade-mermaid";
+import { useIdleUpgrade } from "../../lib/use-idle-upgrade";
 import { PlainCodeBlock } from "./plain-code-block";
 import { CopilotChatDefaultLabels } from "../../providers/types";
 import {
@@ -677,11 +678,19 @@ const { content: markdownContent } = useThrottledContent(
   normalizedContent,
   isStreamingContent,
 );
+// FORK-PATCH(27 idle-upgrade): 流式结束的一次性真渲染（shiki/mermaid）延迟到
+// 主线程空闲（requestIdleCallback）——翻 false 的同一 commit 全量 re-parse 是
+// FORK#25 记录的收尾阻塞（实测 0.5~4.8s）。降级形态已含完整内容，loading 立即
+// 解除；升格在 idle 回调静默进行。renderDegraded = 流式中 或 idle 未升格。
+const { upgradeReady: upgradeReadyContent } = useIdleUpgrade(isStreamingContent);
+const renderDegraded = computed(
+  () => isStreamingContent.value || !upgradeReadyContent.value,
+);
 // FORK-PATCH(25 stream-plain-codeblock): 流式期间 codeblock 降级为纯 pre>code
 // （streamdown-vue components map 的 codeblock 键覆盖），规避 shiki 高亮分配
 // 风暴；流式结束回到默认 shiki CodeBlock（一次性高亮 + 复制/下载按钮）。
 const markdownComponents = computed(() =>
-  isStreamingContent.value
+  renderDegraded.value
     ? { ...markdownComponentsBase, codeblock: PlainCodeBlock }
     : markdownComponentsBase,
 );
@@ -689,7 +698,7 @@ const markdownComponents = computed(() =>
 // codeblock 覆盖键，只能在渲染副本层降级 —— 流式期 ```mermaid 改名 ```text，
 // 结束用原始内容一次性真渲染 mermaid。
 const streamdownContent = computed(() =>
-  isStreamingContent.value
+  renderDegraded.value
     ? degradeMermaidForStreaming(markdownContent.value)
     : markdownContent.value,
 );

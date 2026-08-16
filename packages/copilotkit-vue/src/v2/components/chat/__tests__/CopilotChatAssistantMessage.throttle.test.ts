@@ -111,10 +111,18 @@ describe("CopilotChatAssistantMessage 流式限频（FORK#23）", () => {
 
     running.value = false;
     await nextTick();
+    // FORK#27：翻 false 不立即升格（idle 延迟真渲染，收尾不阻塞交互）
+    const flipMap = mdComponents[mdComponents.length - 1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(flipMap?.codeblock).toBe(PlainCodeBlock);
+
+    vi.advanceTimersByTime(100); // jsdom 无 rIC → setTimeout(50) 降级路径
+    await nextTick();
     const doneMap = mdComponents[mdComponents.length - 1] as
       | Record<string, unknown>
       | undefined;
-    expect(doneMap?.codeblock).toBeUndefined(); // 结束：回默认高亮渲染
+    expect(doneMap?.codeblock).toBeUndefined(); // idle 后：回默认高亮渲染
   });
 
   it("FORK#25 补充：流式期 mermaid 围栏降级 text，结束用原始内容", async () => {
@@ -126,6 +134,11 @@ describe("CopilotChatAssistantMessage 流式限频（FORK#23）", () => {
 
     running.value = false;
     await nextTick();
-    expect(mdUpdates[mdUpdates.length - 1]).toContain("```mermaid"); // 结束真渲染
+    // FORK#27：翻 false 同一 tick 仍降级（升格挂 idle）
+    expect(mdUpdates[mdUpdates.length - 1]).not.toContain("```mermaid");
+
+    vi.advanceTimersByTime(100);
+    await nextTick();
+    expect(mdUpdates[mdUpdates.length - 1]).toContain("```mermaid"); // idle 后真渲染
   });
 });
