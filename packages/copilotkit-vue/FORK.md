@@ -184,6 +184,15 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     接线：`CopilotChatMessageView.vue` resolveActivityRenderer 与
     `hooks/use-render-activity-message.ts` 两处 safeParse call site。
     Covered by `src/v2/lib/__tests__/activity-parse-cache.test.ts` (3 cases)。
+25. `src/v2/components/chat/plain-code-block.ts` (new) + 两处 chat 组件接线
+    (2026-08-16, 收尾2 收口) — 流式期间 codeblock 降级 plain highlight：
+    归因实锤流式期每次 markdown 重渲都触发默认 CodeBlock 的 shiki 高亮
+    （分配风暴）。利用 streamdown-vue components map 的 `codeblock` 覆盖键
+    （dist: `const N = l.codeblock || se`），isStreaming 时喂 PlainCodeBlock
+    （纯 pre>code，零高亮），结束回默认 shiki CodeBlock（一次性高亮 +
+    复制/下载按钮，assistant 侧与既有 img/table 覆盖合并）。
+    Covered by `__tests__/plain-code-block.test.ts` (2 cases) + 两个
+    throttle 测试新增 components prop 断言（流式有 codeblock、结束无）。
 
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
