@@ -1,0 +1,8 @@
+target thread: b7079246-74ce-439c-83a0-21ee9d234018 (检查 workspace 里 CSV 文件的数据质量：缺失值…) messages=102
+PASS: MD 含 A2UI 看板引用小节
+PASS: MD 引用含 surfaceId
+PASS: MD 不倒原始 a2ui 参数 JSON
+PASS: MD 保留工具调用配对结果
+PASS: JSON 含 a2uiRef 结构化字段 —— refs=8
+PASS: a2uiRef 字段完整 —— {"surfaceId": "mermaid-images", "componentTypes": ["Column", "Text", "Text", "Card", "Column", "Text", "Image", "Card", 
+== RESULT: PASS (6/6) ==
