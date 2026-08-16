@@ -1,0 +1,21 @@
+收尾2 FORK#25（codeblock 降级 + mermaid 降级）部署后探针复测 —— 2026-08-17 凌晨
+方法：scripts/test-streaming-smoothness.py（page.evaluate 往返探针，阈值 p95<500ms / worst<2000ms）
+提示词同前（深入逐步思考 + 分析 sales-2026-08.csv），DeepSeek 自由发挥 → 内容随 run 变化。
+
+FORK#24 部署后基线（无 mermaid 的 run）: 27ms / 50ms 全 PASS
+FORK#25 仅 codeblock 版（mermaid 未拦）: 2946 / 560 / 30 / 3237 / 3132 ms —— 内容相关抖动
+  → 抓内容实锤：回答带 2 个 ```mermaid 围栏（/tmp/probe-content.txt，78KB），
+    streamdown-vue mermaid 分支先于 codeblock 覆盖键 → 每限频 tick 重跑 mermaid
+FORK#25 + mermaid 降级（degradeMermaidForStreaming 渲染副本改名 ```text）部署后 ×4：
+  run1: p95=304ms worst=304ms PASS
+  run2: p95=4ms   worst=6593ms FAIL(worst)
+  run3: p95=4ms   worst=14735ms FAIL(worst)
+  run4: p95=4ms   worst=3096ms FAIL(worst)
+
+结论：
+- 流式窗口本身已平稳：p95 稳定 4~304ms，主线程 95% 时间零阻塞（对比最初 9687ms 持续冻结）。
+- 残留 = 单次事件型阻塞：流式结束瞬间 isStreaming 翻转 → 一次性真渲染
+  （mermaid×2 parse+layout + 全文 shiki 高亮，78KB 回答），恰落在探针窗口内被
+  worst 捕获（3.1~14.7s）。这是降级策略的既定"结账时刻"，非流式期回归。
+- 已按架构师指示停止深挖归因。已知后续候选（未做）：结束后延迟到 idle 再升格
+  真渲染 / mermaid 异步化 —— 留给后续迭代评估。
