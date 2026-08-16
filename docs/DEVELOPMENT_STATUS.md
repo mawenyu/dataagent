@@ -61,6 +61,8 @@
 - [x] **P28-A 主线 bundle 预算 + 懒加载**（afbcd47）：预算断言脚本 `check-bundle-budget.mjs`（vite manifest 静态闭包逐文件真实 gzip 求和，单入口初始 JS <500KB，超线 exit 1，`npm run budget` 可挂 CI）。基线实测 index 481.4KB 已达预算 96%，根因 = fork 两处聊天组件静态 import streamdown-vue 拖入 shiki+mermaid；改 `defineAsyncComponent` 懒加载（FORK#19）后 index 287.3KB / gallery 235.8KB。TDD：fork 3 个同步断言改 waitFor、app chatHistoryRender 加 waitForText；顺手清零 formChecks 红框字面量断言既有红线（vision 调色板化后即红）。证据 `docs/evidence/2026-08-16-bundle-budget.md`。
 - [x] **P28-B 主线 Button disabled WCAG AA 收口**（本 commit）：fork catalog Button 禁用态弃 `opacity: 0.5`（半透明在 primary 白字蓝底对比度塌陷）→ 三变体统一实心 muted 配色（新 token `surfaceDisabled #e5e7eb` + `textDisabled #4b5563`，对比度 6.1:1，FORK#21）；gallery form 批新增三变体禁用演示（checks 绑空路径 → isValid=false）。TDD：fork 禁用态测试改写 + WCAG 对比度公式断言 ≥4.5:1、app galleryGuard 渲染级断言 3 禁用按钮；真浏览器截图 + computedStyle 取证 `docs/evidence/2026-08-16-button-disabled-gallery.png`。STATUS 已知边界"Button disabled 无视觉弱化"条目清除。
 
+- [x] **P29 界面结构重构 + 新建会话 bug 修复**（P0 插队，0c71165 + fa0275e）：**bug** —— 生产实测复现（playwright 公网）根因 = `crypto.randomUUID` 仅 secure context 可用，裸 HTTP 站点 createNew 首行抛 TypeError 点击整体无效（jsdom 提供 randomUUID，单测盲区）；修复 = composables/uuid.ts 三级降级替换 5 处直调 + useThreads `settlePendingRefresh` 竞态防护（在途 refresh 旧快照不得顶掉本地列表变更，TDD 竞态回归锁定）。**重构** —— 60px 导航 rail（对话/能力双主视图，aria-current），能力 = CapabilitiesPanel 72rem 整幅画布；v-show 保活 CopilotChat；侧栏 tabs 收敛会话/文件。前端 280/280 绿 + typecheck 干净；已部署 /var/www/blog/agui，**公网实测 PASS**（rail 双视图切换 aria 跟随 / 点新建 POST 200、新会话置顶 active、currentId 变更、欢迎页回归、零 pageerror，证据 docs/evidence/2026-08-16-p29-new-thread-and-rail-layout.txt）。测试环境坑沉淀：jsdom getComputedStyle 对 detached 树缓存不失效，「先隐后显」isVisible 断言序列必须 attachTo。
+
 ## 下一步（修完 P0/P1 后）
 
 剩余：

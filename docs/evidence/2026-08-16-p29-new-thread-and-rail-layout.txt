@@ -1,0 +1,52 @@
+P29 界面结构重构 + 新建会话 bug 修复 —— 验收证据（2026-08-16 17:10 CST）
+=====================================================================
+
+【Bug 根因（生产实测复现，/tmp/p29-repro.py）】
+站点 http://101.34.246.179 裸 HTTP 部署（非 secure context），
+crypto.randomUUID 为 undefined（仅 HTTPS/localhost 可用）。
+useThreads.createNew() 首行 crypto.randomUUID() 直接抛 TypeError，
+整个点击无任何效果。jsdom 提供 randomUUID，单测此前无法暴露。
+
+次级竞态（插桩证实）：onRunFinalized 冒泡随时触发 useThreads.refresh()，
+在途 refresh 若晚于 createNew/remove/rename 的本地列表变更落地，
+会用旧 gateway 快照顶掉本地变更。
+
+【修复】
+- composables/uuid.ts（新增）：native randomUUID → getRandomValues →
+  Math.random 三级降级，替换 useThreads/runErrorRecovery/App.vue 共 5 处直调
+- useThreads：pendingRefresh 跟踪 + settlePendingRefresh，列表变更前先等
+  在途 refresh 落定（TDD 竞态回归：挂起旧快照 GET → createNew → 释放旧快照，
+  断言新会话不被顶掉）
+
+【布局重构】
+- 60px 导航 rail（logo + 对话/能力，aria-current 高亮），Linear/Notion 式
+- 对话视图 = ThreadSidebar + 聊天工作区；能力视图 = CapabilitiesPanel 72rem
+- v-show 保活 CopilotChat；侧栏 tabs 收敛会话/文件；☰ 仅对话视图；
+  Ctrl+K/Ctrl+N 自动落回对话视图
+
+【单测】
+vue-frontend 全量 40 文件 280 通过 0 失败；typecheck 干净。
+App.test.ts 24/24（P29 回归 2 例 + rail 2 例新增）。
+
+【测试环境坑（jsdom style 缓存）】
+rail 可见性断言曾只在 App.test.ts 文件内红、单拎出来绿。
+根因：jsdom getComputedStyle 对元素按 WeakMap 缓存（style-rules.js
+styleCache），invalidateStyleCache 要求 elementImpl._attached —— detached
+树（mount 无 attachTo）缓存永不失效。pre-click 的 isVisible() 断言（v-show
+display:none）把缓存毒化，click 后内联样式已清空仍返回陈旧 none。
+修法：该用例 mount(App, { attachTo: document.body }) + unmount。
+教训：凡涉及"先隐藏后显示"的 isVisible 断言序列，必须 attachTo。
+
+【公网实测（playwright, http://101.34.246.179/agui/, 17:10）】
+- rail-chat/rail-caps 存在；默认 chat 可见 caps 隐藏
+- 点 rail-caps：caps 可见 chat 隐藏、CapabilitiesPanel 挂载（Server 工具 18 /
+  builtin 12 / edit...）、aria-current=page；点 rail-chat 切回，aria 跟随
+- 点「+ 新建」：POST /agui-api/chat/threads 200；新「新会话」置顶且 active；
+  currentId p26-repro-toolcall → ddafd8c0-430b-47ef-a44c-7eab94d42116；
+  欢迎页回归；pageerrors 为空
+- 截图 /tmp/p29-accept.png
+
+【部署】
+vite build 28s → /var/www/blog/agui（nginx data-agent server, 101.34.246.179/agui/）
+
+commits: 0c71165（fix）+ fa0275e（feat 布局）
