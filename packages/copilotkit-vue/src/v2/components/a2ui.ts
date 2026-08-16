@@ -29,8 +29,8 @@ export const A2UIActivityContentSchema = z.object({
  *     （web_core 对重复 createSurface 直接 throw "already exists"）。
  *  3. out-of-order 归一化：乱序流里 updateComponents/updateDataModel
  *     先于 createSurface 到达时，逐 op 容错会把它们永久丢弃（"Surface
- *     not found"）；稳定地把 createSurface 提前、deleteSurface 押后，
- *     同批内容不再丢失。
+ *     not found"）；按 surface 分段归一化（createSurface 提段首），
+ *     deleteSurface 是段屏障不被越过（第三批修订，复活序列语义）。
  */
 
 /** 单条 string 值上限（默认 1MB；第一批实测 300KB 正常渲染，不可误伤）。 */
@@ -77,14 +77,77 @@ function truncateLongStrings(
   return value;
 }
 
-/** 稳定归一化：createSurface → 其余（保持相对序）→ deleteSurface。 */
-function orderA2uiOperations(ops: A2UIOperation[]): A2UIOperation[] {
-  const rank = (op: A2UIOperation) =>
-    "createSurface" in op ? 0 : "deleteSurface" in op ? 2 : 1;
-  return ops
-    .map((op, index) => ({ op, index }))
-    .sort((a, b) => rank(a.op) - rank(b.op) || a.index - b.index)
-    .map((entry) => entry.op);
+/** per-surface 段内归一化：字节级去重 + createSurface 提段首。 */
+function normalizeSegment(
+  segment: A2UIOperation[],
+  warn: (what: string) => void,
+): A2UIOperation[] {
+  const seen = new Set<string>();
+  let create: A2UIOperation | null = null;
+  const rest: A2UIOperation[] = [];
+  for (const op of segment) {
+    // key 必须取自截断后的 op：截断后逐字节相同 = 渲染结果相同，理应去重
+    const json = JSON.stringify(op);
+    if (seen.has(json)) {
+      warn("duplicate op (byte-identical, likely replay overlap) — dropped");
+      continue;
+    }
+    seen.add(json);
+    if ("createSurface" in op) {
+      if (create) {
+        const sid = (op.createSurface as { surfaceId?: unknown })?.surfaceId;
+        warn(`duplicate createSurface for surface '${sid}' within one segment — dropped`);
+        continue;
+      }
+      create = op;
+      continue;
+    }
+    rest.push(op);
+  }
+  return create ? [create, ...rest] : rest;
+}
+
+/**
+ * 第三批（2026-08-16）：per-surface 分段归一化，deleteSurface 是段屏障。
+ *
+ * 第二批的全局 rank 排序（create 一律提前 / delete 一律押后）在
+ * [create, delete, create] 复活序列上双重出错：吞掉复活 create、
+ * 把 delete 挪到复活之后（终态 = 面被删，内容全丢）。正确语义：
+ * 任何归一化都不得越过同 surface 的 deleteSurface —— 段内才把
+ * createSurface 提到段首并做字节级去重。
+ */
+function normalizeA2uiOperations(
+  ops: A2UIOperation[],
+  warn: (what: string) => void,
+): A2UIOperation[] {
+  const surfaceOrder: string[] = [];
+  const bySurface = new Map<string, A2UIOperation[]>();
+  for (const op of ops) {
+    const sid = getOperationSurfaceId(op);
+    if (!bySurface.has(sid)) {
+      bySurface.set(sid, []);
+      surfaceOrder.push(sid);
+    }
+    bySurface.get(sid)!.push(op);
+  }
+  const out: A2UIOperation[] = [];
+  for (const sid of surfaceOrder) {
+    let segment: A2UIOperation[] = [];
+    const flush = () => {
+      if (segment.length) out.push(...normalizeSegment(segment, warn));
+      segment = [];
+    };
+    for (const op of bySurface.get(sid)!) {
+      if ("deleteSurface" in op) {
+        flush();
+        out.push(op); // 段屏障：delete 保持原位，归一化不得越过
+      } else {
+        segment.push(op);
+      }
+    }
+    flush();
+  }
+  return out;
 }
 
 export function sanitizeA2uiOperations(
@@ -162,10 +225,9 @@ export function sanitizeA2uiOperations(
     return [];
   }
 
-  // ---- 第二批管线：体积闸口 → 截断 → 去重 → 归一化 ----
+  // ---- 第二批/第三批管线：体积闸口 → 截断 → 分段归一化 ----
 
-  // 1) 整条 op 超硬上限 → 整条丢弃（序列化一次，去重阶段复用）。
-  const serialized = new Map<A2UIOperation, string>();
+  // 1) 整条 op 超硬上限 → 整条丢弃。
   ops = ops.filter((op) => {
     let json: string;
     try {
@@ -178,11 +240,10 @@ export function sanitizeA2uiOperations(
       warn(`op exceeds ${maxOpBytes}B hard cap (${json.length}B) — dropped`);
       return false;
     }
-    serialized.set(op, json);
     return true;
   });
 
-  // 2) 超长 string 截断（截后 op 变了，序列化缓存失效，去重重新算）。
+  // 2) 超长 string 截断（必须在去重之前：去重 key 取自截断后的 op）。
   ops = ops.map((op) => {
     const counter = { count: 0 };
     const next = truncateLongStrings(op, maxStringChars, counter);
@@ -190,35 +251,13 @@ export function sanitizeA2uiOperations(
       console.warn(
         `[A2UI Vue] truncated ${counter.count} oversized string value(s) beyond ${maxStringChars} chars`,
       );
-      serialized.delete(op);
     }
     return next as A2UIOperation;
   });
 
-  // 3) 重复去重：逐字节相同的 op 只留第一条；同 surfaceId 的重复
-  //    createSurface 只留第一条（web_core 对重复 createSurface 会 throw）。
-  const seenJson = new Set<string>();
-  const seenSurfaces = new Set<string>();
-  ops = ops.filter((op) => {
-    const json = serialized.get(op) ?? JSON.stringify(op);
-    if (seenJson.has(json)) {
-      warn("duplicate op (byte-identical, likely replay overlap) — dropped");
-      return false;
-    }
-    seenJson.add(json);
-    const cs = op.createSurface as { surfaceId?: unknown } | undefined;
-    if (cs && typeof cs.surfaceId === "string") {
-      if (seenSurfaces.has(cs.surfaceId)) {
-        warn(`duplicate createSurface for surface '${cs.surfaceId}' — dropped`);
-        return false;
-      }
-      seenSurfaces.add(cs.surfaceId);
-    }
-    return true;
-  });
-
-  // 4) out-of-order 归一化：createSurface 稳定提前、deleteSurface 押后。
-  return orderA2uiOperations(ops);
+  // 3+4) per-surface 分段归一化：deleteSurface 为段屏障，段内字节级
+  //      去重 + createSurface 提段首（见 normalizeA2uiOperations 注释）。
+  return normalizeA2uiOperations(ops, warn);
 }
 
 export function getOperationSurfaceId(operation: A2UIOperation): string {

@@ -151,6 +151,19 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     hover 语义不变。Covered by `__tests__/catalogCardButton.test.ts`
     （含 WCAG 对比度公式断言 ≥4.5:1）。
 
+22. `src/v2/components/a2ui.ts` (2026-08-16, 协议边界第三批) —
+    第二批的全局 rank 排序（create 一律提前 / delete 一律押后）被
+    [create, delete, create] 复活序列实锤双重出错：吞掉复活 create、
+    把 delete 挪到复活点之后（终态 = 面被删、内容全丢）。归一化改为
+    **per-surface 分段**：deleteSurface 是段屏障，任何重排/去重不得
+    越过；段内才做字节级去重（key 取自截断后的 op）并把 createSurface
+    提到段首（同段重复 create 仍去重 + warn）。管线顺序固定为：解析
+    （数组/JSONL 容错）→ 整条 op 4MB 闸口 → string 1MB 截断 → 分段
+    归一化。Batch2 纯函数用例期望同步修订（队首 delete 保持原位）。
+    Covered by `__tests__/A2UIBoundaryBatch3.test.ts` (11 cases：
+    截断后 dedupe key 稳定性 / 复活屏障 / 27 行 JSONL 混合流 /
+    30 op 多 surface 总集成，含 21 op 三轮复活渲染级回归）。
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 

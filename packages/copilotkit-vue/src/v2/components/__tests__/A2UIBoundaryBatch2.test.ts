@@ -120,7 +120,11 @@ describe("重复 op 去重（重放/快照重叠）", () => {
 });
 
 describe("out-of-order 事件归一化", () => {
-  it("纯函数：createSurface 稳定提前、deleteSurface 稳定押后，其余保持相对序", () => {
+  it("纯函数：段内 createSurface 提段首；deleteSurface 是段屏障（不被越过、保持原位）", () => {
+    // 第三批语义修订：第二批的全局 rank 排序会把队首 delete 押到最后，
+    // 破坏 [delete, create, …] 的"先关旧面再开新面"reset 语义（面建完
+    // 即被删）。现改为 per-surface 分段：delete 屏障前后各段独自归一化，
+    // delete 本身保持原位。
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const ops = [
       { deleteSurface: { surfaceId: "edge" } },
@@ -130,14 +134,14 @@ describe("out-of-order 事件归一化", () => {
     ];
     const out = sanitizeA2uiOperations(ops);
     expect(out.map((op) => Object.keys(op).find((k) => k !== "version"))).toEqual([
+      "deleteSurface",
       "createSurface",
       "updateComponents",
       "updateComponents",
-      "deleteSurface",
     ]);
     // 同类之间保持原始相对序
-    expect((out[1] as any).updateComponents.components[0].text).toBe("first");
-    expect((out[2] as any).updateComponents.components[0].text).toBe("second");
+    expect((out[2] as any).updateComponents.components[0].text).toBe("first");
+    expect((out[3] as any).updateComponents.components[0].text).toBe("second");
   });
 
   it("渲染层：updateComponents 先于 createSurface 到达 → 内容不丢失照常渲染", async () => {
