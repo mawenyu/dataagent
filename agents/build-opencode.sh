@@ -71,4 +71,5 @@ if [[ ! -f "$TARGET_DIR/.opencode/opencode.jsonc" && -f "$AGENTS_DIR/opencode.js
 fi
 
 echo "==> all done."
-echo "    启动: cd $TARGET_DIR && opencode2 serve --port 4096"
+echo "    启动: cd $TARGET_DIR && bun run --conditions=browser <fork>/packages/cli/src/index.ts serve --port 4096 --hostname 127.0.0.1"
+echo "    （日常三件套直接 scripts/up.sh；无 opencode2 安装命令，bun 源码运行）"
