@@ -63,6 +63,8 @@
 
 - [x] **P29 界面结构重构 + 新建会话 bug 修复**（P0 插队，0c71165 + fa0275e）：**bug** —— 生产实测复现（playwright 公网）根因 = `crypto.randomUUID` 仅 secure context 可用，裸 HTTP 站点 createNew 首行抛 TypeError 点击整体无效（jsdom 提供 randomUUID，单测盲区）；修复 = composables/uuid.ts 三级降级替换 5 处直调 + useThreads `settlePendingRefresh` 竞态防护（在途 refresh 旧快照不得顶掉本地列表变更，TDD 竞态回归锁定）。**重构** —— 60px 导航 rail（对话/能力双主视图，aria-current），能力 = CapabilitiesPanel 72rem 整幅画布；v-show 保活 CopilotChat；侧栏 tabs 收敛会话/文件。前端 280/280 绿 + typecheck 干净；已部署 /var/www/blog/agui，**公网实测 PASS**（rail 双视图切换 aria 跟随 / 点新建 POST 200、新会话置顶 active、currentId 变更、欢迎页回归、零 pageerror，证据 docs/evidence/2026-08-16-p29-new-thread-and-rail-layout.txt）。测试环境坑沉淀：jsdom getComputedStyle 对 detached 树缓存不失效，「先隐后显」isVisible 断言序列必须 attachTo。
 
+- [x] **P31 长会话历史加载 256KB 缓冲截杀修复**（本轮 audit 新发现，308ce21）：生产日志实锤 vision-p6-form 历史加载 DataBufferLimitException（WebClient 默认 maxInMemorySize 256KB，多 A2UI surface 长会话历史 JSON 轻易超限）。修复：WebClientConfig maxInMemorySize 可配、默认 8MB 常量。TDD：JDK HttpServer 真实 512KB 响应体，显式 262144 完整复现生产异常（红）→ 默认路径绿 + 显式小上限保护语义不丢。gateway 223/223 绿；已重启上生产，70/70 会话历史回归 OK + multi-turn 7/7；证据 docs/evidence/2026-08-16-p31-webclient-buffer-limit.txt。旁证：P29 新 rail 移动端 390px 触屏实测无回归。
+
 ## 下一步（修完 P0/P1 后）
 
 剩余：

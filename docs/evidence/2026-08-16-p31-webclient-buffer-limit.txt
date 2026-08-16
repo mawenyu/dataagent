@@ -1,0 +1,33 @@
+P31 长会话历史加载 256KB 缓冲截杀修复 —— 证据（2026-08-16 17:45 CST）
+=====================================================================
+
+【发现（audit 自 gateway.log）】
+2026-08-16 05:45 生产日志：ChatThreadsController 加载 thread vision-p6-form
+历史失败 —— DataBufferLimitException: Exceeded limit on max bytes to buffer
+: 262144。根因：gateway WebClient 未配置 maxInMemorySize（默认 256KB），
+多 A2UI surface 的长会话历史 JSON 轻易超限 → 前端点开老长会话拿不到历史。
+
+【TDD 红→绿（gateway/src/test/.../WebClientConfigTest.java）】
+红（反证）：JDK HttpServer 真实回 512KB 响应体 + 显式 262144 上限 →
+  完整复现生产异常 WebClientResponseException ← DataBufferLimitException
+  "Exceeded limit on max bytes to buffer : 262144"（Tests run: 4, Errors: 1）
+绿：默认路径（0 = DEFAULT_MAX_IN_MEMORY_SIZE 8MB）完整读出 512KB+；
+  显式 64KB 上限仍拒绝 512KB 响应（保护语义不丢）。
+
+【修复】
+WebClientConfig：.codecs(c -> c.defaultCodecs().maxInMemorySize(limit))；
+opencode.server.max-in-memory-size 可配，0/缺省 = 8MB 常量（消灭注解字面量
+与常量双写漂移）。
+
+【验证】
+- gateway 全量 21 类 223/223 绿（221 基线 + 新增 2）
+- scripts/restart-gateway.sh 上生产（重启前 opencode2.log 静默 19 分钟）
+- 生产回归：70/70 会话历史加载 OK（当前最大 74KB，无超限个体；
+  超限场景由真实 HTTP 单测锁定）；公网 /agui-api/chat/threads 200
+- test-multi-turn.sh 真链路 5 轮回归：见后台任务输出（本文件若后补则见
+  git 提交说明）
+
+【存量审计旁证】
+- 移动端新 rail 布局公网实测（390px 触屏仿真）：rail 60px 无横向溢出、
+  双视图切换正常、☰ 抽屉 70 会话可开（/tmp/p31-mobile-*.png）——无回归
+- P31 为本轮 audit 唯一 P1 级新发现；文档清单 P0-P3 已全部闭环
