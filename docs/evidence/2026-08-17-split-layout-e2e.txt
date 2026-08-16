@@ -1,0 +1,8 @@
+PASS: 真实 run 后中央工作区出现看板块
+PASS: 工作区块渲染出真实内容 —— inner_html=2655B text=250字
+PASS: 对话栏收窄为窄列 —— width=326px
+PASS: 对话栏出现引用卡
+PASS: 点击引用卡 → 工作区块定位高亮 —— a2ui-workspace-block a2ui-block-flash
+PASS: 窄屏不出现中央工作区壳
+PASS: 窄屏 A2UI 在对话流内联 —— inline activity nodes=5
+== RESULT: PASS (7/7) ==
