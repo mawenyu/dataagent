@@ -396,6 +396,11 @@ function messageTimeLabel(message: Message): string {
  * 内容长度签名：流式中活动消息长度增长 → 仅它重渲染；历史消息签名稳定
  * → 整树跳过（500+ 消息下每次 tick 不再全量重渲染）。
  * toolCalls 长度覆盖工具调用卡片递增；tool 结果到达走 messages.length。
+ *
+ * stateTick 必须进 memo 依赖：STATE_SNAPSHOT/STATE_DELTA 到达时消息内容、
+ * isRunning、messages.length 全都不变，仅靠前三项签名会跳过整块渲染，
+ * 导致 renderCustomMessages 的 stateSnapshot prop 滞留旧值（P-baseline
+ * 失败 "re-renders custom message when state updates within the same run"）。
  */
 function memoSignature(message: Message): string {
   const m = message as Message & {
@@ -422,7 +427,12 @@ function memoSignature(message: Message): string {
     <template
       v-for="message in deduplicatedMessages"
       :key="message.id"
-      v-memo="[memoSignature(message), props.isRunning, props.messages.length]"
+      v-memo="[
+        memoSignature(message),
+        props.isRunning,
+        props.messages.length,
+        stateTick,
+      ]"
     >
       <slot
         v-if="componentSlots['message-before']"

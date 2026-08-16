@@ -95,6 +95,18 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     bare red text); shimmer keyframes moved out of innerHTML (no innerHTML
     use remains on the render path).
 
+17. `src/v2/components/chat/CopilotChatMessageView.vue` — the P11 `v-memo`
+    signature now includes `stateTick`. Mid-run STATE_SNAPSHOT/STATE_DELTA
+    events change neither message content, `isRunning`, nor `messages.length`,
+    so the memoized per-message block was skipped and `renderCustomMessages`
+    renderers kept a stale `stateSnapshot` prop (baseline e2e failure
+    "re-renders custom message when state updates within the same run").
+    `stateTick` is the component's existing agent state/run-lifecycle
+    counter; adding it re-renders message blocks exactly when run state
+    advances. Perf impact: state/lifecycle changes re-render all memoized
+    blocks (same as upstream-without-memo); streaming deltas stay memoized
+    per message via the content/tool signature.
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 
