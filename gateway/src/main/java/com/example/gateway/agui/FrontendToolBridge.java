@@ -119,6 +119,16 @@ public class FrontendToolBridge {
         sb.append("To call a client tool, your ENTIRE response MUST be exactly one block in this form, with no other text before or after it, and no markdown fences:\n");
         sb.append(MARKER).append("{\"name\": \"<tool name>\", \"arguments\": { ... }}").append(END_MARKER).append('\n');
         sb.append("The arguments object must conform to the tool's JSON schema. If no client tool is needed, answer normally and do not output the marker.\n");
+        // P27: 审计发现模型偶发绕过 HITL 用原生 edit 直改 CSV —— 提示词层显式约束
+        // （约束力有边界，gateway 侧另有风险文件警告回执兜底观测）。
+        boolean hasSpreadsheetTool = tools.stream()
+                .anyMatch(t -> String.valueOf(t.get("name")).toLowerCase().contains("spreadsheet"));
+        if (hasSpreadsheetTool) {
+            sb.append("Modifying data files (CSV/TSV/XLSX) MUST go through the applySpreadsheetEdits client tool, ")
+                    .append("so the user can review and confirm the exact changes before anything is written. ")
+                    .append("NEVER use native file tools (edit/write) to modify such files directly, ")
+                    .append("even if the user's request sounds like a simple in-place edit.\n");
+        }
         sb.append("Available client tools:\n");
         for (Map<String, Object> t : tools) {
             sb.append("- name: ").append(t.get("name")).append('\n');

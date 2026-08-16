@@ -63,6 +63,11 @@ public class AguiEventTranslator {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String MARKER = FrontendToolBridge.MARKER;
     private static final String END_MARKER = FrontendToolBridge.END_MARKER;
+    /** P27: 会直改文件的原生工具（绕过 HITL 的观测对象）。 */
+    private static final Set<String> NATIVE_FILE_MUTATION_TOOLS = Set.of("edit", "write", "multiedit");
+    /** P27: 风险文件类型 —— 表格数据文件（用户应经 applySpreadsheetEdits 确认 diff）。 */
+    private static final java.util.regex.Pattern RISKY_DATA_FILE =
+            java.util.regex.Pattern.compile("(?i).*\\.(csv|tsv|xlsx|xls)$");
 
     private final FrontendToolBridge toolBridge;
     private final A2UiBridgeService a2UiBridge;
@@ -210,6 +215,8 @@ public class AguiEventTranslator {
         final Map<String, String> toolCallNames = new ConcurrentHashMap<>();
         final Set<String> toolCallStarted = ConcurrentHashMap.newKeySet();
         final Set<String> toolCallEnded = ConcurrentHashMap.newKeySet();
+        /** P27: 原生文件工具直改数据文件的观测记录（callId → 文件路径）。 */
+        final Map<String, String> riskyNativeEdits = new ConcurrentHashMap<>();
 
         RunState(String threadId, String runId, Set<String> frontendTools, Runnable onEarlyTerminate) {
             this.threadId = threadId;
@@ -363,6 +370,18 @@ public class AguiEventTranslator {
         // 新方言 tool.called 不带工具名字段 —— 用 input.started 注册的
         String name = rs.toolCallNames.getOrDefault(callId, "");
         rs.toolCallNames.putIfAbsent(callId, name);
+        // P27: 原生 edit/write 直改数据文件（绕过 applySpreadsheetEdits HITL）——
+        // 观测模式：记录 callId→路径，成功回执追加警告；不硬阻断。
+        if (NATIVE_FILE_MUTATION_TOOLS.contains(name)) {
+            JsonNode input = data.path("input");
+            String path = input.path("filePath").asText("");
+            if (path.isEmpty()) path = input.path("path").asText("");
+            if (RISKY_DATA_FILE.matcher(path).matches()) {
+                rs.riskyNativeEdits.put(callId, path);
+                log.warn("P27 observe: native '{}' directly modifies data file {} (id={}) — HITL bypassed",
+                        name, path, callId);
+            }
+        }
         rs.sawOutput.set(true);
         List<ServerSentEvent<String>> out = new ArrayList<>();
         if (rs.toolCallStarted.add(callId)) {
@@ -423,8 +442,17 @@ public class AguiEventTranslator {
         if ("session.tool.failed".equals(type)) {
             String msg = data.path("error").path("message").asText("unknown error");
             payload.put("content", "工具执行失败: " + msg);
+            rs.riskyNativeEdits.remove(callId); // 失败即未改成功，无需警告
         } else {
-            payload.put("content", summarizeToolResult(data));
+            String content = summarizeToolResult(data);
+            // P27: 观测警告回执（客户端工具卡可见），不阻断、不改结果本体
+            String risky = rs.riskyNativeEdits.remove(callId);
+            if (risky != null) {
+                content += "\n⚠️ gateway 观测：数据文件 " + risky
+                        + " 被原生文件工具直接修改，绕过了 applySpreadsheetEdits 的用户确认链路"
+                        + "（本次未阻断，已记录）。";
+            }
+            payload.put("content", content);
         }
         return Flux.just(sse(payload));
     }

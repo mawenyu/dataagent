@@ -132,7 +132,7 @@ const frontendTools = [
   {
     name: 'applySpreadsheetEdits',
     description:
-      "Edit cells of a CSV spreadsheet file in the user's workspace. row/col are 0-based (row 0 is the header row); out-of-range rows/cols extend the sheet. The user sees a confirmation dialog (in-app modal) with the change count before anything is written — if they cancel, the file is left untouched. Use this to update or append spreadsheet data.",
+      "Edit cells of a CSV spreadsheet file in the user's workspace. row/col are 0-based (row 0 is the header row); out-of-range rows/cols extend the sheet. The user sees a confirmation dialog (in-app modal) with the change count before anything is written — if they cancel, the file is left untouched. Use this to update or append spreadsheet data. This is the ONLY sanctioned way to modify spreadsheet/data files (CSV/TSV/XLSX): NEVER use native edit/write file tools on them directly.",
     parameters: z.object({
       file: z.string().describe('CSV file name in the workspace (e.g. sales-2026-08.csv)'),
       cells: z.array(z.object({

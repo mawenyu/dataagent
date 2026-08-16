@@ -60,4 +60,4 @@
 2. ~~spreadsheetEdits 真实链路复跑~~ ✅ 2026-08-16 PASS（modal → confirm → CSV 999999 落盘）。
 3. fork 既有 2 失败（`use-frontend-tool.e2e.test.ts` Agent Scoping，并行线在途）。
 4. DeepSeek 伪 `<tool_call>` 文本输出习性：已确认双路径（native + 文本 marker）都会触发，bridge 均兜住；记录为模型行为基线（本条为观察记录，长期有效）。
-5. 观察项（非阻断，记录在案）：模型偶发拒用 frontend tool 改用原生 edit 工具绕过 HITL 直接改 CSV（提示词契约约束力的边界）。
+5. ~~观察项：模型偶发拒用 frontend tool 改用原生 edit 绕过 HITL 直改 CSV~~ ✅ P27 已加固（2026-08-16）：提示词层 client_tools 段落 + 工具描述双重显式禁止；gateway 对原生 edit/write/multiedit 直改 CSV/TSV/XLS 追加警告回执（观测模式不阻断，log.warn 可检索）。长期效果待线上观测。

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import App from '../App.vue'
+import { readFileSync } from 'node:fs'
 
 /**
  * 需求4: 空会话欢迎页（品牌 + 建议问题快捷入口）+ 侧边栏可折叠。
@@ -469,5 +470,16 @@ describe('移动端 UI 细节', () => {
     const ph = ta.attributes('placeholder') ?? ''
     expect(ph.length, '移动端 rows=1 单行须容纳占位文案').toBeLessThanOrEqual(16)
     expect(ta.attributes('title') ?? '', '完整快捷键提示移到 title').toContain('Shift+Enter')
+  })
+})
+
+describe('P27 提示词契约(源码守卫)', () => {
+  it('applySpreadsheetEdits 描述显式声明: 数据文件修改唯一链路, 禁原生 edit/write 直改', () => {
+    const src = readFileSync('src/App.vue', 'utf-8')
+    const m = src.match(/name:\s*'applySpreadsheetEdits'[\s\S]*?description:\s*\n?\s*"([^"]+)"/)
+    expect(m, 'applySpreadsheetEdits 工具声明存在').toBeTruthy()
+    const desc = m![1]
+    expect(desc.toLowerCase()).toContain('only')
+    expect(desc).toContain('edit/write')
   })
 })

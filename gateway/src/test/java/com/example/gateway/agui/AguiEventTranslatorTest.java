@@ -701,8 +701,42 @@ class AguiEventTranslatorTest {
         assertFalse(allText.contains("收尾叙述"), "post-truncation remainder must be dropped: " + allText);
     }
 
-    private static String json(String s) {        try {
-            return MAPPER.writeValueAsString(s);
+    /** P27: 模型绕过 HITL 用原生 edit 直改 CSV（审计观测项）—— gateway 不硬阻断，
+        但 TOOL_CALL_RESULT 回执必须追加警告（客户端工具卡可见 + 日志可观测）。 */
+    @Test
+    void nativeEditOnRiskyDataFileAppendsWarningReceipt() {
+        List<JsonNode> events = translator.translate("thread", "run", Set.of("applySpreadsheetEdits"), Flux.just(
+                oc("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"edit\"}"),
+                oc("session.tool.input.ended", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\"}"),
+                oc("session.tool.called", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"input\":{\"filePath\":\"sales-2026-08.csv\",\"oldString\":\"1\",\"newString\":\"2\"}}"),
+                oc("session.tool.success", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"content\":[{\"type\":\"text\",\"text\":\"edited ok\"}]}")))
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        JsonNode result = events.stream()
+                .filter(e -> "TOOL_CALL_RESULT".equals(e.path("type").asText())).findFirst().orElseThrow();
+        String content = result.path("content").asText();
+        assertTrue(content.contains("applySpreadsheetEdits"), "警告回执点名 HITL 链路: " + content);
+        assertTrue(content.contains("sales-2026-08.csv"), "警告回执点名风险文件: " + content);
+    }
+
+    /** P27: 原生 edit 改非数据文件（代码/配置）不追加警告 —— 观测只对风险文件类型。 */
+    @Test
+    void nativeEditOnCodeFileGetsNoWarning() {
+        List<JsonNode> events = translator.translate("thread", "run", Set.of("applySpreadsheetEdits"), Flux.just(
+                oc("session.tool.input.started", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"name\":\"edit\"}"),
+                oc("session.tool.called", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"input\":{\"filePath\":\"src/main.ts\",\"oldString\":\"a\",\"newString\":\"b\"}}"),
+                oc("session.tool.success", "{\"assistantMessageID\":\"m1\",\"id\":\"c1\",\"content\":[{\"type\":\"text\",\"text\":\"edited ok\"}]}")))
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        JsonNode result = events.stream()
+                .filter(e -> "TOOL_CALL_RESULT".equals(e.path("type").asText())).findFirst().orElseThrow();
+        assertFalse(result.path("content").asText().contains("applySpreadsheetEdits"),
+                "非数据文件不加警告: " + result.path("content").asText());
+    }
+
+    private static String json(String s) {        try {            return MAPPER.writeValueAsString(s);
         } catch (Exception e) {
             return "\"\"";
         }
