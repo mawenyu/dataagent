@@ -21,12 +21,22 @@ import java.util.Base64;
 @Configuration
 public class WebClientConfig {
 
+    /**
+     * P31: 默认响应缓冲上限 8MB。长会话（多 A2UI surface）历史 JSON 轻易超过
+     * WebClient 默认 256KB → DataBufferLimitException、历史加载失败（生产实测
+     * vision-p6-form）。可用 opencode.server.max-in-memory-size 覆盖。
+     */
+    public static final int DEFAULT_MAX_IN_MEMORY_SIZE = 8 * 1024 * 1024;
+
     @Bean
     public WebClient opencodeWebClient(
             @Value("${opencode.server.url:http://localhost:4096}") String baseUrl,
             @Value("${opencode.server.username:}") String username,
-            @Value("${opencode.server.password:}") String password) {
-        WebClient.Builder builder = WebClient.builder().baseUrl(baseUrl);
+            @Value("${opencode.server.password:}") String password,
+            @Value("${opencode.server.max-in-memory-size:0}") int maxInMemorySize) {
+        int limit = maxInMemorySize > 0 ? maxInMemorySize : DEFAULT_MAX_IN_MEMORY_SIZE;
+        WebClient.Builder builder = WebClient.builder().baseUrl(baseUrl)
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(limit));
         if (username != null && !username.isBlank()) {
             String token = Base64.getEncoder().encodeToString(
                     (username + ":" + (password == null ? "" : password)).getBytes(StandardCharsets.UTF_8));
