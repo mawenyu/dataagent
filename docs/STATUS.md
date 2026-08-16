@@ -1,6 +1,6 @@
 # DataAgent 项目状态总览（P24 交付前最终巡检 · 2026-08-16）
 
-> 本文每次回归巡检时更新。最近更新：P24（2026-08-16，交付前最终巡检：三线核验 + 部署一致性修复 + READY 抽查）。
+> 本文每次回归巡检时更新。最近更新：P25（2026-08-16，抛光收尾：README 实拍图 + fork 升级路径抽查）。
 
 ## 架构一句话
 
@@ -55,6 +55,7 @@ fork 10 个既有失败（与 P 系列改动零交集，P11 已用"失败集 dif
 | vision-P18~P22 | 断网恢复深挖（历史去重修复）/ dashboard 真实化（opsUrl 回放）/ 多会话并发隔离 / HITL 审批 UI（附言+结果徽章）/ 图表三边界 | docs/perf/concurrent-threads.md、docs/evidence/p18~p22 系列 |
 | vision-P23 | 错误恢复 UI 取证页（错误卡/离线徽章/恢复 toast 三态同框） | docs/evidence/2026-08-16-p23-error-recovery-ui.txt + READY-VISION-p23-error-recovery.png |
 | P24 | 交付前最终巡检：三线复核 + 部署一致性（前端/gateway 两处陈旧已修复上线）+ READY 抽查 24% 全过 + 真链路冒烟 | docs/STATUS.md ①②③ |
+| P25 | 抛光收尾：README 公网实拍图（真实 run → A2UI 看板）+ fork 可升级性抽查（上游 1.68.1 删除 getThreadClone = 升级硬阻塞，路径已立项） | docs/screenshots/p25-home.png、docs/FORK-UPGRADE-PATH.md |
 
 ### READY-FRONTEND（前端 UX 线）
 
