@@ -8,6 +8,7 @@ const StreamMarkdown = defineAsyncComponent(() =>
   import("streamdown-vue").then((m) => m.StreamMarkdown),
 );
 import { IconChevronRight } from "../icons";
+import { useThrottledContent } from "../../lib/use-throttled-content";
 
 const props = withDefaults(
   defineProps<{
@@ -86,6 +87,11 @@ const isLatest = computed(
   () => props.messages[props.messages.length - 1]?.id === props.message.id,
 );
 const isStreaming = computed(() => !!(props.isRunning && isLatest.value));
+
+// FORK-PATCH(23 stream-throttle): 喂给 StreamMarkdown 的内容限频 ——
+// 流式期间每个 SSE delta 触发全量 markdown re-parse(含 shiki) 是长思考卡顿根因。
+// slot 契约仍拿 normalizedContent(实时);仅默认渲染器用限频副本。
+const { content: markdownContent } = useThrottledContent(normalizedContent, isStreaming);
 
 const elapsed = ref(0);
 const isOpen = ref(isStreaming.value);
@@ -232,7 +238,7 @@ function toggleOpen() {
             >
               <div v-if="hasContent || isStreaming" class="cpk:pb-2 cpk:pt-1">
                 <div class="cpk:text-sm cpk:text-muted-foreground">
-                  <StreamMarkdown :content="normalizedContent" />
+                  <StreamMarkdown :content="markdownContent" />
                   <span
                     v-if="isStreaming && hasContent"
                     class="cpk:inline-flex cpk:items-center cpk:ml-1 cpk:align-middle"
