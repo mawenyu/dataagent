@@ -163,6 +163,13 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     Covered by `__tests__/A2UIBoundaryBatch3.test.ts` (11 cases：
     截断后 dedupe key 稳定性 / 复活屏障 / 27 行 JSONL 混合流 /
     30 op 多 surface 总集成，含 21 op 三轮复活渲染级回归）。
+23. `src/v2/lib/use-throttled-content.ts` (new, 2026-08-16, 收尾2 流式渲染
+    限频) — 长 reasoning/assistant 流式期间，每个 SSE delta 直喂
+    StreamMarkdown 会全量 re-parse（含 shiki），内容越长越贵 → 长思考卡顿。
+    本 composable 提供限频跟随 ref：流式中 leading 立即 + 窗口内合并 +
+    trailing 补最新（默认 120ms 一次），active=false 立即对齐最终值/直通，
+    stop()/卸载后不再写值。供 chat 组件喂给 StreamMarkdown 的 content 使用。
+    Covered by `src/v2/lib/__tests__/use-throttled-content.test.ts` (5 cases)。
 
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
