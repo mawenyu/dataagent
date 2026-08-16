@@ -275,16 +275,38 @@ const List = createVueComponent(ListApi, ({ props, buildChild }) => {
   return h("div", { style }, renderChildList(props.children, buildChild));
 });
 
-const Card = createVueComponent(CardApi, ({ props, buildChild }) => {
-  const style = {
-    ...getBaseContainerStyle(),
-    backgroundColor: "#fff",
-    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-    width: "100%",
-  };
+const Card = createVueComponent(
+  CardApi,
+  ({ props, buildChild, state }) => {
+    // Elevated surface: subtle resting shadow, gentle lift on hover.
+    const style = {
+      ...getBaseContainerStyle(),
+      backgroundColor: A2UI_PALETTE.surface,
+      border: `1px solid ${A2UI_PALETTE.border}`,
+      borderRadius: "12px",
+      boxShadow: state.hovered.value
+        ? "0 4px 12px rgba(16, 24, 40, 0.08)"
+        : "0 1px 2px rgba(16, 24, 40, 0.05)",
+      transition: "box-shadow 0.2s ease",
+      width: "100%",
+    };
 
-  return h("div", { style }, [props.child ? buildChild(props.child) : null]);
-});
+    return h(
+      "div",
+      {
+        style,
+        onMouseenter: () => {
+          state.hovered.value = true;
+        },
+        onMouseleave: () => {
+          state.hovered.value = false;
+        },
+      },
+      [props.child ? buildChild(props.child) : null],
+    );
+  },
+  () => ({ hovered: ref(false) }),
+);
 
 const Tabs = createVueComponent(
   TabsApi,
@@ -460,36 +482,87 @@ const Modal = createVueComponent(
   () => ({ isOpen: ref(false) }),
 );
 
-const Button = createVueComponent(ButtonApi, ({ props, buildChild }) => {
-  const style = {
-    margin: LEAF_MARGIN,
-    padding: "8px 16px",
-    cursor: "pointer",
-    border: props.variant === "borderless" ? "none" : "1px solid #ccc",
-    backgroundColor:
-      props.variant === "primary"
-        ? "var(--a2ui-primary-color, #007bff)"
-        : props.variant === "borderless"
-          ? "transparent"
-          : "#fff",
-    color: props.variant === "primary" ? "#fff" : "inherit",
-    borderRadius: "4px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxSizing: "border-box",
-  };
+const Button = createVueComponent(
+  ButtonApi,
+  ({ props, buildChild, state }) => {
+    // Variant tokens + full interaction states (hover/pressed/disabled).
+    const disabled = props.isValid === false;
+    const hovered = state.hovered.value && !disabled;
+    const pressed = state.pressed.value && !disabled;
 
-  return h(
-    "button",
-    {
-      style,
-      onClick: props.action,
-      disabled: props.isValid === false,
-    },
-    [props.child ? buildChild(props.child) : null],
-  );
-});
+    const palette = (() => {
+      if (props.variant === "primary") {
+        return {
+          backgroundColor: pressed
+            ? A2UI_PRIMARY_HOVER
+            : hovered
+              ? A2UI_PRIMARY_HOVER
+              : A2UI_PRIMARY,
+          border: "none",
+          color: "#ffffff",
+        };
+      }
+      if (props.variant === "borderless") {
+        return {
+          backgroundColor:
+            hovered || pressed ? "rgba(17, 24, 39, 0.04)" : "transparent",
+          border: "none",
+          color: A2UI_PALETTE.textSecondary,
+        };
+      }
+      return {
+        backgroundColor:
+          pressed || hovered
+            ? A2UI_PALETTE.surfaceSunken
+            : A2UI_PALETTE.surface,
+        border: `1px solid ${A2UI_PALETTE.borderStrong}`,
+        color: A2UI_PALETTE.textSecondary,
+      };
+    })();
+
+    const style = {
+      margin: LEAF_MARGIN,
+      padding: "8px 16px",
+      cursor: disabled ? "not-allowed" : "pointer",
+      ...palette,
+      borderRadius: "8px",
+      fontSize: "14px",
+      fontWeight: "500",
+      lineHeight: "1.25",
+      opacity: disabled ? "0.5" : "1",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxSizing: "border-box",
+      transition:
+        "background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+    };
+
+    return h(
+      "button",
+      {
+        style,
+        onClick: props.action,
+        disabled,
+        onMouseenter: () => {
+          state.hovered.value = true;
+        },
+        onMouseleave: () => {
+          state.hovered.value = false;
+          state.pressed.value = false;
+        },
+        onMousedown: () => {
+          state.pressed.value = true;
+        },
+        onMouseup: () => {
+          state.pressed.value = false;
+        },
+      },
+      [props.child ? buildChild(props.child) : null],
+    );
+  },
+  () => ({ hovered: ref(false), pressed: ref(false) }),
+);
 
 const TextField = createVueComponent(
   TextFieldApi,
