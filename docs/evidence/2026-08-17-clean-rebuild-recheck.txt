@@ -1,0 +1,24 @@
+# 收尾③ 干净 clone 可构建运行复核（2026-08-17，HEAD 406b3ac）
+
+## 方法
+复刻 DELIVERY-README §0-§3 与 2026-08-16 基准：GitHub 干净 clone 主仓库 + opencode fork（depth 50 dataagent-v2）→ bun install → build-opencode.sh 部署扩展 → tsconfig.json/密钥带外注入 → mvn package（含测试）→ 前端 npm install + build + test → 起干净 opencode :4196 + gateway :8190 → 健康/能力/multi-turn 回归。共享在跑三件套（4096/8090/3001）全程未动。
+
+## 环境偏差（如实记录）
+1. fork GitHub clone 第 1 次被 reset（curl 56），重试第 2 次成功；主仓库 clone 一次成功。
+2. 端口 4196/8190 替代 4096/8090（共享纪律，SERVER_PORT/OPENCODE_SERVER_URL 环境覆盖）。
+3. 密钥从主仓本机拷贝（文档口径：干净机器由部署人带外提供）。
+4. 首轮脚本把 set -a; . ./.env.opencode 误挂进 && 后台链 → curl/gateway 无密码 401、multi-turn 0/7；改主 shell 注入后全绿——脚本 bug，非产品问题。
+
+## 结果（全部通过）
+- [6] mvn package 含测试: 217/217 BUILD SUCCESS, jar 37MB
+- [8] 前端 build OK（prebuild 自动构建 fork, build:types 产出 .d.mts/.d.cts ×2 —— 当日 972dfdb 修复在干净环境验证生效）
+- [9] 前端 vitest 337/337（47 文件；1 个既有 getReader unhandled-rejection 噪音）
+- [10b] 干净 opencode :4196 /api/session 鉴权 200
+- [11b] 干净 gateway :8190 /actuator/health UP
+- [12] 干净 clone scripts/up.sh 幂等识别在跑三件套（4096/8090/3001 全跳过, 全部就绪）
+- [13b] /capabilities 五路聚合返回插件清单
+- [14b] scripts/test-multi-turn.sh 打 :8190 == 7 passed, 0 failed（真实 DeepSeek, 暗号跨轮记忆）
+- [15b] 干净实例已停, 生产三件套未动
+
+## 结论
+当前 HEAD（406b3ac）在干净 clone 上按 DELIVERY-README 可完整重建并跑通真链路；文档步骤与代码一致（本轮未发现新漂移）。
