@@ -81,10 +81,10 @@ index c35db11..0000000
 -- `CopilotKitCoreVue` - core subclass with `setRenderToolCalls` and `onRenderToolCallsChanged`
 diff --git a/packages/copilotkit-vue/FORK.md b/packages/copilotkit-vue/FORK.md
 new file mode 100644
-index 0000000..49de429
+index 0000000..3adc4a9
 --- /dev/null
 +++ b/packages/copilotkit-vue/FORK.md
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,148 @@
 +# Internal fork: @copilotkit/vue 1.67.1 + `directAgents`
 +
 +**Base**: upstream `CopilotKit/CopilotKit` tag `v1.67.1`
@@ -193,6 +193,22 @@ index 0000000..49de429
 +    advances. Perf impact: state/lifecycle changes re-render all memoized
 +    blocks (same as upstream-without-memo); streaming deltas stay memoized
 +    per message via the content/tool signature.
++
++18. `src/v2/components/a2ui.ts` + `A2UIMessageRenderer.ts` +
++    `A2UISurfaceActivityRenderer.vue` (2026-08-16, 协议边界降级) — new
++    `sanitizeA2uiOperations()` boundary helper: malformed `a2ui_operations`
++    entries (null/string/number/array) are dropped with console.warn instead
++    of throwing in `getOperationSurfaceId` during grouping (one bad entry
++    previously killed the whole batch AND the render pass); a string payload
++    is parsed tolerantly as JSONL (bad lines skipped, good lines rendered).
++    `A2UIMessageRenderer` renders a payload-error warning chip
++    (`data-testid="a2ui-payload-error"`, same warning-chip family as the
++    unknown-component/cycle placeholders) when a payload is present but
++    yields zero usable ops — replacing the previous infinite
++    "Generating UI..." skeleton. Absent/empty payload still means loading.
++    `A2UISurfaceActivityRenderer` sanitizes defensively in both
++    `processOperations` and the `surfaceEntries` render path. Covered by
++    `__tests__/A2UIBoundaryPayloads.test.ts` (10 cases incl. 300KB props).
 +
 +(A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 +maintained by the vision line — see their own notes.)
@@ -9953,11 +9969,85 @@ index 0000000..050622d
 +    expect(document.querySelectorAll("[data-surface-id='sales-overview']").length).toBe(1);
 +  });
 +});
+diff --git a/packages/copilotkit-vue/src/v2/components/A2UIMessageRenderer.ts b/packages/copilotkit-vue/src/v2/components/A2UIMessageRenderer.ts
+index b5b071f..52a2478 100644
+--- a/packages/copilotkit-vue/src/v2/components/A2UIMessageRenderer.ts
++++ b/packages/copilotkit-vue/src/v2/components/A2UIMessageRenderer.ts
+@@ -3,6 +3,8 @@ import { z } from "zod";
+ import type { VueActivityMessageRenderer } from "../types";
+ import type { A2UITheme } from "../types";
+ import A2UISurfaceActivityRenderer from "./A2UISurfaceActivityRenderer.vue";
++import { sanitizeA2uiOperations } from "./a2ui";
++import { getWarningChipStyle } from "./a2ui/utils";
+ 
+ const A2UI_OPERATIONS_KEY = "a2ui_operations";
+ 
+@@ -96,13 +98,33 @@ export function createA2UIMessageRenderer(
+         },
+       },
+       setup(props) {
+-        const operations = computed(() =>
+-          Array.isArray(props.content?.[A2UI_OPERATIONS_KEY])
+-            ? props.content[A2UI_OPERATIONS_KEY]
+-            : [],
+-        );
++        // dataagent fork (2026-08-16, 协议边界降级): sanitize at the entry
++        // boundary — malformed entries drop with console.warn, a JSONL string
++        // payload is parsed tolerantly. A payload that is present but yields
++        // zero usable ops is a degraded error (chip), NOT an infinite loading
++        // skeleton; an absent/empty payload stays the loading state.
++        const raw = computed(() => props.content?.[A2UI_OPERATIONS_KEY]);
++        const operations = computed(() => sanitizeA2uiOperations(raw.value));
++        const payloadBroken = computed(() => {
++          const r = raw.value;
++          const present =
++            (Array.isArray(r) && r.length > 0) ||
++            (typeof r === "string" && r.trim().length > 0);
++          return present && operations.value.length === 0;
++        });
+ 
+         return () => {
++          if (payloadBroken.value) {
++            return h(
++              "div",
++              {
++                style: getWarningChipStyle(),
++                "data-testid": "a2ui-payload-error",
++              },
++              "A2UI payload could not be parsed — no usable operations",
++            );
++          }
++
+           if (operations.value.length === 0) {
+             if (options.loadingComponent) {
+               return h(options.loadingComponent as any);
 diff --git a/packages/copilotkit-vue/src/v2/components/A2UISurfaceActivityRenderer.vue b/packages/copilotkit-vue/src/v2/components/A2UISurfaceActivityRenderer.vue
-index 01ded4b..1b82878 100644
+index 01ded4b..2cce35d 100644
 --- a/packages/copilotkit-vue/src/v2/components/A2UISurfaceActivityRenderer.vue
 +++ b/packages/copilotkit-vue/src/v2/components/A2UISurfaceActivityRenderer.vue
-@@ -94,7 +94,33 @@ function processOperations(operations: A2UIOperation[]) {
+@@ -11,7 +11,7 @@ import {
+ import type { ActivityMessage } from "@ag-ui/core";
+ import type { A2UITheme } from "../types";
+ import type { A2UIOperation } from "./a2ui";
+-import { getOperationSurfaceId } from "./a2ui";
++import { getOperationSurfaceId, sanitizeA2uiOperations } from "./a2ui";
+ import { useCopilotKit } from "../providers";
+ import { MessageProcessor, type SurfaceModel } from "@a2ui/web_core/v0_9";
+ import {
+@@ -71,7 +71,11 @@ async function handleAction(message: unknown) {
+   }
+ }
+ 
+-function processOperations(operations: A2UIOperation[]) {
++function processOperations(rawOperations: A2UIOperation[]) {
++  // dataagent fork (2026-08-16): sanitize before grouping — a null/malformed
++  // entry previously threw in getOperationSurfaceId outside any try, taking
++  // down the whole batch (and the render pass via surfaceEntries).
++  const operations = sanitizeA2uiOperations(rawOperations);
+   if (!operations?.length) return;
+ 
+   const hash = JSON.stringify(operations);
+@@ -94,7 +98,33 @@ function processOperations(operations: A2UIOperation[]) {
        const filtered = existing
          ? ops.filter((op) => !(op as any)?.createSurface)
          : ops;
@@ -9992,6 +10082,296 @@ index 01ded4b..1b82878 100644
      }
      error.value = null;
    } catch (err) {
+@@ -136,7 +166,7 @@ const surfaceEntries = computed(() => {
+ 
+   // Group operations by surface to know which surfaces we expect
+   const grouped = new Map<string, A2UIOperation[]>();
+-  for (const op of props.content.operations ?? []) {
++  for (const op of sanitizeA2uiOperations(props.content.operations)) {
+     const surfaceId = getOperationSurfaceId(op) ?? DEFAULT_SURFACE_ID;
+     if (!grouped.has(surfaceId)) grouped.set(surfaceId, []);
+     grouped.get(surfaceId)!.push(op);
+diff --git a/packages/copilotkit-vue/src/v2/components/__tests__/A2UIBoundaryPayloads.test.ts b/packages/copilotkit-vue/src/v2/components/__tests__/A2UIBoundaryPayloads.test.ts
+new file mode 100644
+index 0000000..98eab5d
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/__tests__/A2UIBoundaryPayloads.test.ts
+@@ -0,0 +1,193 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { ref } from "vue";
++import { render, waitFor } from "@testing-library/vue";
++import { createA2UIMessageRenderer } from "../A2UIMessageRenderer";
++import { sanitizeA2uiOperations } from "../a2ui";
++import { CopilotKitKey } from "../../providers/keys";
++
++/**
++ * A2UI 协议边界：畸形 payload 的降级渲染（2026-08-16 架构师指派，TDD）。
++ *
++ * 入口边界 = ACTIVITY_SNAPSHOT content.a2ui_operations。gateway 白名单是
++ * 第一道防线，但渲染器自身必须兜住：畸形 JSONL 字符串、混入的非对象条目、
++ * 超大 props —— 一律降级（能渲染多少渲染多少 + console.warn 留痕），
++ * 不允许白屏/渲染异常/无限 loading 骨架。
++ */
++
++function copilotKitProvide() {
++  return {
++    [CopilotKitKey as symbol]: {
++      copilotkit: ref({
++        properties: {},
++        setProperties: () => undefined,
++        runAgent: async () => undefined,
++      }),
++      executingToolCallIds: ref(new Set()),
++      a2uiTheme: ref({}),
++      a2uiCatalog: ref(undefined),
++      a2uiLoadingComponent: ref(undefined),
++      a2uiIncludeSchema: ref(true),
++    },
++  };
++}
++
++const CATALOG_ID = "https://a2ui.org/specification/v0_9/basic_catalog.json";
++
++function validOps(text: string) {
++  return [
++    {
++      version: "v0.9",
++      createSurface: { surfaceId: "edge", catalogId: CATALOG_ID },
++    },
++    {
++      version: "v0.9",
++      updateComponents: {
++        surfaceId: "edge",
++        components: [
++          { id: "root", component: "Text", text, variant: "body" },
++        ],
++      },
++    },
++  ];
++}
++
++function renderWith(content: unknown) {
++  const renderer = createA2UIMessageRenderer({ theme: {} });
++  return render(renderer.render, {
++    props: {
++      activityType: "a2ui-surface",
++      content,
++      message: {},
++      agent: {},
++    },
++    global: { provide: copilotKitProvide() },
++  });
++}
++
++afterEach(() => {
++  vi.restoreAllMocks();
++});
++
++describe("sanitizeA2uiOperations（纯函数边界）", () => {
++  it("数组原样保留对象条目，丢弃 null/string/number/数组条目", () => {
++    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
++    const good = { createSurface: { surfaceId: "s" } };
++    const out = sanitizeA2uiOperations([good, null, "junk", 42, ["x"]]);
++    expect(out).toEqual([good]);
++    expect(warn).toHaveBeenCalled();
++  });
++
++  it("JSONL 字符串逐行解析：好行保留、坏行跳过", () => {
++    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
++    const jsonl = [
++      JSON.stringify({ createSurface: { surfaceId: "s1" } }),
++      "{not json",
++      JSON.stringify({ deleteSurface: { surfaceId: "s1" } }),
++    ].join("\n");
++    const out = sanitizeA2uiOperations(jsonl);
++    expect(out).toHaveLength(2);
++    expect(out[0]).toHaveProperty("createSurface");
++    expect(out[1]).toHaveProperty("deleteSurface");
++    expect(warn).toHaveBeenCalled();
++  });
++
++  it("单行合法 JSON 字符串也接受（非 JSONL 仅一行）", () => {
++    const out = sanitizeA2uiOperations(
++      JSON.stringify({ createSurface: { surfaceId: "solo" } }),
++    );
++    expect(out).toHaveLength(1);
++  });
++
++  it("全坏 JSONL / 其它类型 → 空数组", () => {
++    vi.spyOn(console, "warn").mockImplementation(() => {});
++    expect(sanitizeA2uiOperations("{bad\n[worse")).toEqual([]);
++    expect(sanitizeA2uiOperations(42)).toEqual([]);
++    expect(sanitizeA2uiOperations(undefined)).toEqual([]);
++  });
++});
++
++describe("A2UIMessageRenderer 畸形 payload 降级", () => {
++  it("a2ui_operations 为 JSONL 字符串 → 解析出有效 op 并渲染（非永久 loading）", async () => {
++    const jsonl = validOps("FromJSONL")
++      .map((op) => JSON.stringify(op))
++      .join("\n");
++    const { container, queryByTestId } = renderWith({
++      a2ui_operations: jsonl,
++    });
++    await waitFor(
++      () => {
++        expect(container.textContent ?? "").toContain("FromJSONL");
++      },
++      { timeout: 5000 },
++    );
++    expect(queryByTestId("a2ui-loading")).toBeNull();
++  });
++
++  it("JSONL 混入坏行 → 有效面照常渲染 + console.warn", async () => {
++    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
++    const jsonl =
++      JSON.stringify(validOps("GoodLines")[0]) +
++      "\n{broken\n" +
++      JSON.stringify(validOps("GoodLines")[1]);
++    const { container } = renderWith({ a2ui_operations: jsonl });
++    await waitFor(
++      () => {
++        expect(container.textContent ?? "").toContain("GoodLines");
++      },
++      { timeout: 5000 },
++    );
++    expect(warn).toHaveBeenCalled();
++  });
++
++  it("payload 存在但 0 条可用 op（全坏 JSONL）→ 降级错误条而非永久 loading", async () => {
++    vi.spyOn(console, "warn").mockImplementation(() => {});
++    const { getByTestId, queryByTestId } = renderWith({
++      a2ui_operations: "{totally\n[broken",
++    });
++    await waitFor(() => {
++      expect(getByTestId("a2ui-payload-error")).not.toBeNull();
++    });
++    expect(queryByTestId("a2ui-loading")).toBeNull();
++  });
++
++  it("数组全是非对象条目 → 降级错误条而非永久 loading", async () => {
++    vi.spyOn(console, "warn").mockImplementation(() => {});
++    const { getByTestId, queryByTestId } = renderWith({
++      a2ui_operations: [null, "junk", 42],
++    });
++    await waitFor(() => {
++      expect(getByTestId("a2ui-payload-error")).not.toBeNull();
++    });
++    expect(queryByTestId("a2ui-loading")).toBeNull();
++  });
++
++  it("数组混入 null 条目 + 有效 op → 有效面渲染、不抛渲染异常", async () => {
++    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
++    const { container } = renderWith({
++      a2ui_operations: [null, ...validOps("Survivor"), "junk"],
++    });
++    await waitFor(
++      () => {
++        expect(container.textContent ?? "").toContain("Survivor");
++      },
++      { timeout: 5000 },
++    );
++    expect(warn).toHaveBeenCalled();
++    // 整批错误框不得出现
++    expect(container.textContent ?? "").not.toContain("A2UI render error");
++  });
++
++  it("超大 props（300KB 文本）→ 正常渲染不卡死不白屏", async () => {
++    vi.spyOn(console, "warn").mockImplementation(() => {});
++    const big = "x".repeat(300 * 1024);
++    const { container } = renderWith({ a2ui_operations: validOps(big) });
++    await waitFor(
++      () => {
++        expect(
++          (container.textContent ?? "").includes("x".repeat(1024)),
++        ).toBe(true);
++      },
++      { timeout: 10000 },
++    );
++  });
++});
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui.ts b/packages/copilotkit-vue/src/v2/components/a2ui.ts
+index 4a0fc92..d3c0a31 100644
+--- a/packages/copilotkit-vue/src/v2/components/a2ui.ts
++++ b/packages/copilotkit-vue/src/v2/components/a2ui.ts
+@@ -8,6 +8,77 @@ export const A2UIActivityContentSchema = z.object({
+   operations: z.array(z.record(z.string(), z.unknown())),
+ });
+ 
++/**
++ * dataagent fork (2026-08-16, 协议边界降级): sanitize the raw
++ * `a2ui_operations` payload before it reaches the surface processor.
++ *
++ * The gateway whitelist is the first line of defense, but the renderer must
++ * degrade gracefully on its own: malformed entries (null / string / number /
++ * nested arrays) are dropped with console.warn instead of throwing during
++ * grouping (a single null entry previously killed the whole batch and even
++ * the render pass). A string payload is treated as JSONL — one JSON op per
++ * line, bad lines skipped — because a model emitting JSONL text instead of a
++ * structured array should still render whatever lines are valid.
++ */
++export function sanitizeA2uiOperations(input: unknown): A2UIOperation[] {
++  const warn = (what: string) =>
++    console.warn(`[A2UI Vue] dropping malformed operation payload: ${what}`);
++
++  const keepObjects = (items: unknown[]): A2UIOperation[] => {
++    const out: A2UIOperation[] = [];
++    for (const item of items) {
++      if (item !== null && typeof item === "object" && !Array.isArray(item)) {
++        out.push(item as A2UIOperation);
++      } else {
++        warn(
++          `non-object entry (${Array.isArray(item) ? "array" : String(item === null ? "null" : typeof item)})`,
++        );
++      }
++    }
++    return out;
++  };
++
++  if (Array.isArray(input)) return keepObjects(input);
++
++  if (typeof input === "string") {
++    const text = input.trim();
++    if (!text) return [];
++    // Whole-string JSON first (single op or a JSON array), then JSONL.
++    try {
++      const parsed: unknown = JSON.parse(text);
++      if (Array.isArray(parsed)) return keepObjects(parsed);
++      if (parsed !== null && typeof parsed === "object") {
++        return [parsed as A2UIOperation];
++      }
++      warn("parsed JSON is not an operation object");
++      return [];
++    } catch {
++      /* fall through to JSONL */
++    }
++    const out: A2UIOperation[] = [];
++    for (const line of text.split(/\r?\n/)) {
++      const trimmed = line.trim();
++      if (!trimmed) continue;
++      try {
++        const parsed: unknown = JSON.parse(trimmed);
++        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
++          out.push(parsed as A2UIOperation);
++        } else {
++          warn(`JSONL line is not an object: ${trimmed.slice(0, 60)}`);
++        }
++      } catch {
++        warn(`unparseable JSONL line: ${trimmed.slice(0, 60)}`);
++      }
++    }
++    return out;
++  }
++
++  if (input !== undefined && input !== null) {
++    warn(`unexpected payload type: ${typeof input}`);
++  }
++  return [];
++}
++
+ export function getOperationSurfaceId(operation: A2UIOperation): string {
+   const surfaceId =
+     (operation.surfaceId as string | undefined) ??
 diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/VueSurface.ts b/packages/copilotkit-vue/src/v2/components/a2ui/VueSurface.ts
 index eae6f48..f7ed20e 100644
 --- a/packages/copilotkit-vue/src/v2/components/a2ui/VueSurface.ts
