@@ -21,13 +21,13 @@ planning → 工具执行（bash/read workspace CSV）→ 流式文本 + 工具�
 | 5 | 消息操作：复制(hover)/重新生成(末条)/时间戳 | ✅ P-S |
 | 6 | 用量可观测：context 徽章分级警示、累计 token 分桶明细 | ✅ P-K |
 | 7 | 断网：离线徽章、恢复自动续跑 | ✅ P-I |
-| 8 | 错误产品化：内联错误卡(5xx 码徽章)、toast、无裸 500/原生弹窗 | ✅ P-B/P-I/P-C(残留见下) |
+| 8 | 错误产品化：内联错误卡(5xx 码徽章)、toast、无裸 500/原生弹窗 | ✅ P-B/P-I/P-C |
 | 9 | 键盘可达：Ctrl+K 搜索、Ctrl+N 新建、Esc/Tab 圈定、aria | ✅ P-O |
 | 10 | 生成式 UI：28 组件 A2UI 看板/表单/向导,HITL 确认卡 | ✅ vision 线 |
 
 ## 残留 UX 缺口（优先级排序）
 
-1. **applySpreadsheetEdits 的 window.confirm**（App.vue handler 内 confirm 是浏览器原生弹窗，违背 B2B 质感——需改自绘确认；属 P15 链路）— P1
+1. ~~applySpreadsheetEdits 的 window.confirm~~ ✅ 已闭环（P1：App.vue 改 Promise 化自绘确认 modal，ConfirmDialog.vue；全仓原生弹窗清零）
 2. 移动端适配粗（sidebar 抽屉已有；A2UI 看板/工具卡小屏未验收）— P2
 3. 消息区 Markdown 表格/代码块已有，但长会话首屏性能依赖 v-memo（vision P11 已 38×）；继续观察 — P3
 4. 欢迎页与主输入框能力差异（主输入框 Enter/Shift+Enter/附件有；语音转写未接业务）— P3
