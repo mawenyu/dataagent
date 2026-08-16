@@ -138,38 +138,77 @@ const Text = createVueComponent(TextApi, ({ props }) => {
   }
 });
 
-const Image = createVueComponent(ImageApi, ({ props }) => {
-  const mapFit = (fit?: string): string => {
-    if (fit === "scaleDown") return "scale-down";
-    return fit || "fill";
-  };
+const Image = createVueComponent(
+  ImageApi,
+  ({ props, state }) => {
+    const mapFit = (fit?: string): string => {
+      if (fit === "scaleDown") return "scale-down";
+      return fit || "fill";
+    };
 
-  const style: CSSProperties = {
-    ...getBaseLeafStyle(),
-    objectFit: mapFit(props.fit) as CSSProperties["objectFit"],
-    width: "100%",
-    height: "auto",
-    display: "block",
-  };
+    // Missing URL or failed load → calm placeholder instead of a broken icon.
+    if (!props.url || state.errored.value) {
+      return h(
+        "div",
+        {
+          style: {
+            ...getBaseLeafStyle(),
+            padding: "16px",
+            border: `1px dashed ${A2UI_PALETTE.borderStrong}`,
+            borderRadius: "8px",
+            backgroundColor: A2UI_PALETTE.surfaceSunken,
+            color: A2UI_PALETTE.textMuted,
+            fontSize: "12px",
+            lineHeight: "1.4",
+          },
+        },
+        props.description ? props.description : "Image unavailable",
+      );
+    }
 
-  if (props.variant === "icon") {
-    style.width = "24px";
-    style.height = "24px";
-  } else if (props.variant === "avatar") {
-    style.width = "40px";
-    style.height = "40px";
-    style.borderRadius = "50%";
-  } else if (props.variant === "smallFeature") {
-    style.maxWidth = "100px";
-  } else if (props.variant === "largeFeature") {
-    style.maxHeight = "400px";
-  } else if (props.variant === "header") {
-    style.height = "200px";
-    style.objectFit = "cover";
-  }
+    const style: CSSProperties = {
+      ...getBaseLeafStyle(),
+      objectFit: mapFit(props.fit) as CSSProperties["objectFit"],
+      width: "100%",
+      height: "auto",
+      display: "block",
+      // Sunken backdrop while the image streams in.
+      backgroundColor: "#f3f4f6",
+    };
 
-  return h("img", { src: props.url, alt: props.description || "", style });
-});
+    if (props.variant === "icon") {
+      style.width = "24px";
+      style.height = "24px";
+      style.backgroundColor = "transparent";
+    } else if (props.variant === "avatar") {
+      style.width = "40px";
+      style.height = "40px";
+      style.borderRadius = "50%";
+    } else if (props.variant === "smallFeature") {
+      style.maxWidth = "100px";
+      style.borderRadius = "8px";
+    } else if (props.variant === "mediumFeature") {
+      style.borderRadius = "8px";
+    } else if (props.variant === "largeFeature") {
+      style.maxHeight = "400px";
+      style.borderRadius = "8px";
+    } else if (props.variant === "header") {
+      style.height = "200px";
+      style.objectFit = "cover";
+      style.borderRadius = "8px";
+    }
+
+    return h("img", {
+      src: props.url,
+      alt: props.description || "",
+      style,
+      onError: () => {
+        state.errored.value = true;
+      },
+    });
+  },
+  () => ({ errored: ref(false) }),
+);
 
 const Icon = createVueComponent(IconApi, ({ props }) => {
   const iconName =
@@ -194,6 +233,8 @@ const Video = createVueComponent(VideoApi, ({ props }) => {
     ...getBaseLeafStyle(),
     width: "100%",
     aspectRatio: "16/9",
+    borderRadius: "8px",
+    backgroundColor: "#111827",
   };
 
   return h("video", { src: props.url, controls: true, style });
@@ -216,7 +257,7 @@ const AudioPlayer = createVueComponent(AudioPlayerApi, ({ props }) => {
       props.description
         ? h(
             "span",
-            { style: { fontSize: "12px", color: "#666" } },
+            { style: { fontSize: "12px", color: A2UI_PALETTE.textMuted } },
             props.description,
           )
         : null,
