@@ -5,7 +5,7 @@
  * mirroring the React renderer's catalog/basic/.
  */
 
-import { h, ref, type CSSProperties, type VNode } from "vue";
+import { h, ref, watch, onUnmounted, type CSSProperties, type VNode } from "vue";
 import { Catalog } from "@a2ui/web_core/v0_9";
 import {
   TextApi,
@@ -41,9 +41,13 @@ import {
   getA2uiErrorTextStyle,
   getBaseLeafStyle,
   getBaseContainerStyle,
+  ensureA2uiCatalogStyles,
   mapJustify,
   mapAlign,
 } from "./utils";
+
+// Static keyframes for modal/dialog transitions (fixed content, injected once).
+ensureA2uiCatalogStyles();
 
 // -- Helper: render a child list (arrays of { id, basePath } or string IDs) --
 function renderChildList(
@@ -311,6 +315,27 @@ const Tabs = createVueComponent(
   ({ props, buildChild, state }) => {
     const tabs = props.tabs || [];
 
+    // Empty state (can occur mid-stream before tabs arrive).
+    if (tabs.length === 0) {
+      return h(
+        "div",
+        {
+          style: {
+            margin: LEAF_MARGIN,
+            padding: "12px 16px",
+            fontSize: "13px",
+            color: A2UI_PALETTE.textMuted,
+            backgroundColor: A2UI_PALETTE.surfaceSunken,
+            borderRadius: "8px",
+          },
+        },
+        "No tabs",
+      );
+    }
+
+    // Clamp the selection in case the tab list shrank after selection.
+    const selected = Math.min(state.selectedIndex.value, tabs.length - 1);
+
     return h(
       "div",
       {
@@ -325,10 +350,12 @@ const Tabs = createVueComponent(
         h(
           "div",
           {
+            role: "tablist",
             style: {
               display: "flex",
-              borderBottom: "1px solid #ccc",
-              marginBottom: "8px",
+              gap: "4px",
+              borderBottom: `1px solid ${A2UI_PALETTE.border}`,
+              marginBottom: "12px",
             },
           },
           tabs.map((tab, i: number) => {
@@ -336,28 +363,40 @@ const Tabs = createVueComponent(
               typeof tab.title === "string"
                 ? tab.title
                 : String(tab.title ?? "");
+            const isSelected = selected === i;
+            const isHovered = state.hoveredIndex.value === i && !isSelected;
             return h(
               "button",
               {
                 key: i,
+                role: "tab",
+                "aria-selected": isSelected ? "true" : "false",
                 onClick: () => {
                   state.selectedIndex.value = i;
                 },
+                onMouseenter: () => {
+                  state.hoveredIndex.value = i;
+                },
+                onMouseleave: () => {
+                  state.hoveredIndex.value = null;
+                },
                 style: {
-                  padding: "8px 16px",
+                  padding: "8px 12px",
                   border: "none",
                   background: "none",
-                  borderBottom:
-                    state.selectedIndex.value === i
-                      ? "2px solid var(--a2ui-primary-color, #007bff)"
-                      : "none",
-                  fontWeight:
-                    state.selectedIndex.value === i ? "bold" : "normal",
+                  marginBottom: "-1px",
+                  borderBottom: isSelected
+                    ? `2px solid ${A2UI_PRIMARY}`
+                    : "2px solid transparent",
+                  fontSize: "14px",
+                  fontWeight: isSelected ? "600" : "500",
                   cursor: "pointer",
-                  color:
-                    state.selectedIndex.value === i
-                      ? "var(--a2ui-primary-color, #007bff)"
-                      : "inherit",
+                  color: isSelected
+                    ? A2UI_PRIMARY
+                    : isHovered
+                      ? A2UI_PALETTE.text
+                      : A2UI_PALETTE.textMuted,
+                  transition: "color 0.15s ease, border-color 0.15s ease",
                 },
               },
               title,
@@ -365,14 +404,15 @@ const Tabs = createVueComponent(
           }),
         ),
         h("div", { style: { flex: "1" } }, [
-          tabs[state.selectedIndex.value]?.child
-            ? buildChild(tabs[state.selectedIndex.value]!.child)
-            : null,
+          tabs[selected]?.child ? buildChild(tabs[selected]!.child) : null,
         ]),
       ],
     );
   },
-  () => ({ selectedIndex: ref(0) }),
+  () => ({
+    selectedIndex: ref(0),
+    hoveredIndex: ref<number | null>(null),
+  }),
 );
 
 const Divider = createVueComponent(DividerApi, ({ props }) => {
@@ -404,7 +444,7 @@ const Modal = createVueComponent(
           onClick: () => {
             state.isOpen.value = true;
           },
-          style: { display: "inline-block" },
+          style: { display: "inline-block", cursor: "pointer" },
         },
         [props.trigger ? buildChild(props.trigger) : null],
       ),
@@ -412,13 +452,15 @@ const Modal = createVueComponent(
         ? h(
             "div",
             {
+              class: "a2ui-modal-backdrop",
               style: {
                 position: "fixed",
                 top: "0",
                 left: "0",
                 right: "0",
                 bottom: "0",
-                backgroundColor: "rgba(0,0,0,0.5)",
+                backgroundColor: "rgba(15, 23, 42, 0.5)",
+                backdropFilter: "blur(2px)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -432,10 +474,15 @@ const Modal = createVueComponent(
               h(
                 "div",
                 {
+                  class: "a2ui-modal-panel",
+                  role: "dialog",
+                  "aria-modal": "true",
                   style: {
-                    backgroundColor: "#fff",
+                    backgroundColor: A2UI_PALETTE.surface,
                     padding: "24px",
-                    borderRadius: "8px",
+                    borderRadius: "12px",
+                    boxShadow:
+                      "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
                     maxWidth: "90%",
                     maxHeight: "90%",
                     overflow: "auto",
@@ -452,15 +499,28 @@ const Modal = createVueComponent(
                       h(
                         "button",
                         {
+                          "aria-label": "Close",
                           onClick: () => {
                             state.isOpen.value = false;
                           },
+                          onMouseenter: () => {
+                            state.closeHovered.value = true;
+                          },
+                          onMouseleave: () => {
+                            state.closeHovered.value = false;
+                          },
                           style: {
                             border: "none",
-                            background: "none",
-                            fontSize: "20px",
+                            backgroundColor: state.closeHovered.value
+                              ? "#f3f4f6"
+                              : "transparent",
+                            borderRadius: "6px",
+                            color: A2UI_PALETTE.textMuted,
+                            fontSize: "18px",
+                            lineHeight: "1",
                             cursor: "pointer",
-                            padding: "4px",
+                            padding: "6px 8px",
+                            transition: "background-color 0.15s ease",
                           },
                         },
                         "\u00D7",
@@ -477,7 +537,28 @@ const Modal = createVueComponent(
         : null,
     ]);
   },
-  () => ({ isOpen: ref(false) }),
+  () => {
+    const isOpen = ref(false);
+    const closeHovered = ref(false);
+    // ESC closes the dialog; listener only attached while open.
+    const onKeydown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") isOpen.value = false;
+    };
+    watch(isOpen, (open) => {
+      if (typeof document === "undefined") return;
+      if (open) {
+        document.addEventListener("keydown", onKeydown);
+      } else {
+        document.removeEventListener("keydown", onKeydown);
+      }
+    });
+    onUnmounted(() => {
+      if (typeof document !== "undefined") {
+        document.removeEventListener("keydown", onKeydown);
+      }
+    });
+    return { isOpen, closeHovered };
+  },
 );
 
 const Button = createVueComponent(
