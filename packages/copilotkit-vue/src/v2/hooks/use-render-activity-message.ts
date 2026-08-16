@@ -4,6 +4,7 @@ import type { ActivityMessage } from "@ag-ui/core";
 import type { AbstractAgent } from "@ag-ui/client";
 import { DEFAULT_AGENT_ID } from "@copilotkit/shared";
 import { useCopilotKit } from "../providers/useCopilotKit";
+import { safeParseActivityContent } from "../lib/activity-parse-cache";
 import { useCopilotChatConfiguration } from "../providers/useCopilotChatConfiguration";
 import type {
   VueActivityMessageRenderer,
@@ -61,7 +62,8 @@ export function useRenderActivityMessage() {
       return null;
     }
 
-    const parseResult = renderer.content.safeParse(message.content);
+    // FORK-PATCH(24): 同 MessageView —— 内容引用不变不重 parse
+    const parseResult = safeParseActivityContent(renderer.content, message, message.content);
 
     if (!parseResult.success) {
       console.warn(

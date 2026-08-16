@@ -15,6 +15,7 @@ import type {
   VueCustomMessageRendererProps,
 } from "../../types";
 import { getThreadClone } from "../../hooks/use-agent";
+import { safeParseActivityContent } from "../../lib/activity-parse-cache";
 import { useCopilotKit } from "../../providers/useCopilotKit";
 import { useCopilotChatConfiguration } from "../../providers/useCopilotChatConfiguration";
 import CopilotChatAssistantMessage from "./CopilotChatAssistantMessage.vue";
@@ -317,7 +318,8 @@ function resolveActivityRenderer(
     })[0];
 
   if (!renderer) return null;
-  const parsed = renderer.content.safeParse(message.content);
+  // FORK-PATCH(24): safeParse 按 (message, content引用) 记忆化 —— 流式 delta 重渲不再全量重校验
+  const parsed = safeParseActivityContent(renderer.content, message, message.content);
   if (!parsed.success) return null;
 
   return {

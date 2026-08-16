@@ -170,6 +170,20 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     trailing 补最新（默认 120ms 一次），active=false 立即对齐最终值/直通，
     stop()/卸载后不再写值。供 chat 组件喂给 StreamMarkdown 的 content 使用。
     Covered by `src/v2/lib/__tests__/use-throttled-content.test.ts` (5 cases)。
+    接线：`CopilotChatReasoningMessage.vue` + `CopilotChatAssistantMessage.vue`
+    的 StreamMarkdown content 改用限频副本（slot 契约仍拿实时内容）。
+    Covered by `__tests__/CopilotChatReasoningMessage.throttle.test.ts` /
+    `CopilotChatAssistantMessage.throttle.test.ts`（mock streamdown 计数：
+    200 delta 从 196/201 次全量 re-parse 降到 ≤12 次，结束立即对齐）。
+24. `src/v2/lib/activity-parse-cache.ts` (new, 2026-08-16, 收尾2) —
+    `safeParseActivityContent`：activity 消息内容的 zod 校验按
+    (message, content引用) WeakMap 记忆化。CDP profiler 实锤：流式期间
+    热点 = zod `_parse`/`_parseSync`（消息列表每个 delta 重渲 → 每条
+    activity 消息全量 safeParse 大 discriminated union）+ GC 抖动 →
+    秒级主线程冻结。content 引用变（ACTIVITY_SNAPSHOT 更新）即重 parse。
+    接线：`CopilotChatMessageView.vue` resolveActivityRenderer 与
+    `hooks/use-render-activity-message.ts` 两处 safeParse call site。
+    Covered by `src/v2/lib/__tests__/activity-parse-cache.test.ts` (3 cases)。
 
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
