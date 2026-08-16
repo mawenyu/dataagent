@@ -84,3 +84,9 @@
 4. DeepSeek 伪 `<tool_call>` 文本输出习性：已确认双路径（native + 文本 marker）都会触发，bridge 均兜住；记录为模型行为基线（本条为观察记录，长期有效）。
 5. ~~观察项：模型偶发拒用 frontend tool 改用原生 edit 绕过 HITL 直改 CSV~~ ✅ P27 已加固（2026-08-16）：提示词层 client_tools 段落 + 工具描述双重显式禁止；gateway 对原生 edit/write/multiedit 直改 CSV/TSV/XLS 追加警告回执（观测模式不阻断，log.warn 可检索）。长期效果待线上观测。
 6. 已知测试噪音（非产品问题）：App.test.ts 末尾 1 个 unhandled rejection（@ag-ui/client getReader 对打桩 Response 的 SSE 模拟缺口），套件全绿不受影响。
+
+## 收尾3：代码文档一致性 + 干净机器可重建（2026-08-16）
+
+- [x] 全仓 docs/*.md × 代码漂移扫描（2 探查代理 + 主线复核），修 14 处：ARCHITECTURE/VERSIONS 加时效横幅（/opencode/ag-ui、agents__unsafe_dev_only 为历史计划）；design.md API 一览补全 17 端点 + catalog/白名单数字对齐（10/28）；CAPABILITIES_DEFINITION 补 workspace-guard.ts；agents/README 目录树 + fork 3 定制提交；copilotkit-capabilities window.confirm→ConfirmDialog；CURRENT_ARCHITECTURE 30 类 ~5800 行 + composables 补全；DEVELOPMENT_STATUS P1#5 误述更正；STATUS dist/ 标注；ACCEPTANCE_TESTS 基线 237→291；MASTER-PROMPT React 措辞；perf/concurrent-threads ChatThreadStore→ThreadRepository（b09e551/6d912a1/f414725）
+- [x] 代码修复 2 处：up.sh fork 路径参数化 OPENCODE_FORK_DIR（6be13ba，干净机器重建阻塞项）；build-opencode.sh 收尾提示去掉不存在的 opencode2 命令（1f3871b）
+- [x] 干净机器重建实测（/tmp/dataagent-clean-test，按修正后 DELIVERY-README）：mvn package ✓ / 前端 npm install+build ✓ / vitest 291/291 ✓ / 干净 gateway :8190 health UP ✓ / 8090 health UP ✓ / up.sh 幂等 ✓ / test-multi-turn 打干净 gateway **7/7 真链路**（DeepSeek 真实应答、暗号跨轮记忆）。证据 docs/evidence/2026-08-16-clean-rebuild.txt（含两处环境偏差如实记录：GitHub 大传输当日限速 → fork 源码改本机镜像 archive 同源导出；端口 4196/8190 避让共享实例）

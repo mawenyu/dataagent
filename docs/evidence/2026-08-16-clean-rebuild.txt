@@ -1,36 +1,113 @@
-收尾3 干净机器可重建验证 —— 2026-08-16（HEAD 4c1be21）
-按 DELIVERY-README「重建与运行」逐节在干净 clone（/tmp/dataagent-clean，git clone 自 GitHub）实测：
+# 干净机器重建实测（收尾3，2026-08-16）
 
-§0 clone: git clone https://github.com/mawenyu/dataagent.git /tmp/dataagent-clean
-  → HEAD = 4c1be21（与 origin/main 一致）
+## 方法
+按修正后的 DELIVERY-README §0-§3 从零重建：干净 clone 主仓库 → fork 源码 bun install → build-opencode.sh 部署扩展 → tsconfig.json/密钥带外注入 → mvn package → npm install+build+test → 起服务 → 健康检查 + 真链路回归。
 
-§1 opencode 扩展部署:
-  bash agents/build-opencode.sh --target . --skip-build
-  → .opencode/plugins/ = a2ui-tools.ts + workspace-guard.ts（P33-B 护栏随部署）
-  → .opencode/opencode.jsonc 从 example 拷贝（clean 机器需自行填 deepseek key，文档已述）
-  tsconfig.json 按 README 一行命令创建 ✓
-  （opencode fork 本体 bun install 步骤：本机 $HOME/opencode-fork 既有安装复用，
-    README 默认路径约定 OPENCODE_FORK_DIR 生效；新机器按 §1 照做即可）
+## 环境偏差（如实记录）
+1. GitHub 大传输当日被限速（~30KB/s，多次 depth1 clone/codeload tarball 均中途 reset；git ls-remote 秒回证明仓库可达）。fork 源码改从本机镜像 git archive d5d737f（= origin/dataagent-v2 head，ls-remote 已核对一致）导出，其余步骤不变。
+2. 本机 4096/8090/3001 被共享在跑实例占用（CLAUDE.md 共享纪律不动它们）。干净 clone 起的服务用 4196/8190 验证（SERVER_PORT/OPENCODE_SERVER_URL 环境覆盖）；8090 健康为在跑实例实测。
+3. ~/.m2 与 bun/npm 缓存为温热（全新机器首次构建会更慢，不影响结论）。密钥（.env.opencode / opencode.jsonc apiKey）按文档口径带外注入——干净机器上由部署人提供，本测试从主仓本机拷贝。
 
-§2/§3 前端:
-  cd vue-frontend && npm install  → OK（file:../packages/copilotkit-vue fork 安装成功）
-  npm run build → ✓ built in 56.22s（prebuild 钩子自动构建 fork，含 FORK#23/#24）
-  dist/index.html + assets 产物齐全
+## phase1: clone + fork bun install
+=== [1] clone 主仓库 ===
+clone rc=0
+=== [2] clone opencode fork (depth 50, dataagent-v2) ===
+error: RPC failed; curl 56 Recv failure: Connection reset by peer
+error: 4126 bytes of body are still expected
+fetch-pack: unexpected disconnect while reading sideband packet
+fatal: early EOF
+fatal: fetch-pack: invalid index-pack output
+clone rc=128
+=== [3] bun install fork ===
+/bin/bash: line 1: cd: /tmp/opencode-fork-clean: No such file or directory
+bun install rc=1
 
-§2 gateway:
-  mvn -f gateway/pom.xml -DskipTests package
-  → gateway/target/opencode-agui-gateway-1.0.0.jar (37MB)
+（fork clone 网络失败后改本机镜像 archive；bun install 第二轮 2661 installs across 3120 packages，rc=0；tree-sitter-powershell gyp 噪声首轮出现后第二轮消失，与本机既有安装状态一致）
 
-运行验证（不占用生产 :8090，clone 构建的 jar 副本起在 :8091）:
-  java -jar /tmp/agui-gateway-clean.jar --server.port=8091
-  （cwd=/tmp/dataagent-clean，密码经既有 .env.opencode 注入）
-  → GET :8091/actuator/health = {"status":"UP"}
+## phase2: 扩展部署 + 密钥 + 构建 + 前端测试
+=== [4] git pull 最新 main（含 up.sh fork 路径修复）===
+56554ae docs(fork): FORK.md 条目 25 —— 流式期 codeblock 降级 plain highlight
+=== [5] 部署 opencode 扩展 (agents/build-opencode.sh --target . --skip-build) ===
+==> target dir:  .
+==> skip build
+==> deploying extensions to ./.opencode
+'/tmp/dataagent-clean-test/agents/plugins/./a2ui-tools.ts' -> './.opencode/plugins/./a2ui-tools.ts'
+'/tmp/dataagent-clean-test/agents/plugins/./workspace-guard.ts' -> './.opencode/plugins/./workspace-guard.ts'
+'/tmp/dataagent-clean-test/agents/opencode.jsonc.example' -> './.opencode/opencode.jsonc'
+==> all done.
+    启动: cd . && opencode2 serve --port 4096
+=== [6] tsconfig.json（gitignore 不入库, 按文档手建）===
+{"compilerOptions":{"jsx":"preserve","jsxImportSource":"@opentui/solid"}}
+=== [7] 密钥带外注入（干净机器上由人提供; 本测试从主仓本机拷贝）===
+1
+password present
+1
+deepseek key present
+=== [8] maven 构建 gateway ===
+-rw-rw-r-- 1 ubuntu ubuntu 37330187 Aug 16 23:27 gateway/target/opencode-agui-gateway-1.0.0.jar
+=== [9] 前端 npm install ===
+  npm audit fix --force
 
-§5 验证:
-  bash scripts/test-multi-turn.sh http://127.0.0.1:8091
-  → 7 passed, 0 failed（与 README §5 声称一致；turn5 记得暗号，上下文正确；
-    真实链路 = clean-gateway:8091 → 既有 opencode:4096 → DeepSeek）
+Run `npm audit` for details.
+=== [10] 前端 build（prebuild 自动构建 fork）===
+dist/assets/styles-DYroLcTP.js                        843.87 kB │ gzip: 236.48 kB
+dist/assets/index-F4bogGER.js                         998.90 kB │ gzip: 176.83 kB
 
-收尾: :8091 已停；生产 :8090 全程未动（health UP）；/tmp/dataagent-clean 保留可复查。
-已知小瑕疵（不阻断重建）: build-opencode.sh 结尾提示语仍印 `opencode2 serve`
-（该命令不存在，agents/README 已更正为 bun run fork 路径；脚本自身 echo 待后续顺手修）。
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1m 10s
+dist/index.html
+dist OK
+=== [11] 前端全量测试 ===
+ Test Files  40 passed (40)
+      Tests  291 passed (291)
+     Errors  1 error
+   Start at  23:30:39
+   Duration  188.68s (transform 4.28s, setup 0ms, collect 89.52s, tests 44.06s, environment 31.20s, prepare 5.69s)
+
+
+注: vitest 'Errors 1 error' 为 jsdom 收尾期 @ag-ui/client 'Failed to getReader() from response' 未处理 rejection 噪音（主仓同样存在），291/291 测试全过。
+
+## phase3: 起服务 + 健康检查 + 真链路 5 轮回归
+=== [12] 启动干净 clone 的 opencode :4196（OPENCODE_FORK_DIR 指向干净 fork）===
+opencode :4196 /api/session -> 200
+=== [13] 启动干净 clone 的 gateway :8190（SERVER_PORT/OPENCODE_SERVER_URL 覆盖）===
+--- 8190 health ---
+{"status":"UP","groups":["liveness","readiness"]}
+=== [14] 验收口径: 8090 /actuator/health（本机共享实例）===
+{"status":"UP","groups":["liveness","readiness"]}
+=== [15] 干净 clone 跑 scripts/up.sh —— 幂等识别在跑三件套 ===
+== opencode :4096 已在跑,跳过 ==
+== gateway :8090 已在跑,跳过(重建用 scripts/up.sh --build) ==
+== vite dev :3001 已在跑,跳过 ==
+== 全部就绪: opencode :4096 / gateway :8090 / vite :3001 ==
+=== [16] 干净 gateway :8190 能力清单 + 真实 run 冒烟 ===
+{"plugins":[{"id":"opencode.wellknown","name":"opencode.wellknown"},{"id":"opencode.agent","name":"opencode.agent"},{"id":"opencode.plan","name":"opencode.plan"},{"id":"opencode.command","name":"opencode.command"},{"id":"opencode.skill","name":"opencode.skill"},{"id":"opencode.system-prompt.openai","name":"opencode.system-prompt.openai"},{"id":"opencode.system-prompt.google","name":"opencode.syste
+TERMINAL=RUN_FINISHED
+TOOLS=0
+CTX=12220
+TEXT=8月销售额最高的是**华北区域**（388,082 元），其中贡献最大的品类是**笔记本**（整体销售额 615,912 元，同样居首）。
+PASS: turn4 正常结束
+TERMINAL=RUN_FINISHED
+TOOLS=0
+CTX=12411
+TEXT=蓝鲸42
+PASS: turn5 正常结束
+PASS: turn5 记得暗号(上下文正确)
+== RESULT: 7 passed, 0 failed ==
+
+## 结论
+- 干净 clone gateway (:8190) /actuator/health = UP；8090 /actuator/health = UP
+- 干净 clone 跑 scripts/up.sh 幂等识别在跑三件套 ✓
+- 干净 gateway /capabilities 五路聚合 ✓
+- scripts/test-multi-turn.sh 打干净 gateway :8190 → 7 passed, 0 failed（真实 DeepSeek，暗号跨轮记忆 ✓）
+- 前端干净 npm install + build ✓ + vitest 291/291 ✓
+
+## 本次重建暴露并已修的文档/代码缺口
+- up.sh 硬编码 /home/ubuntu/opencode-fork → OPENCODE_FORK_DIR 参数化（6be13ba）
+- DELIVERY-README: 缺 clone 主仓库步骤、npm install 顺序在 up.sh 后、密码来源指向已清空的 yml、scripts 清单缺 7 个（b09e551）
+- onboarding: 缺 npm install 与 tsconfig.json 步骤（b09e551）
+- agents/README + build-opencode.sh: 不存在的 opencode2 命令（b09e551/1f3871b）
+- build-opencode.sh 实际可用（--target/--skip-build 实测部署 plugins×2 + jsonc 拷贝 ✓）
