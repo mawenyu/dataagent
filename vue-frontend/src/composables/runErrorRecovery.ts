@@ -35,6 +35,11 @@ export function parseRunError(input: { code?: string; message?: string }): {
   const raw = input.message?.trim() || ''
   const extracted = /HTTP\s+(\d{3})/i.exec(raw)?.[1] ?? null
   const code = input.code ?? extracted
+  // gateway 结构化 code(TARGET_ARCHITECTURE §2):RUN_TIMEOUT 给友好文案;
+  // UPSTREAM_ERROR 的 message 已是 gateway 人话,原样透传。
+  if (code === 'RUN_TIMEOUT') {
+    return { code, message: '运行超时 —— agent 处理时间过长,请重试或缩小问题范围' }
+  }
   if (extracted) {
     const status = Number(extracted)
     if (status >= 500 && status < 600) {

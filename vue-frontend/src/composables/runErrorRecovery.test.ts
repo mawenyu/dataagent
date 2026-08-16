@@ -141,6 +141,21 @@ describe('parseRunError (P-I)', () => {
     expect(r.code).toBeNull()
     expect(r.message).toBe('未知错误')
   })
+
+  // TARGET_ARCHITECTURE §2：gateway RUN_ERROR 带结构化 code（UPSTREAM_ERROR/RUN_TIMEOUT），
+  // 经 AG-UI RunErrorEvent.code(协议原生字段) → fork onError.code → 这里分类消费。
+  it('gateway RUN_TIMEOUT code → 超时友好文案,code 保留', () => {
+    const r = parseRunError({ code: 'RUN_TIMEOUT', message: 'run timeout after 170s' })
+    expect(r.code).toBe('RUN_TIMEOUT')
+    expect(r.message).toContain('超时')
+    expect(r.message).toContain('重试')
+  })
+
+  it('gateway UPSTREAM_ERROR code → 保留 gateway 人话 message(不覆盖)', () => {
+    const r = parseRunError({ code: 'UPSTREAM_ERROR', message: '模型服务暂时不可用，请稍后重试' })
+    expect(r.code).toBe('UPSTREAM_ERROR')
+    expect(r.message).toBe('模型服务暂时不可用，请稍后重试')
+  })
 })
 
 describe('useRunErrorRecovery 错误码 (P-I)', () => {
