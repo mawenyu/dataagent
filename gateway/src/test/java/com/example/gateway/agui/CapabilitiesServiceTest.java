@@ -193,6 +193,39 @@ class CapabilitiesServiceTest {
         assertEquals(1, res.path("agents").size());
     }
 
+    /**
+     * P28-B 实测竞态扩展：窗口期 /api/plugin 也回 200+空清单 → 若不等就绪，
+     * source 启发式失去插件清单依据，内置工具全误判 custom（冷启动实测
+     * custom 13/builtin 0 的错数据）。五路全部按空清单重试。
+     */
+    @Test
+    void emptyPluginListRetriesSoBuiltinClassificationIsNotPolluted() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger pluginCalls = new java.util.concurrent.atomic.AtomicInteger();
+        Map<String, Object> routes = happyRoutes();
+        WebClient client = WebClient.builder().exchangeFunction((ClientRequest req) -> {
+            String path = req.url().getPath();
+            if (path.equals("/api/plugin") && pluginCalls.incrementAndGet() == 1) {
+                return Mono.just(ClientResponse.create(HttpStatus.OK)
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .body("{\"data\":[]}").build());
+            }
+            Object scripted = routes.get(path);
+            return Mono.just(ClientResponse.create(HttpStatus.OK)
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                    .body((String) scripted).build());
+        }).build();
+        CapabilitiesService svc = new CapabilitiesService(
+                client, writePluginToolsFile().toString(),
+                java.util.List.of(java.time.Duration.ofMillis(1)));
+
+        JsonNode res = svc.capabilities().block();
+
+        assertEquals(2, pluginCalls.get(), "plugins 空清单必须触发重试");
+        JsonNode tools = res.path("serverTools");
+        assertEquals("builtin", tools.get(0).path("source").asText(),
+                "重试拿到插件清单后 read 必须判 builtin，不得被竞态污染成 custom");
+    }
+
     @Test
     void singleSectionFailureDoesNotBreakOthers() throws Exception {
         Map<String, Object> routes = happyRoutes();

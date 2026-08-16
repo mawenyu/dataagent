@@ -31,10 +31,11 @@ import java.util.regex.Pattern;
  * 该路空数组 + log.warn；/api/tool 失败（404/连接拒绝）时 serverTools 空数组
  * 且 toolsAvailable=false，其余区照常。</p>
  *
- * <p>P28-B 冷启动竞态：opencode 端口就绪远早于插件/工具注册（实测 /api/tool
- * 先回 200 + 空清单；内置 12 工具不可能为空，空即未就绪）→ 空清单按
- * {@code toolRetryDelays} 退避重试，拿到非空清单才放行；重试耗尽仍空则
- * available=true + 空数组 + log.warn（不阻塞其余四路）。</p>
+ * <p>P28-B 冷启动竞态：opencode 端口就绪远早于插件/工具/ agents 注册（实测
+ * 窗口期五路都可能回 200 + 空清单；空清单还会污染 source 分类 —— 插件清单空时
+ * builtin 全误判 custom）。本项目五路均不可能合法为空（内置 12 工具 / 60+ 插件
+ * 恒在）→ 空清单按 {@code retryDelays} 退避重试，非空才放行；耗尽仍空则该路
+ * 空数组 + log.warn。连接拒绝（服务未起/已挂）不重试，快速降级。</p>
  *
  * <p>serverTools.source 启发式：插件清单含 {@code opencode.tool.<name>} → builtin；
  * 工具名命中业务插件注册的工具名（从 agents/plugins/a2ui-tools.ts 源码
@@ -51,8 +52,8 @@ public class CapabilitiesService {
 
     private final WebClient webClient;
     private final String pluginToolsFile;
-    /** /api/tool 空清单的退避重试节奏（P28-B）。默认 ~7.75s 预算覆盖冷启动窗口。 */
-    private final List<Duration> toolRetryDelays;
+    /** 各路由空清单的退避重试节奏（P28-B）。默认 ~7.75s 预算覆盖冷启动窗口。 */
+    private final List<Duration> retryDelays;
     /** 业务插件工具名缓存（文件内容运行期不变，读一次即可；null = 未加载）。 */
     private volatile Set<String> pluginToolNames;
 
@@ -67,10 +68,10 @@ public class CapabilitiesService {
 
     /** 测试友好：可注入零延迟重试节奏。 */
     public CapabilitiesService(WebClient opencodeWebClient, String pluginToolsFile,
-                               List<Duration> toolRetryDelays) {
+                               List<Duration> retryDelays) {
         this.webClient = opencodeWebClient;
         this.pluginToolsFile = pluginToolsFile;
-        this.toolRetryDelays = toolRetryDelays;
+        this.retryDelays = retryDelays;
     }
 
     public Mono<JsonNode> capabilities() {
@@ -83,18 +84,37 @@ public class CapabilitiesService {
                 .map(t -> assemble(t.getT1(), t.getT2(), t.getT3(), t.getT4(), t.getT5()));
     }
 
-    /** 通用拉取：{data:[...]} → List<JsonNode>；任何失败 → 空数组 + log.warn。 */
+    /** 通用拉取：{data:[...]} → List<JsonNode>；任何失败 → 空数组 + log.warn。
+     *  200 但空清单 → 冷启动竞态（该路注册未完成），退避重试（P28-B）。 */
     private Mono<List<JsonNode>> fetchDataArray(String path) {
+        return fetchDataArrayWithRetry(path, 0);
+    }
+
+    private Mono<List<JsonNode>> fetchDataArrayWithRetry(String path, int attempt) {
         return webClient.get()
                 .uri(path)
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
                 .bodyToMono(String.class)
                 .map(this::parseDataArray)
+                .flatMap(list -> readinessGuard(path, list, attempt))
                 .onErrorResume(e -> {
                     log.warn("capabilities: {} 拉取失败（该路降级空数组）: {}", path, e.toString());
                     return Mono.just(List.of());
                 });
+    }
+
+    /** 空清单且重试预算未尽 → 延迟后重试；否则放行（含耗尽降级告警）。 */
+    private Mono<List<JsonNode>> readinessGuard(String path, List<JsonNode> list, int attempt) {
+        if (!list.isEmpty()) return Mono.just(list);
+        if (attempt >= retryDelays.size()) {
+            if (attempt > 0) {
+                log.warn("capabilities: {} 重试 {} 次后仍为空清单（降级空数组返回）", path, attempt);
+            }
+            return Mono.just(list);
+        }
+        return Mono.delay(retryDelays.get(attempt))
+                .then(fetchDataArrayWithRetry(path, attempt + 1));
     }
 
     /** /api/tool 单路：失败（404/连接拒绝等）→ available=false，与其余路区分语义。
@@ -111,16 +131,9 @@ public class CapabilitiesService {
                 .bodyToMono(String.class)
                 .map(body -> new ToolFetch(parseDataArray(body), true))
                 .flatMap(tf -> {
-                    if (!tf.available() || !tf.items().isEmpty()
-                            || attempt >= toolRetryDelays.size()) {
-                        if (tf.available() && tf.items().isEmpty()
-                                && attempt >= toolRetryDelays.size() && attempt > 0) {
-                            log.warn("capabilities: /api/tool 重试 {} 次后仍为空清单（降级空数组返回）", attempt);
-                        }
-                        return Mono.just(tf);
-                    }
-                    return Mono.delay(toolRetryDelays.get(attempt))
-                            .then(fetchToolsWithRetry(attempt + 1));
+                    if (!tf.available()) return Mono.just(tf);
+                    return readinessGuard("/api/tool", tf.items(), attempt)
+                            .map(list -> new ToolFetch(list, true));
                 })
                 .onErrorResume(e -> {
                     log.warn("capabilities: /api/tool 不可用（toolsAvailable=false，serverTools 空数组）: {}",
