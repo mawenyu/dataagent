@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, toRef, watch } from 'vue'
 import { formatSize, useWorkspaceFiles, type WorkspaceFile } from '../composables/useWorkspaceFiles'
-import { isPreviewable } from '../composables/filePreview'
+import { isImage, isPreviewable } from '../composables/filePreview'
 import SpreadsheetEditor from './SpreadsheetEditor.vue'
 import FilePreviewModal from './FilePreviewModal.vue'
 
@@ -14,6 +14,8 @@ import FilePreviewModal from './FilePreviewModal.vue'
  *      同时清掉原生 alert/confirm —— 错误走内联 notice，删除走两段确认。
  * P-N：目录树导航 —— 点目录名进入 + 面包屑返回 + ▸/▾ 就地折叠展开(懒加载,
  *      打平为可见行渲染);大文件(>1MB)预览改为下载提示,不直接拉内容渲染。
+ * P32：图片预览 —— png/jpg/gif/webp/svg/bmp/avif/ico 点名字直开 <img> modal
+ *      （下载 URL 直渲,不按文本拉内容;>5MB 走下载提示）。
  */
 const props = defineProps<{ threadId?: string }>()
 const api = useWorkspaceFiles(toRef(props, 'threadId'))
@@ -21,6 +23,9 @@ onMounted(() => api.refresh())
 
 /** P-N: 大文件阈值 —— 超过则预览改为下载提示。 */
 const OVERSIZE_PREVIEW_BYTES = 1024 * 1024
+/** P32: 图片阈值放宽到 5MB —— 浏览器流式解码,agent 生成的图表远小于此;
+ *  超过仍走下载提示(避免超大图撑爆页面内存)。 */
+const OVERSIZE_IMAGE_BYTES = 5 * 1024 * 1024
 
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement>()
@@ -124,11 +129,26 @@ async function onPick(e: Event) {
 
 /** P-N: 大文件预览替代态(modal 内给下载入口)。 */
 const oversizePreview = ref<{ name: string; size: number; url: string } | null>(null)
+/** P32: 图片预览态 —— 不拉文本内容,直接用下载 URL 渲 <img>。 */
+const imagePreview = ref<{ name: string; url: string } | null>(null)
 
 function onNameClick(row: { name: string; rel: string; file?: WorkspaceFile }) {
   notice.value = ''
   if (!isPreviewable(row.name)) {
     notice.value = `「${row.name}」不支持在线预览，请下载查看`
+    return
+  }
+  // P32: 图片走 imageUrl 直渲分支(阈值 5MB,超了走下载提示)
+  if (isImage(row.name)) {
+    if (row.file && row.file.size > OVERSIZE_IMAGE_BYTES) {
+      oversizePreview.value = {
+        name: row.rel,
+        size: row.file.size,
+        url: api.downloadUrl(row.rel),
+      }
+      return
+    }
+    imagePreview.value = { name: row.rel, url: api.downloadUrl(row.rel) }
     return
   }
   // P-N: 大文件不拉内容,直接给下载提示
@@ -267,6 +287,13 @@ function formatTime(iso: string) {
       :content="api.preview.value.content"
       :truncated="api.preview.value.truncated"
       @close="api.closePreview()"
+    />
+    <!-- P32: 图片预览 modal(<img> 直渲下载 URL) -->
+    <FilePreviewModal
+      v-if="imagePreview"
+      :name="imagePreview.name"
+      :image-url="imagePreview.url"
+      @close="imagePreview = null"
     />
     <!-- P-N: 大文件下载提示 modal -->
     <FilePreviewModal

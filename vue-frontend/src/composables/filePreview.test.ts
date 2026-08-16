@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isImage,
   isPreviewable,
   parseCsvPreview,
   prettyJson,
@@ -9,7 +10,7 @@ import {
 /** P-C: 文件在线预览的纯函数层 —— CSV 解析 / JSON 美化 / 轻量 Markdown 渲染。 */
 
 describe('isPreviewable', () => {
-  it('csv/json/md/txt/log/tsv 可预览,xlsx/png 等不可', () => {
+  it('csv/json/md/txt/log/tsv 可预览,xlsx 不可', () => {
     expect(isPreviewable('a.csv')).toBe(true)
     expect(isPreviewable('B.JSON')).toBe(true)
     expect(isPreviewable('notes.md')).toBe(true)
@@ -17,8 +18,27 @@ describe('isPreviewable', () => {
     expect(isPreviewable('y.log')).toBe(true)
     expect(isPreviewable('z.tsv')).toBe(true)
     expect(isPreviewable('book.xlsx')).toBe(false)
-    expect(isPreviewable('p.png')).toBe(false)
     expect(isPreviewable('noext')).toBe(false)
+  })
+
+  it('P32: 图片扩展名可预览(img 标签直渲,不走文本拉取)', () => {
+    expect(isPreviewable('p.png')).toBe(true)
+    expect(isPreviewable('photo.JPG')).toBe(true)
+    expect(isPreviewable('icon.svg')).toBe(true)
+  })
+})
+
+describe('isImage (P32)', () => {
+  it('png/jpg/jpeg/gif/webp/svg/bmp/avif/ico 判定为图片(大小写不敏感)', () => {
+    for (const n of ['a.png', 'b.jpg', 'c.jpeg', 'd.gif', 'e.webp', 'f.svg', 'g.bmp', 'h.avif', 'i.ico', 'J.PNG']) {
+      expect(isImage(n), n).toBe(true)
+    }
+  })
+
+  it('csv/md/xlsx/无扩展名不是图片', () => {
+    for (const n of ['a.csv', 'b.md', 'c.xlsx', 'noext']) {
+      expect(isImage(n), n).toBe(false)
+    }
   })
 })
 

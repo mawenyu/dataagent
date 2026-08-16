@@ -10,10 +10,20 @@
 
 const PREVIEWABLE = new Set(['csv', 'json', 'md', 'txt', 'log', 'tsv'])
 
-export function isPreviewable(name: string): boolean {
+/** P32: 图片扩展名 —— 预览走 <img src=下载URL> 直渲（浏览器流式解码，不按文本拉内容）。 */
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif', 'ico'])
+
+function extOf(name: string): string {
   const idx = name.lastIndexOf('.')
-  if (idx < 0) return false
-  return PREVIEWABLE.has(name.slice(idx + 1).toLowerCase())
+  return idx < 0 ? '' : name.slice(idx + 1).toLowerCase()
+}
+
+export function isImage(name: string): boolean {
+  return IMAGE_EXTS.has(extOf(name))
+}
+
+export function isPreviewable(name: string): boolean {
+  return PREVIEWABLE.has(extOf(name)) || isImage(name)
 }
 
 /** 引号感知 CSV 解析：支持 ".." 内含逗号/换行、"" 转义、CRLF 归一、空行忽略。 */

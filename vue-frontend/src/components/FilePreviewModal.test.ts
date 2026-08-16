@@ -98,6 +98,37 @@ describe('FilePreviewModal 大文件 (P-N)', () => {
   })
 })
 
+describe('FilePreviewModal P32（图片预览）', () => {
+  it('imageUrl 分支: <img> 直渲,不渲染表格/原文区', async () => {
+    const w = mount(FilePreviewModal, {
+      props: { name: 'chart.png', imageUrl: '/agui-api/files/chart.png' },
+      attachTo: document.body,
+    })
+    await nextTick()
+    const dlg = modal()!
+    const img = dlg.querySelector('[data-testid="file-preview-image"]') as HTMLImageElement
+    expect(img, '图片预览应有 <img>').toBeTruthy()
+    expect(img.src).toContain('/agui-api/files/chart.png')
+    expect(img.alt).toBe('chart.png')
+    expect(dlg.querySelector('[data-testid="file-preview-table"]')).toBeNull()
+    expect(dlg.querySelector('[data-testid="file-preview-text"]')).toBeNull()
+    expect(dlg.querySelector('[data-testid="file-preview-oversize"]')).toBeNull()
+    w.unmount()
+  })
+
+  it('图片分支仍可 ESC 关闭', async () => {
+    const w = mount(FilePreviewModal, {
+      props: { name: 'chart.png', imageUrl: '/x/chart.png' },
+      attachTo: document.body,
+    })
+    await nextTick()
+    const overlay = document.body.querySelector('[data-testid="file-preview-overlay"]') as HTMLElement
+    overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(w.emitted('close')).toBeTruthy()
+    w.unmount()
+  })
+})
+
 describe('FilePreviewModal P-O（可达性）', () => {
   it('role/aria-modal/aria-label 齐全;Tab 圈定', async () => {
     const w = mount(FilePreviewModal, {

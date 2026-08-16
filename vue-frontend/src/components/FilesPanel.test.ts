@@ -297,6 +297,54 @@ describe('FilesPanel P-N（目录树导航 + 大文件提示）', () => {
   })
 })
 
+describe('FilesPanel P32（图片预览）', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { document.body.innerHTML = '' })
+
+  it('点 png 文件 → <img> 预览 modal(用下载 URL 直渲),不拉文本内容', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        path: '', dirs: [],
+        files: [{ name: 'chart.png', size: 48 * 1024, modifiedAt: '2026-08-15T01:00:00Z' }],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel, { attachTo: document.body })
+    await nextTick(); await nextTick(); await nextTick()
+
+    await wrapper.find('[data-file="chart.png"] .file-name').trigger('click')
+    await nextTick(); await nextTick()
+    expect(fetchMock).toHaveBeenCalledTimes(1) // 只有列表请求 —— 图片不按文本拉内容
+    const img = document.body.querySelector('[data-testid="file-preview-image"]') as HTMLImageElement
+    expect(img, '应开图片预览 modal').toBeTruthy()
+    expect(img.src).toContain('/agui-api/files/chart.png')
+    wrapper.unmount()
+  })
+
+  it('超大图片(>5MB) → 下载提示 modal,不渲染 <img>', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        path: '', dirs: [],
+        files: [{ name: 'photo.png', size: 6 * 1024 * 1024, modifiedAt: '2026-08-15T01:00:00Z' }],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel, { attachTo: document.body })
+    await nextTick(); await nextTick(); await nextTick()
+
+    await wrapper.find('[data-file="photo.png"] .file-name').trigger('click')
+    await nextTick()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const dlg = document.body.querySelector('[data-testid="file-preview-oversize"]')
+    expect(dlg, '超大图片应走下载提示').toBeTruthy()
+    expect(dlg!.textContent).toContain('6.0 MB')
+    expect(document.body.querySelector('[data-testid="file-preview-image"]')).toBeNull()
+    wrapper.unmount()
+  })
+})
+
 describe('FilesPanel P-R（友好空态）', () => {
   beforeEach(() => { vi.restoreAllMocks() })
 

@@ -7,11 +7,15 @@ import { trapTabKey } from '../composables/focusTrap'
  * P-C: 文件在线预览 modal（Teleport body / ESC·遮罩关闭）。
  * csv/tsv → 表格(首行表头,超 500 行截断提示);json → 美化;md → 轻量渲染;
  * txt/log → 等宽原文。
+ * P32: 图片(png/jpg/gif/webp/svg/bmp/avif/ico) → imageUrl 分支 <img> 直渲
+ *      （URL 即下载端点,gateway 按扩展名给 Content-Type,浏览器流式解码）。
  */
 const props = withDefaults(defineProps<{
   name: string
   content?: string
   truncated?: boolean
+  /** P32: 图片预览 —— 传下载 URL,组件渲 <img> 而非文本内容 */
+  imageUrl?: string
   /** P-N: 大文件(>1MB)替代预览 —— 展示下载入口而非内容 */
   oversize?: boolean
   sizeLabel?: string
@@ -88,6 +92,10 @@ const markdownHtml = computed(() => (ext.value === 'md' ? renderMarkdownLite(pro
             <p class="fpv-oversize-title">文件较大（{{ sizeLabel }}），在线预览已停用</p>
             <p class="fpv-oversize-sub">超过 1MB 的文件请下载后查看，避免拖慢页面</p>
             <a v-if="downloadUrl" class="fpv-dl" :href="downloadUrl" :download="name" data-testid="file-preview-download">⬇ 下载文件</a>
+          </div>
+          <!-- P32: 图片直渲 -->
+          <div v-else-if="imageUrl" class="fpv-image-wrap" data-testid="file-preview-image-wrap">
+            <img :src="imageUrl" :alt="name" data-testid="file-preview-image" />
           </div>
           <!-- csv/tsv: 表格 -->
           <template v-else>
@@ -210,6 +218,13 @@ const markdownHtml = computed(() => (ext.value === 'md' ? renderMarkdownLite(pro
 .fpv-md :deep(table) { border-collapse: collapse; margin: 10px 0; }
 .fpv-md :deep(th), .fpv-md :deep(td) { border: 1px solid #e5e7eb; padding: 5px 10px; }
 .fpv-md :deep(a) { color: #4f46e5; }
+/* P32: 图片预览 */
+.fpv-image-wrap { display: flex; align-items: center; justify-content: center; min-height: 120px; }
+.fpv-image-wrap img {
+  max-width: 100%; max-height: calc(min(76vh, 720px) - 150px);
+  object-fit: contain; border-radius: 8px;
+  background: repeating-conic-gradient(#f1f5f9 0% 25%, #ffffff 0% 50%) 0 0 / 16px 16px;
+}
 /* P-N: 大文件下载提示 */
 .fpv-oversize { display: flex; flex-direction: column; align-items: center; padding: 32px 0; gap: 6px; }
 .fpv-oversize-icon { font-size: 34px; }
