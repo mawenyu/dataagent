@@ -45,10 +45,13 @@ describe("CopilotChatView connect-gating", () => {
     ).toBe(false);
   });
 
-  it("suppresses the welcome screen when hasExplicitThreadId=true", () => {
-    // A caller-managed thread (threadId prop / config provider) should never
-    // display the generic "start a new chat" welcome — even when the thread
-    // has no messages yet.
+  it("shows the welcome screen when hasExplicitThreadId=true (FORK#8)", () => {
+    // FORK CHANGE (FORK.md #8): upstream suppressed the welcome screen for
+    // explicit threadIds, assuming a runtime /connect history replay. In
+    // direct-agent setups (no runtime) an explicit threadId with zero
+    // messages IS a fresh chat — the app always passes an explicit threadId
+    // and relies on the welcome screen for the empty state. `isConnecting`
+    // remains the suppression gate (covered above).
     const wrapper = mountChatView({
       messages: [],
       hasExplicitThreadId: true,
@@ -56,7 +59,7 @@ describe("CopilotChatView connect-gating", () => {
 
     expect(
       wrapper.find("[data-testid='copilot-chat-view-welcome-screen']").exists(),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("shows the welcome screen by default for a fresh empty chat", () => {
