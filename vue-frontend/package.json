@@ -8,7 +8,10 @@
     "dev": "vite --port 3001",
     "prebuild": "node scripts/build-fork.mjs",
     "build": "vite build",
-    "preview": "vite preview --port 3001"
+    "preview": "vite preview --port 3001",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {
     "@a2ui/web_core": "^0.10.4",

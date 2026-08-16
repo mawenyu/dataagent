@@ -7,7 +7,7 @@ AI Data Agent Web App：Vue3 + @copilotkit/vue(fork) 前端 → Java gateway(:80
 
 ## 布局
 
-- `vue-frontend/` — 业务前端（composables 分层，无 pinia）；测试 `./node_modules/.bin/vitest run`（**无 npx**；无 test script）
+- `vue-frontend/` — 业务前端（composables 分层，无 pinia）；测试 `npm run test`（= vitest run；监听 `npm run test:watch`；类型检查 `npm run typecheck`，覆盖边界见 docs/DEV-EXPERIENCE.md）；**无 npx**
 - `packages/copilotkit-vue/` — CopilotKit fork（base v1.67.1）；**fork 改动必须登记 `FORK.md` 条目**；build 经 app 的 prebuild 自动触发
 - `gateway/` — Java 后端；测试 `mvn -f gateway/pom.xml test`
 - `agents/` — opencode 扩展（部署到 `.opencode/`）；业务关键只有 `plugins/a2ui-tools.ts`（5 个服务端裁决工具）
@@ -27,7 +27,7 @@ AI Data Agent Web App：Vue3 + @copilotkit/vue(fork) 前端 → Java gateway(:80
 
 ```bash
 scripts/up.sh                          # 拉起/自检三件套
-cd vue-frontend && ./node_modules/.bin/vitest run   # 前端全量
+cd vue-frontend && npm run test        # 前端全量（test:watch 监听 / typecheck 类型检查）
 mvn -f gateway/pom.xml test            # gateway 全量
 scripts/test-multi-turn.sh             # 真实 5 轮回归
 ```

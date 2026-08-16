@@ -93,7 +93,7 @@ const DataTable = createVueComponent(
         h(
           'tbody',
           rows.map((r, i) =>
-            h('tr', { key: i }, r.map((cell, j) => h('td', { style: td, key: j }, String(cell)))),
+            h('tr', { key: i }, r.map((cell: unknown, j: number) => h('td', { style: td, key: j }, String(cell)))),
           ),
         ),
       ]),
@@ -368,6 +368,8 @@ const ActionButton = createVueComponent(
     schema: z.object({
       label: boundString,
       variant: z.enum(['default', 'primary', 'borderless']).optional(),
+      // 单成员 union 是 binder 识别 ACTION schema 的运行时契约（2026-08-15 HITL
+      // 修复实测）——不得塌缩成裸 object；as any 只为过纯 tsc（zod 类型要求 ≥2 成员）。
       action: z.union([
         z.object({
           event: z.object({
@@ -375,7 +377,7 @@ const ActionButton = createVueComponent(
             context: z.record(z.string(), z.any()).optional(),
           }),
         }),
-      ]),
+      ] as any),
     }),
   } as any,
   ({ props, state }: any) =>

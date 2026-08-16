@@ -1,0 +1,6 @@
+{
+  // P26: typecheck 专用 —— 覆盖应用源码，排除 *.test.ts（mock 打桩的类型噪音大，
+  // 测试正确性由 vitest 运行时保证；收紧测试类型属已知债，见 docs/DEV-EXPERIENCE.md）。
+  "extends": "./tsconfig.json",
+  "exclude": ["src/**/*.test.ts"]
+}

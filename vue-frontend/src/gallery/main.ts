@@ -55,7 +55,7 @@ const t0 = performance.now()
   if (batchOps) {
     batch.operations = batchOps
     batch.label = `真实 run 回放（${opsUrl!.split('/').pop()}）`
-    batch.components = [...new Set(batchOps.flatMap((o: any) =>
+    batch.components = [...new Set<string>(batchOps.flatMap((o: any) =>
       (o.updateComponents?.components ?? []).map((c: any) => c.component)))]
   }
   const app = createApp({
