@@ -84,6 +84,8 @@
 
 - [x] **FORK#27 idle 再升格 —— 收尾一次性真渲染挂 requestIdleCallback**（2026-08-17，架构师决策收口 FORK#25 残余，a1f6ef5）：新 lib `use-idle-upgrade.ts`（流式中 upgradeReady=false；active 翻 false 挂 rIC（timeout 2000 兜底，无 rIC 走 setTimeout(50) 降级）idle 才升格；再入流式复位、卸载后迟到回调不写值、历史回放直通），两处 chat 组件渲染态改判 `renderDegraded = isStreaming || !upgradeReady`。TDD：lib 8 新例（rIC 打桩 + 降级 + 卸载取消 + 复位 + 直通），两个 throttle 测试各加"翻 false 同一 tick 仍降级、idle flush 后升格"断言；fork 1211/1211 + build:types 绿。已部署（main-CBf3APDT），**探针验收 ×8：7 PASS（worst 2~219ms），1 边际 541ms**（对比修复前 in-window 尖峰 717~2472ms + 收尾 4841ms → 现收尾探针 237ms，-95%）；worst<500ms 目标 7/8 达成，唯一超出机制在案（rIC 升格与 marker 轮询竞态，100% 达标需升格切片，属新能力未做）。证据 docs/evidence/2026-08-17-fork27-idle-upgrade-probe.txt。
 
+- [x] **prompt 模板库 —— 侧栏模板面板 + 用户自定义模板（localStorage）**（2026-08-17，架构师派活，e6cb8c4 + 8468bf7）：**① composable 扩展** —— promptTemplates 开场组新增 3 个数据分析场景（环比对比/异常检测/用户画像，开场组 4→7），`useUserTemplates()` 用户模板 CRUD + localStorage 持久化（key `dataagent.user-templates.v1`，逐条形状校验、坏数据回退空、内置 id 拒删）。**② 主输入框填入通道（零 fork 改动）** —— CopilotChat 既有 `inputValue` prop（watch 同步内部 ref）+ `input-change` emit：App 持 `mainInputText` 单源，欢迎页 textarea 与主输入框经共享 resolvedInputValue 一处处双生效；fork 提交只清内部值不发 emit，App `onChatSubmit` 同步清空防残留。**③ 侧栏面板** —— `TemplateSidebarPanel.vue`（折叠收纳于会话列表下）：场景卡组点击填入（emit fill）、我的模板组（填入/删除）、「+ 保存当前输入」自绘表单（预填 draftPrompt、空标题/内容内联报错、禁原生弹窗）。TDD：composable +6 / 面板 6 / App 集成 3 新例；顺带修 App.test 陈旧断言 2 处（欢迎页卡数硬编码 4 → 与开场组数据源同源）。前端 352/352 + typecheck 绿。已部署，**公网 e2e `scripts/test-template-library-e2e.py` 12/12 PASS**（内置卡填入→编辑→真实发送、保存表单预填草稿、localStorage 持久化 reload 恢复、填入、删除 reload 不复活；证据 docs/evidence/2026-08-17-template-library-e2e.txt）。
+
 ## 下一步（修完 P0/P1 后）
 
 剩余：
