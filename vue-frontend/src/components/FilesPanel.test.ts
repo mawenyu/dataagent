@@ -160,26 +160,29 @@ describe('FilesPanel (task6 会话隔离)', () => {
   beforeEach(() => { vi.restoreAllMocks() })
 
   it('传入 threadId 后列表按会话加载，切换会话重新加载', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ files: [{ name: 't1-only.csv', size: 5, modifiedAt: '2026-08-15T01:00:00Z' }] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ files: [{ name: 't2-only.csv', size: 6, modifiedAt: '2026-08-15T01:00:00Z' }] }),
-      })
+    // P33-C 两区并存：会话区走会话 API、公共区走共享根 —— 桩按 URL 分发
+    const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+      const u = String(url)
+      const body = u.includes('/threads/thread-1/')
+        ? { files: [{ name: 't1-only.csv', size: 5, modifiedAt: '2026-08-15T01:00:00Z' }], dirs: [] }
+        : u.includes('/threads/thread-2/')
+          ? { files: [{ name: 't2-only.csv', size: 6, modifiedAt: '2026-08-15T01:00:00Z' }], dirs: [] }
+          : { files: [], dirs: [] }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+    })
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mount(FilesPanel, { props: { threadId: 'thread-1' } })
     await nextTick(); await nextTick(); await nextTick()
-    expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/chat/threads/thread-1/files')
-    expect(wrapper.text()).toContain('t1-only.csv')
+    const urls = () => fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(urls()).toContain('/agui-api/chat/threads/thread-1/files')
+    const session = wrapper.find('[data-testid="zone-session"]')
+    expect(session.text()).toContain('t1-only.csv')
 
     await wrapper.setProps({ threadId: 'thread-2' })
     await nextTick(); await nextTick(); await nextTick()
-    expect(fetchMock).toHaveBeenLastCalledWith('/agui-api/chat/threads/thread-2/files')
-    expect(wrapper.text()).toContain('t2-only.csv')
-    expect(wrapper.text()).not.toContain('t1-only.csv')
+    expect(urls()).toContain('/agui-api/chat/threads/thread-2/files')
+    expect(session.text()).toContain('t2-only.csv')
+    expect(session.text()).not.toContain('t1-only.csv')
   })
 })
 
@@ -345,6 +348,67 @@ describe('FilesPanel P32（图片预览）', () => {
   })
 })
 
+describe('FilesPanel P33-C（两区：会话文件 / 公共数据）', () => {
+  beforeEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { document.body.innerHTML = '' })
+
+  /** 按 URL 分发的 fetch 桩 —— 两区并发各自拉取,顺序无关断言必须按 URL 区分。 */
+  function urlAwareFetch(map: Record<string, any>) {
+    return vi.fn().mockImplementation((url: string) => {
+      const body = map[url] ?? { files: [], dirs: [] }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(body),
+        arrayBuffer: () => Promise.resolve(new TextEncoder().encode(JSON.stringify(body)).buffer),
+      })
+    })
+  }
+
+  it('渲染两个区：会话文件（仅本会话）+ 公共数据（所有会话共享,agent 只读）', async () => {
+    vi.stubGlobal('fetch', urlAwareFetch({}))
+    const wrapper = mount(FilesPanel, { props: { threadId: 't-1' } })
+    await nextTick(); await nextTick(); await nextTick()
+    expect(wrapper.find('[data-testid="zone-session"]').text()).toContain('会话文件')
+    const shared = wrapper.find('[data-testid="zone-shared"]')
+    expect(shared.text()).toContain('公共数据')
+    expect(shared.text()).toMatch(/所有会话共享/)
+    expect(shared.text()).toMatch(/agent 只读/i)
+  })
+
+  it('有 threadId：会话区走会话 API,公共区走共享根 API,两区各自成列', async () => {
+    const fetchMock = urlAwareFetch({
+      '/agui-api/chat/threads/t-1/files': { files: [{ name: 'mine.csv', size: 5, modifiedAt: '2026-08-15T01:00:00Z' }], dirs: [] },
+      '/agui-api/files': { files: [{ name: 'shared-ref.csv', size: 9, modifiedAt: '2026-08-15T01:00:00Z' }], dirs: [] },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel, { props: { threadId: 't-1' } })
+    await nextTick(); await nextTick(); await nextTick()
+    expect(wrapper.find('[data-testid="zone-session"]').text()).toContain('mine.csv')
+    expect(wrapper.find('[data-testid="zone-session"]').text()).not.toContain('shared-ref.csv')
+    expect(wrapper.find('[data-testid="zone-shared"]').text()).toContain('shared-ref.csv')
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(urls).toContain('/agui-api/chat/threads/t-1/files')
+    expect(urls).toContain('/agui-api/files')
+  })
+
+  it('无 threadId：会话区显示空态引导且不发会话请求,公共区正常加载', async () => {
+    const fetchMock = urlAwareFetch({
+      '/agui-api/files': { files: [{ name: 'shared-ref.csv', size: 9, modifiedAt: '2026-08-15T01:00:00Z' }], dirs: [] },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(FilesPanel)
+    await nextTick(); await nextTick(); await nextTick()
+    const session = wrapper.find('[data-testid="zone-session"]')
+    expect(session.find('[data-testid="zone-session-empty"]').exists()).toBe(true)
+    expect(session.text()).toMatch(/新建会话|选择.*会话/)
+    expect(wrapper.find('[data-testid="zone-shared"]').text()).toContain('shared-ref.csv')
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(urls.every((u) => !u.includes('/chat/threads/')), '无会话时不应请求会话文件 API').toBe(true)
+    expect(urls).toContain('/agui-api/files')
+  })
+})
+
 describe('FilesPanel P-R（友好空态）', () => {
   beforeEach(() => { vi.restoreAllMocks() })
 
@@ -364,9 +428,9 @@ describe('FilesPanel P-R（友好空态）', () => {
   })
 })
 
-describe('FilesPanel 移动端点击穿透（与 ThreadSidebar 同款守卫）', () => {
-  // vitest(jsdom) 不注入 SFC <style>，直接守卫源码 CSS 规则。
-  const css = readFileSync('src/components/FilesPanel.vue', 'utf-8')
+describe('FileTree 移动端点击穿透（与 ThreadSidebar 同款守卫）', () => {
+  // vitest(jsdom) 不注入 SFC <style>，直接守卫源码 CSS 规则（P33-C 起树交互在 FileTree.vue）。
+  const css = readFileSync('src/components/FileTree.vue', 'utf-8')
 
   it('.file-actions 隐形时 pointer-events:none，hover 揭示/触屏常显时 auto', () => {
     const base = css.match(/\.file-actions \{[^}]*\}/)?.[0] ?? ''
