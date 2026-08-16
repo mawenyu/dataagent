@@ -37,6 +37,6 @@
 
 ## 前端回归基线
 
-- `vue-frontend` vitest 全绿（当前 237）
+- `vue-frontend` vitest 全绿（2026-08-16 实测 291 passed / 40 files）
 - fork 目标文件全绿（既有 10 失败属并行线在途，收敛目标 0）
 - `vite build` 通过
