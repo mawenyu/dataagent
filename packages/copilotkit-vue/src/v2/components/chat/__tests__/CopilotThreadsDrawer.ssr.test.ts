@@ -17,9 +17,17 @@ vi.mock("@copilotkit/web-components/threads-drawer", () => {
 });
 
 describe("@copilotkit/vue SSR import safety", () => {
-  it("does not eagerly evaluate the Lit element module when the package entry is imported", async () => {
-    const mod = await import("../../../../index");
-    expect(mod.CopilotThreadsDrawer).toBeDefined();
-    expect(evaluated.current).toBe(false);
-  });
+  // The cold dynamic import of the whole package barrel takes well over the
+  // 5s default timeout on a loaded shared machine (observed 7-14s), making
+  // this test flaky without an explicit budget. The assertion itself is
+  // unaffected by the timeout.
+  it(
+    "does not eagerly evaluate the Lit element module when the package entry is imported",
+    { timeout: 30000 },
+    async () => {
+      const mod = await import("../../../../index");
+      expect(mod.CopilotThreadsDrawer).toBeDefined();
+      expect(evaluated.current).toBe(false);
+    },
+  );
 });
