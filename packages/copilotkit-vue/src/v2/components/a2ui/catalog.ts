@@ -34,6 +34,13 @@ import {
   LEAF_MARGIN,
   STANDARD_BORDER,
   STANDARD_RADIUS,
+  A2UI_PALETTE,
+  A2UI_PRIMARY,
+  A2UI_PRIMARY_HOVER,
+  A2UI_PRIMARY_SOFT,
+  getA2uiInputStyle,
+  getA2uiLabelStyle,
+  getA2uiErrorTextStyle,
   getBaseLeafStyle,
   getBaseContainerStyle,
   mapJustify,
@@ -72,28 +79,60 @@ function useA2UIUniqueId(): string {
 
 const Text = createVueComponent(TextApi, ({ props }) => {
   const text = props.text ?? "";
-  const style = { ...getBaseLeafStyle(), display: "inline-block" };
+  // Typographic scale (polish 2026-08-16): explicit size/weight/line-height
+  // per variant — no reliance on browser default heading styles.
+  const base = { ...getBaseLeafStyle(), display: "inline-block" } as const;
+  const heading = (
+    fontSize: string,
+    fontWeight: string,
+    lineHeight: string,
+  ): CSSProperties => ({
+    ...base,
+    fontSize,
+    fontWeight,
+    lineHeight,
+    color: A2UI_PALETTE.text,
+  });
 
   switch (props.variant) {
     case "h1":
-      return h("h1", { style }, text);
+      return h("h1", { style: heading("24px", "700", "1.3") }, text);
     case "h2":
-      return h("h2", { style }, text);
+      return h("h2", { style: heading("20px", "600", "1.35") }, text);
     case "h3":
-      return h("h3", { style }, text);
+      return h("h3", { style: heading("18px", "600", "1.4") }, text);
     case "h4":
-      return h("h4", { style }, text);
+      return h("h4", { style: heading("16px", "600", "1.4") }, text);
     case "h5":
-      return h("h5", { style }, text);
+      return h("h5", { style: heading("14px", "600", "1.5") }, text);
     case "caption":
       return h(
         "small",
-        { style: { ...style, color: "#666", textAlign: "left" } },
+        {
+          style: {
+            ...base,
+            fontSize: "12px",
+            lineHeight: "1.5",
+            color: A2UI_PALETTE.textMuted,
+            textAlign: "left",
+          },
+        },
         text,
       );
     case "body":
     default:
-      return h("span", { style }, text);
+      return h(
+        "span",
+        {
+          style: {
+            ...base,
+            fontSize: "14px",
+            lineHeight: "1.6",
+            color: A2UI_PALETTE.textSecondary,
+          },
+        },
+        text,
+      );
   }
 });
 
@@ -321,7 +360,7 @@ const Divider = createVueComponent(DividerApi, ({ props }) => {
   const style: Record<string, string> = {
     margin: LEAF_MARGIN,
     border: "none",
-    backgroundColor: "#ccc",
+    backgroundColor: A2UI_PALETTE.border,
   };
 
   if (isVertical) {

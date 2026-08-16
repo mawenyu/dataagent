@@ -22,6 +22,7 @@ import {
   type ComponentModel,
 } from "@a2ui/web_core/v0_9";
 import type { VueComponentImplementation } from "./adapter";
+import { getWarningChipStyle } from "./utils";
 
 /**
  * DeferredChild — Vue equivalent of the React DeferredChild.
@@ -97,15 +98,7 @@ const DeferredChild = defineComponent({
       if (isCycle) {
         return h(
           "div",
-          {
-            style: {
-              padding: "8px 12px",
-              border: "1px dashed #f59e0b",
-              borderRadius: "8px",
-              color: "#b45309",
-              fontSize: "12px",
-            },
-          },
+          { style: getWarningChipStyle() },
           `Cycle detected: ${props.id}`,
         );
       }
@@ -134,12 +127,13 @@ const DeferredChild = defineComponent({
 
       if (!compImpl) {
         // 降级渲染占位（不白屏不抛错）+ console.warn 留痕（2026-08-15 vision-P4）
+        // 视觉打磨（2026-08-16）：警示 chip 与 cycle 占位同族，替代裸红字。
         console.warn(
           `[A2UI Vue] Unknown component: ${componentModel.type} (id=${props.id}) — rendering placeholder`,
         );
         return h(
           "div",
-          { style: { color: "red" } },
+          { style: getWarningChipStyle() },
           `Unknown component: ${componentModel.type}`,
         );
       }
