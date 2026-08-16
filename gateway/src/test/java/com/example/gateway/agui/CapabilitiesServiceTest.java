@@ -167,4 +167,17 @@ class CapabilitiesServiceTest {
         assertTrue(res.has("serverTools"));
         assertTrue(res.has("toolsAvailable"));
     }
+
+    /**
+     * 2026-08-16 实测回归：公网 401/前端加载卡死 —— nginx 与 vite 都把
+     * /agui-api 前缀 rewrite 剥掉（vite.config.ts rewrite、nginx proxy_pass
+     * http://127.0.0.1:8090/），controller 必须映射剥掉后的路径 /capabilities。
+     */
+    @Test
+    void controllerMapsPrefixStrippedPath() throws Exception {
+        var m = CapabilitiesController.class.getMethod("capabilities");
+        var mapping = m.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class);
+        org.junit.jupiter.api.Assertions.assertEquals("/capabilities", mapping.value()[0],
+                "nginx/vite 会剥掉 /agui-api 前缀，mapping 不得带前缀");
+    }
 }
