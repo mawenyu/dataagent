@@ -1,32 +1,32 @@
-# DataAgent 项目状态总览（P24 交付前最终巡检 · 2026-08-16）
+# DataAgent 项目状态总览（P27 并行循环收官巡检 · 2026-08-16）
 
-> 本文每次回归巡检时更新。最近更新：P26（2026-08-16，spreadsheetEdits modal 不弹二次根因修复 + 真实链路复跑 PASS）。
+> 本文每次回归巡检时更新。最近更新：P27（2026-08-16，能力清单全链路通车 + fork 失败基线 9→1 清零收尾）。
 
 ## 架构一句话
 
 Vue 3 + @copilotkit/vue(fork) 前端 → nginx `/agui-api/` → Java gateway(8090, Spring Cloud Gateway/WebFlux) → OpenCode server(4096, bun) → DeepSeek。
 公网入口 `http://101.34.246.179/agui/`（部署 `/var/www/blog/agui/`）。
 
-## ① 测试三线核验（2026-08-16 P24 复核）
+## ① 测试三线核验（2026-08-16 P27 复核）
 
 | 线 | 结果 | 说明 |
 |---|---|---|
-| 前端 vue-frontend vitest | **252/252 ✅** | 全量（+2：frontendToolExec 客户端回归钉板） |
-| gateway mvn test | **199/199 ✅** | 全量（+3：ThreadMessagesService 标记→toolCalls） |
-| fork packages/copilotkit-vue vitest | **1100/1110**（10 失败逐名核对 = 既有基线，0 新增） | 全量 |
+| 前端 vue-frontend vitest | **262/262 ✅** | 全量（+10：capabilities 面板 8 + App 接线 2 等） |
+| gateway mvn test | **210/210 ✅** | 全量（+11：CapabilitiesService 聚合/降级/路径回归等） |
+| fork packages/copilotkit-vue vitest | **1144/1145**（唯一失败 = vision 线领地 A2UI /connect replay，按约 SKIP） | 全量 |
 
-fork 10 个既有失败（与 P 系列改动零交集，P11 已用"失败集 diff 基线"法证明 0 新增）：
-- agentId/threadId 解析与 clearOnFresh/connectingGate（5 例）——并行会话在途特性的测试
-- A2UI surface replay（1 例）—— 既有
-- useFrontendTool agent scoping（2 例）、renderCustomMessages（1 例）—— 既有
-- SSR import safety（1 例）—— 环境抖动型
-- 顺手修复：standard-schema 测试因缺 valibot/arktype devDep 文件级失败 → 已补依赖（+17 测试转绿）
+fork 既有失败基线 10 → 1（A 线 5 commit 修复 9 例，ac501c6/1dd295c/f5b466b/41c4c20/2c3d9ed）：
+- agentId/threadId 解析与 clearOnFresh/connectingGate（5 例）—— getThreadClone toRaw 解包（FORK#15）+ 测试对齐 FORK#8 语义
+- useFrontendTool agent scoping（2 例）—— 测试竞态修复（welcome-screen=false 对齐同文件其余 18 例）
+- renderCustomMessages（1 例）—— v-memo 签名补 stateTick（FORK#17）
+- SSR import safety（1 例）—— 测试加显式 30s 超时预算（共享机冷 import 7-14s）
+- 剩余 1 例：A2UI surface replay —— vision 线领地，baseline 即在红
 
 ## ② 部署一致性核验（2026-08-16 P24，两处陈旧已修复）
 
 - **前端（已修复）**：部署 `main-BrDPfOk0.js` 落后于 HEAD（缺 b5f138f P-I parseRunError）。HEAD 全新构建 → rsync 部署 `/var/www/blog/agui/` → 现为 `main-yiUdb2Nq.js`，md5 与 dist 逐字节一致，公网 index/资源 200 ✅
 - **gateway（已修复）**：运行 jar（08:13）落后于 HEAD（缺 ebfb4aa RUN_ERROR 结构化 code + 8002a27 MDC traceId）。按 `restart-gateway.sh` 语义重启（并行会话在途红测试挡住主树 package，改为干净 worktree 打包 HEAD → 拷 `/tmp/agui-gateway-run.jar` → 副本启动，cwd=/home/ubuntu/dataagent、.env.opencode 注入已验）。健康 UP（本地 + 公网 `/agui-api/`），日志 pattern 带 `[traceId=]` 证明新 jar 生效；真链路冒烟（p24-smoke-1，DeepSeek 真实应答）RUN_STARTED→RUN_FINISHED 闭环无 RUN_ERROR ✅
-- opencode server：tmux `opencode2-4096` 常驻 ✅
+- opencode server：2026-08-16 重启装载新 `/api/tool` 端点（opencode-fork d5d737f 已 push origin/dataagent-v2），能力清单 serverTools 通车 ✅
 - 注意：repo 根有个陈旧顶层 `dist/`（历史残留，非部署源，忽略）
 
 ## ③ READY 条目汇总
@@ -57,6 +57,7 @@ fork 10 个既有失败（与 P 系列改动零交集，P11 已用"失败集 dif
 | P24 | 交付前最终巡检：三线复核 + 部署一致性（前端/gateway 两处陈旧已修复上线）+ READY 抽查 24% 全过 + 真链路冒烟 | docs/STATUS.md ①②③ |
 | P25 | 抛光收尾：README 公网实拍图（真实 run → A2UI 看板）+ fork 可升级性抽查（上游 1.68.1 删除 getThreadClone = 升级硬阻塞，路径已立项） | docs/screenshots/p25-home.png、docs/FORK-UPGRADE-PATH.md |
 | P26 | spreadsheetEdits modal 不弹二次根因修复：MESSAGES_SNAPSHOT 裸标记冲刷流式工具调用 → 历史转换还原 toolCalls（ffe2e3c）+ 客户端钉板测试（fed6ce6）；真实链路复跑 PASS（modal→confirm→CSV 999999），gateway 已上生产，multi-turn 7/7 | /tmp/p26-modal.png、frontendToolExec.test.ts、DEVELOPMENT_STATUS 下一步 1/2 闭环 |
+| P27 | 能力清单全链路 + 六线并行循环收官：opencode-fork 新增 `GET /api/tool`（d5d737f，已 push）→ gateway `/capabilities` 五路聚合（source 启发式 builtin/plugin/custom）→ 前端 CapabilitiesPanel 六区展示（侧栏第三 tab）；实测：serverTools 18（builtin 12 / plugin 5=render_a2ui 等 / custom 1=timestamp）、agents 6、skills 10、commands 4、plugins 70，浏览器实测渲染通过；opencode 已重启装载端点；fork 失败基线 9→1；fork patch 重生成（41 文件 13844 行，git apply 验证逐字节一致） | /tmp/caps-final.png、CapabilitiesServiceTest、docs/spec/a2ui-component-matrix.md |
 
 ### READY-FRONTEND（前端 UX 线）
 
@@ -84,7 +85,8 @@ docs/spec/workspace-*.md。
 
 ## 已知边界（择要）
 
-- fork 10 个既有失败测试（归因见上节，属并行会话在途特性）
+- fork 仅剩 1 个既有失败测试（A2UI /connect replay，vision 线领地按约 SKIP；其余 9 例已修）
+- capabilities 冷启动 ~23s（插件异步加载竞态，热态 1.7s；gateway 消费方宜在 session 启动后拉取）
 - HITL 确认卡片无超时（设计：interrupt 后 run 即结束，卡片持久有效）
 - opencode 重启后 resume 走新 session（无旧上下文，A2UI_ACTION prompt 携带足够决策信息）
 - 欢迎页自绘输入框的附件走独立链路（P-J 已真实化）；gallery 页 Button disabled 无视觉弱化

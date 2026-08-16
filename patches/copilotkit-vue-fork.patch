@@ -81,10 +81,10 @@ index c35db11..0000000
 -- `CopilotKitCoreVue` - core subclass with `setRenderToolCalls` and `onRenderToolCallsChanged`
 diff --git a/packages/copilotkit-vue/FORK.md b/packages/copilotkit-vue/FORK.md
 new file mode 100644
-index 0000000..9872af4
+index 0000000..49de429
 --- /dev/null
 +++ b/packages/copilotkit-vue/FORK.md
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,132 @@
 +# Internal fork: @copilotkit/vue 1.67.1 + `directAgents`
 +
 +**Base**: upstream `CopilotKit/CopilotKit` tag `v1.67.1`
@@ -130,17 +130,83 @@ index 0000000..9872af4
 +   `@copilotkit/vue`, version `1.67.1-fork.1`, `workspace:*` deps rewritten to
 +   pinned published versions, devDeps trimmed; `tsconfig.json` inlined
 +   (`@copilotkit/typescript-config` removed).
++10. `src/v2/hooks/use-default-render-tool.ts` (F3, mainline) — default
++    tool-call renderer gains duration tracking, status icons (spinner/✓/✗)
++    and failure/interrupt marking via agent run-lifecycle subscription.
++    UI-only; no protocol change.
++11. `src/v2/components/chat/CopilotChatInput.vue` (P-F, mainline) —
++    `maxRows` default 5 → 3 (marked `FORK-PATCH(P-F)` inline), matching the
++    product input spec (auto-grow, scroll past 3 rows). Enter-to-send /
++    Shift+Enter-newline / IME guard are upstream behavior, unchanged.
 +
-+No other source file is modified. Because `hasLocalAgents` derives from
-+`mergedAgents`, a provider with only `directAgents` (no `runtimeUrl`, no
-+publicApiKey) does not trigger the missing-config error.
++12. `src/v2/components/chat/CopilotChatMessageView.vue` +
++    `CopilotChatAssistantMessage.vue` (P-S, mainline) — message-level actions:
++    regenerate wired (last assistant message only, truncates that answer and
++    re-runs via `core.runAgent`); per-message time captions (history
++    `createdAt` ?? first-seen); assistant toolbar becomes hover-only
++    (`group`/`group-hover`, matching user message); regenerate button gains
++    `data-testid="copilot-regenerate-button"`. Copy buttons were already
++    upstream default UI on both sides.
++13. `src/v2/hooks/use-default-render-tool.ts` (F3 补全, mainline) —
++    tool-level failure detection: a `complete` call whose result starts with
++    the gateway `session.tool.failed` contract prefix `"工具执行失败: "`
++    (AguiEventTranslator) now renders the failed state (✗失败 / red dot /
++    `data-run-end=failed`) instead of a misleading ✓Done. Prefix is matched
++    at line start only. Covered by 2 new cases in
++    `use-default-render-tool.test.ts`.
++
++14. `src/v2/components/chat/CopilotChatAssistantMessage.vue` (touch-safe,
++    mainline) — upstream image download button is hover-revealed via
++    `opacity-0` only; on touch devices (no hover) the invisible button
++    intercepted taps (same bug class as app-side ThreadSidebar/FilesPanel,
++    verified via playwright elementFromPoint). Added `pointer-events-none` +
++    `group-hover:pointer-events-auto` (marked `FORK-PATCH(touch-safe)`).
++    Covered by a class-guard case in `CopilotChatAssistantMessage.test.ts`.
++
++15. `src/v2/hooks/use-agent.ts` — `getThreadClone` unwraps the registry agent
++    with `toRaw()` before the `globalThreadCloneMap` WeakMap lookup. Entry 6
++    made `resolveAgent` key the map by the raw instance, so callers passing
++    `core.getAgent(id)`'s reactive proxy back into `getThreadClone` always
++    missed (returned `undefined`). `toRaw` is a no-op on raw instances.
++
++16. `src/v2/components/a2ui/{catalog.ts, utils.ts, VueSurface.ts}` + new
++    `__tests__/` (5 files, 29 cases) (2026-08-16, vision line) — A2UI Vue
++    catalog visual polish & missing-state fill: utils.ts gains design tokens
++    (A2UI_PALETTE/A2UI_PRIMARY*/A2UI_FOCUS_RING), shared form style helpers
++    (getA2uiInputStyle/getA2uiLabelStyle/getA2uiErrorTextStyle/
++    getWarningChipStyle) and ensureA2uiCatalogStyles (idempotent one-shot
++    static keyframes injection). All 18 basic-catalog components polished:
++    Text type ramp, Card/Button/Tabs/Modal/form controls/Image hover/pressed/
++    disabled/focus/error/empty states + aria; Modal ESC-to-close. VueSurface:
++    unknown-component/cycle placeholders unified into warning chip (replacing
++    bare red text); shimmer keyframes moved out of innerHTML (no innerHTML
++    use remains on the render path).
++
++17. `src/v2/components/chat/CopilotChatMessageView.vue` — the P11 `v-memo`
++    signature now includes `stateTick`. Mid-run STATE_SNAPSHOT/STATE_DELTA
++    events change neither message content, `isRunning`, nor `messages.length`,
++    so the memoized per-message block was skipped and `renderCustomMessages`
++    renderers kept a stale `stateSnapshot` prop (baseline e2e failure
++    "re-renders custom message when state updates within the same run").
++    `stateTick` is the component's existing agent state/run-lifecycle
++    counter; adding it re-renders message blocks exactly when run state
++    advances. Perf impact: state/lifecycle changes re-render all memoized
++    blocks (same as upstream-without-memo); streaming deltas stay memoized
++    per message via the content/tool signature.
++
++(A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
++maintained by the vision line — see their own notes.)
++
++Because `hasLocalAgents` derives from `mergedAgents`, a provider with only
++`directAgents` (no `runtimeUrl`, no publicApiKey) does not trigger the
++missing-config error.
 +
 +## Upgrade procedure
 +
 +1. Sparse-checkout the new upstream tag's `packages/vue` over `src/`
 +   (discard local changes).
-+2. Re-apply the 4 changes above (or `git diff` this dir against the tag and
-+   re-apply the patch).
++2. Re-apply the numbered changes above (or `git diff` this dir against the
++   tag and re-apply the patch).
 +3. Bump dependency pins to the versions published with that tag.
 +4. `npm install && npm run build && npm test -- directAgents`.
 +
@@ -668,10 +734,10 @@ index 3f33ff6..0000000
 -];
 diff --git a/packages/copilotkit-vue/package-lock.json b/packages/copilotkit-vue/package-lock.json
 new file mode 100644
-index 0000000..846388e
+index 0000000..2455f8f
 --- /dev/null
 +++ b/packages/copilotkit-vue/package-lock.json
-@@ -0,0 +1,8777 @@
+@@ -0,0 +1,8833 @@
 +{
 +  "name": "@copilotkit/vue",
 +  "version": "1.67.1-fork.1",
@@ -706,11 +772,13 @@ index 0000000..846388e
 +        "@vitejs/plugin-vue": "5.2.1",
 +        "@vue/compiler-sfc": "3.5.41",
 +        "@vue/test-utils": "2.4.6",
++        "arktype": "^2.2.3",
 +        "jsdom": "26.1.0",
 +        "postcss": "8.5.6",
 +        "tailwindcss": "4.1.11",
 +        "tw-animate-css": "1.3.5",
 +        "typescript": "5.8.2",
++        "valibot": "^1.4.2",
 +        "vite": "6.3.5",
 +        "vitest": "3.2.4",
 +        "vue": "3.5.41",
@@ -818,6 +886,23 @@ index 0000000..846388e
 +      "funding": {
 +        "url": "https://github.com/sponsors/antfu"
 +      }
++    },
++    "node_modules/@ark/schema": {
++      "version": "0.56.2",
++      "resolved": "https://registry.npmjs.org/@ark/schema/-/schema-0.56.2.tgz",
++      "integrity": "sha512-Qx4D2JFbBWpntiHZaTv7bGG4H/M2rigiknezKg/WVyDSaLdE4YCcWAOoFB7pjjDqHbbV2OqRfntm1nnXvwMexg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@ark/util": "0.56.2"
++      }
++    },
++    "node_modules/@ark/util": {
++      "version": "0.56.2",
++      "resolved": "https://registry.npmjs.org/@ark/util/-/util-0.56.2.tgz",
++      "integrity": "sha512-9kU2sUE38FZEGG7l3hamYMBieLYEJh2L1mrYD2eXpT+78EnQSV1bhjxJhnxGBMSTbtwpBSDNSK+K60WvaI/DTQ==",
++      "dev": true,
++      "license": "MIT"
 +    },
 +    "node_modules/@asamuzakjp/css-color": {
 +      "version": "3.2.0",
@@ -3699,6 +3784,28 @@ index 0000000..846388e
 +      "license": "Apache-2.0",
 +      "dependencies": {
 +        "deep-equal": "^2.0.5"
++      }
++    },
++    "node_modules/arkregex": {
++      "version": "0.0.8",
++      "resolved": "https://registry.npmjs.org/arkregex/-/arkregex-0.0.8.tgz",
++      "integrity": "sha512-PJcx6G1kQTgLKPUbeYlYecDRaKq15AMSGVajlKFYWlPeJRQL+j3dKE6tyMs40HZ99djS1l9Vhl3ezAHy9JBIqQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@ark/util": "0.56.2"
++      }
++    },
++    "node_modules/arktype": {
++      "version": "2.2.3",
++      "resolved": "https://registry.npmjs.org/arktype/-/arktype-2.2.3.tgz",
++      "integrity": "sha512-7W+0RLTUNJiBFIIZXwOQxSR8Z273IAd6IvqBeG9+gHnQKFsIx2C0iOtGTmMrPnlX4qLXyc5+ll7A0BIj9WrbTg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@ark/schema": "0.56.2",
++        "@ark/util": "0.56.2",
++        "arkregex": "0.0.8"
 +      }
 +    },
 +    "node_modules/array-buffer-byte-length": {
@@ -8838,6 +8945,21 @@ index 0000000..846388e
 +        "uuid": "dist/esm/bin/uuid"
 +      }
 +    },
++    "node_modules/valibot": {
++      "version": "1.4.2",
++      "resolved": "https://registry.npmjs.org/valibot/-/valibot-1.4.2.tgz",
++      "integrity": "sha512-gjdCvJ6d3RyHAneqxMYMW9QMCwYMb3jpOO0IyHZV1bnRHFBHrX3VkIILt5XYR0WhwHiH7Mty8ovuPZ/O3gamrg==",
++      "dev": true,
++      "license": "MIT",
++      "peerDependencies": {
++        "typescript": ">=5"
++      },
++      "peerDependenciesMeta": {
++        "typescript": {
++          "optional": true
++        }
++      }
++    },
 +    "node_modules/vfile": {
 +      "version": "6.0.3",
 +      "resolved": "https://registry.npmjs.org/vfile/-/vfile-6.0.3.tgz",
@@ -9450,7 +9572,7 @@ index 0000000..846388e
 +  }
 +}
 diff --git a/packages/copilotkit-vue/package.json b/packages/copilotkit-vue/package.json
-index 1136895..1d088f1 100644
+index 1136895..9bd7f74 100644
 --- a/packages/copilotkit-vue/package.json
 +++ b/packages/copilotkit-vue/package.json
 @@ -1,19 +1,8 @@
@@ -9476,7 +9598,7 @@ index 1136895..1d088f1 100644
    "license": "MIT",
    "repository": {
      "type": "git",
-@@ -57,70 +46,47 @@
+@@ -57,70 +46,49 @@
      "./styles.css": "./dist/styles.css",
      "./package.json": "./package.json"
    },
@@ -9555,6 +9677,7 @@ index 1136895..1d088f1 100644
 +    "@vitejs/plugin-vue": "5.2.1",
 +    "@vue/compiler-sfc": "3.5.41",
 +    "@vue/test-utils": "2.4.6",
++    "arktype": "^2.2.3",
 +    "jsdom": "26.1.0",
 +    "postcss": "8.5.6",
 +    "tailwindcss": "4.1.11",
@@ -9567,6 +9690,7 @@ index 1136895..1d088f1 100644
 -    "vue": "^3.5.28",
 -    "vue-eslint-parser": "^10.4.0",
 -    "vue-tsc": "^2.1.10"
++    "valibot": "^1.4.2",
 +    "vite": "6.3.5",
 +    "vitest": "3.2.4",
 +    "vue": "3.5.41",
@@ -9829,8 +9953,2263 @@ index 0000000..050622d
 +    expect(document.querySelectorAll("[data-surface-id='sales-overview']").length).toBe(1);
 +  });
 +});
+diff --git a/packages/copilotkit-vue/src/v2/components/A2UISurfaceActivityRenderer.vue b/packages/copilotkit-vue/src/v2/components/A2UISurfaceActivityRenderer.vue
+index 01ded4b..1b82878 100644
+--- a/packages/copilotkit-vue/src/v2/components/A2UISurfaceActivityRenderer.vue
++++ b/packages/copilotkit-vue/src/v2/components/A2UISurfaceActivityRenderer.vue
+@@ -94,7 +94,33 @@ function processOperations(operations: A2UIOperation[]) {
+       const filtered = existing
+         ? ops.filter((op) => !(op as any)?.createSurface)
+         : ops;
+-      processor.processMessages(filtered as any);
++      // dataagent fork fix (2026-08-16, P10 生命周期): 逐 op 容错处理 ——
++      // 缺失 target（未创建/已关闭的 surface）、重复 createSurface 等单条
++      // 坏 op 只跳过 + console.warn，不再整批进错误框（此前一条坏 op
++      // 会 throw 中断整批，同批正常 surface 也渲染不出来）。
++      // P10 逐 op 容错；P13 进一步把 updateComponents 拆到单组件粒度 ——
++      // 一条 op 里混入非法组件（null/数字/对象 type 等）只跳过坏组件，
++      // 同 op 的正常组件不再陪葬
++      for (const op of filtered) {
++        const uc = (op as any)?.updateComponents;
++        const opList: any[] =
++          uc && Array.isArray(uc.components) && uc.components.length > 1
++            ? uc.components.map((c: unknown) => ({
++                ...op,
++                updateComponents: { ...uc, components: [c] },
++              }))
++            : [op];
++        for (const single of opList) {
++          try {
++            processor.processMessages([single] as any);
++          } catch (opErr) {
++            console.warn(
++              `[A2UI Vue] op skipped (surface=${surfaceId}):`,
++              opErr instanceof Error ? opErr.message : opErr,
++            );
++          }
++        }
++      }
+     }
+     error.value = null;
+   } catch (err) {
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/VueSurface.ts b/packages/copilotkit-vue/src/v2/components/a2ui/VueSurface.ts
+index eae6f48..f7ed20e 100644
+--- a/packages/copilotkit-vue/src/v2/components/a2ui/VueSurface.ts
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/VueSurface.ts
+@@ -9,9 +9,12 @@ import {
+   defineComponent,
+   h,
+   ref,
++  inject,
++  provide,
+   onUnmounted,
+   type PropType,
+   type VNode,
++  type InjectionKey,
+ } from "vue";
+ import {
+   ComponentContext,
+@@ -19,12 +22,24 @@ import {
+   type ComponentModel,
+ } from "@a2ui/web_core/v0_9";
+ import type { VueComponentImplementation } from "./adapter";
++import { getWarningChipStyle, ensureA2uiCatalogStyles } from "./utils";
++
++// Idempotent: ensures shimmer keyframes exist even when A2uiSurface is used
++// with a custom catalog that never imports the basic catalog module.
++ensureA2uiCatalogStyles();
+ 
+ /**
+  * DeferredChild — Vue equivalent of the React DeferredChild.
+  * Subscribes to component create/delete events and renders the
+  * appropriate catalog component via the GenericBinder adapter.
+  */
++/**
++ * Ancestor id chain for cycle detection (dataagent fork fix, 2026-08-15):
++ * a children cycle (A↔B) previously recursed DeferredChild until
++ * "Maximum call stack size exceeded" and killed the whole surface.
++ */
++const ANCESTORS_KEY: InjectionKey<ReadonlySet<string>> = Symbol("a2ui-ancestors");
++
+ const DeferredChild = defineComponent({
+   name: "A2UIDeferredChild",
+   props: {
+@@ -36,6 +51,17 @@ const DeferredChild = defineComponent({
+     basePath: { type: String, required: true },
+   },
+   setup(props) {
++    // Cycle guard: if this id already appears in the ancestor chain, stop
++    // recursing and render a visible placeholder instead of overflowing.
++    const ancestors = inject(ANCESTORS_KEY, new Set<string>());
++    const isCycle = ancestors.has(props.id);
++    if (isCycle) {
++      console.warn(
++        `[A2UI Vue] Cycle detected: component "${props.id}" references itself via children chain`,
++      );
++    }
++    provide(ANCESTORS_KEY, new Set([...ancestors, props.id]));
++
+     // Reactive trigger — incremented when the component is created/deleted
+     const version = ref(0);
+ 
+@@ -73,21 +99,29 @@ const DeferredChild = defineComponent({
+       // Touch version to ensure reactivity
+       void version.value;
+ 
++      if (isCycle) {
++        return h(
++          "div",
++          { style: getWarningChipStyle() },
++          `Cycle detected: ${props.id}`,
++        );
++      }
++
+       const componentModel = props.surface.componentsModel.get(props.id);
+ 
+       if (!componentModel) {
+-        // Shimmer placeholder while component isn't yet available
++        // Shimmer placeholder while component isn't yet available.
++        // Keyframes live in the shared static stylesheet (no innerHTML).
+         return h("div", {
++          class: "a2ui-shimmer",
+           style: {
+             padding: "12px 16px",
+             borderRadius: "8px",
+             background:
+               "linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%)",
+             backgroundSize: "200% 100%",
+-            animation: "a2ui-shimmer 1.5s ease-in-out infinite",
+             minHeight: "2rem",
+           },
+-          innerHTML: `<style>@keyframes a2ui-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }</style>`,
+         });
+       }
+ 
+@@ -96,9 +130,14 @@ const DeferredChild = defineComponent({
+       );
+ 
+       if (!compImpl) {
++        // 降级渲染占位（不白屏不抛错）+ console.warn 留痕（2026-08-15 vision-P4）
++        // 视觉打磨（2026-08-16）：警示 chip 与 cycle 占位同族，替代裸红字。
++        console.warn(
++          `[A2UI Vue] Unknown component: ${componentModel.type} (id=${props.id}) — rendering placeholder`,
++        );
+         return h(
+           "div",
+-          { style: { color: "red" } },
++          { style: getWarningChipStyle() },
+           `Unknown component: ${componentModel.type}`,
+         );
+       }
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogCardButton.test.ts b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogCardButton.test.ts
+new file mode 100644
+index 0000000..6214136
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogCardButton.test.ts
+@@ -0,0 +1,114 @@
++import { describe, expect, it } from "vitest";
++import { mountSurface } from "./helpers";
++
++/**
++ * P-VISION-POLISH B：Card 层级/悬浮抬升 + Button 三变体交互态。
++ * 修复点：原实现无 hover/active/disabled 视觉反馈、阴影粗糙（Demo 感）。
++ */
++describe("A2UI catalog polish — Card", () => {
++  it("使用弱边框 + 12px 圆角 + 细腻阴影（替代 0 2px 4px 粗阴影）", () => {
++    const { wrapper } = mountSurface([
++      { component: "Card", id: "root", child: "t" },
++      { component: "Text", id: "t", text: "卡片内容" },
++    ]);
++    const card = wrapper
++      .findAll("div")
++      .find((d) => (d.attributes("style") ?? "").includes("box-shadow"));
++    expect(card).toBeDefined();
++    const style = card!.attributes("style") ?? "";
++    expect(style).toContain("border: 1px solid rgb(229, 231, 235)");
++    expect(style).toContain("border-radius: 12px");
++    expect(style).toContain("0 1px 2px rgba(16, 24, 40, 0.05)");
++    expect(style).toContain("transition");
++  });
++
++  it("hover 时阴影抬升（mouseenter/mouseleave 往返）", async () => {
++    const { wrapper } = mountSurface([
++      { component: "Card", id: "root", child: "t" },
++      { component: "Text", id: "t", text: "卡片内容" },
++    ]);
++    const card = wrapper
++      .findAll("div")
++      .find((d) => (d.attributes("style") ?? "").includes("box-shadow"));
++    expect(card).toBeDefined();
++
++    await card!.trigger("mouseenter");
++    expect(card!.attributes("style")).toContain(
++      "0 4px 12px rgba(16, 24, 40, 0.08)",
++    );
++
++    await card!.trigger("mouseleave");
++    expect(card!.attributes("style")).toContain(
++      "0 1px 2px rgba(16, 24, 40, 0.05)",
++    );
++  });
++});
++
++describe("A2UI catalog polish — Button", () => {
++  const mountButton = (extra: Record<string, unknown> = {}) =>
++    mountSurface([
++      { component: "Column", id: "root", children: ["btn"] },
++      {
++        component: "Button",
++        id: "btn",
++        child: "label",
++        action: { name: "noop" },
++        ...extra,
++      },
++      { component: "Text", id: "label", text: "提交" },
++    ]);
++
++  it("primary 变体：主色底白字、8px 圆角、500 字重、过渡动画", () => {
++    const { wrapper } = mountButton({ variant: "primary" });
++    const btn = wrapper.find("button");
++    const style = btn.attributes("style") ?? "";
++    expect(style).toContain("color: rgb(255, 255, 255)");
++    expect(style).toContain("--a2ui-primary-color, #2563eb");
++    expect(style).toContain("border-radius: 8px");
++    expect(style).toContain("font-weight: 500");
++    expect(style).toContain("transition");
++  });
++
++  it("primary hover 加深（mouseenter → hover 色），离开后还原", async () => {
++    const { wrapper } = mountButton({ variant: "primary" });
++    const btn = wrapper.find("button");
++    await btn.trigger("mouseenter");
++    expect(btn.attributes("style")).toContain(
++      "--a2ui-primary-hover-color, #1d4ed8",
++    );
++    await btn.trigger("mouseleave");
++    expect(btn.attributes("style")).toContain(
++      "--a2ui-primary-color, #2563eb",
++    );
++  });
++
++  it("default 变体 hover 下沉底色；borderless 保持透明", async () => {
++    const { wrapper } = mountButton();
++    const btn = wrapper.find("button");
++    expect(btn.attributes("style")).toContain(
++      "background-color: rgb(255, 255, 255)",
++    );
++    await btn.trigger("mouseenter");
++    expect(btn.attributes("style")).toContain(
++      "background-color: rgb(249, 250, 251)",
++    );
++
++    const borderless = mountButton({ variant: "borderless" });
++    const b2 = borderless.wrapper.find("button");
++    expect(b2.attributes("style")).toContain("background-color: transparent");
++    await b2.trigger("mouseenter");
++    expect(b2.attributes("style")).toContain("rgba(17, 24, 39, 0.04)");
++  });
++
++  it("禁用态（isValid=false）：disabled + 半透明 + not-allowed，hover 不再变化", async () => {
++    const { wrapper } = mountButton({ variant: "primary", isValid: false });
++    const btn = wrapper.find("button");
++    expect(btn.attributes("disabled")).toBeDefined();
++    const before = btn.attributes("style") ?? "";
++    expect(before).toContain("opacity: 0.5");
++    expect(before).toContain("cursor: not-allowed");
++    await btn.trigger("mouseenter");
++    expect(btn.attributes("style")).toContain("opacity: 0.5");
++    expect(btn.attributes("style")).not.toContain("#1d4ed8");
++  });
++});
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogForm.test.ts b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogForm.test.ts
+new file mode 100644
+index 0000000..b914c8e
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogForm.test.ts
+@@ -0,0 +1,200 @@
++import { describe, expect, it } from "vitest";
++import { mountSurface } from "./helpers";
++
++/**
++ * P-VISION-POLISH C：表单控件统一输入风格（聚焦环/错误态/标签层级）。
++ * 修复点：原实现边框 #ccc、无 focus 反馈、错误态刺眼纯红、标签层级随意。
++ */
++describe("A2UI catalog polish — TextField", () => {
++  const mountField = (extra: Record<string, unknown> = {}) =>
++    mountSurface([
++      { component: "Column", id: "root", children: ["f"] },
++      { component: "TextField", id: "f", label: "名称", ...extra },
++    ]);
++
++  it("输入框统一风格：8/12 padding、#d1d5db 边框、8px 圆角、过渡", () => {
++    const { wrapper } = mountField();
++    const input = wrapper.find("input");
++    const style = input.attributes("style") ?? "";
++    expect(style).toContain("padding: 8px 12px");
++    expect(style).toContain("border: 1px solid rgb(209, 213, 219)");
++    expect(style).toContain("border-radius: 8px");
++    expect(style).toContain("transition");
++  });
++
++  it("聚焦时出现主色边框 + 聚焦环，失焦还原", async () => {
++    const { wrapper } = mountField();
++    const input = wrapper.find("input");
++    await input.trigger("focus");
++    const focused = input.attributes("style") ?? "";
++    expect(focused).toContain("--a2ui-primary-color, #2563eb");
++    expect(focused).toContain("--a2ui-primary-focus-ring");
++    await input.trigger("blur");
++    expect(input.attributes("style")).toContain(
++      "border: 1px solid rgb(209, 213, 219)",
++    );
++  });
++
++  it("错误态：#dc2626 边框 + 12px 错误文案，标签使用 13px/500 层级", () => {
++    const { wrapper } = mountField({ validationErrors: ["必填项"] });
++    const input = wrapper.find("input");
++    expect(input.attributes("style")).toContain(
++      "border: 1px solid rgb(220, 38, 38)",
++    );
++    const error = wrapper
++      .findAll("span")
++      .find((s) => s.text() === "必填项");
++    expect(error).toBeDefined();
++    expect(error!.attributes("style")).toContain("color: rgb(220, 38, 38)");
++    expect(error!.attributes("style")).toContain("font-size: 12px");
++
++    const label = wrapper.find("label");
++    expect(label.attributes("style")).toContain("font-size: 13px");
++    expect(label.attributes("style")).toContain("font-weight: 500");
++    expect(label.attributes("style")).toContain("color: rgb(55, 65, 81)");
++  });
++
++  it("longText 变体 textarea 同样享有聚焦环", async () => {
++    const { wrapper } = mountField({ variant: "longText" });
++    const area = wrapper.find("textarea");
++    expect(area.exists()).toBe(true);
++    await area.trigger("focus");
++    expect(area.attributes("style")).toContain("--a2ui-primary-focus-ring");
++  });
++});
++
++describe("A2UI catalog polish — CheckBox", () => {
++  it("勾选框 accent-color 主色、16px 尺寸；错误态标签/描边用 danger token", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["c"] },
++      {
++        component: "CheckBox",
++        id: "c",
++        label: "记住我",
++        validationErrors: ["必选"],
++      },
++    ]);
++    const input = wrapper.find("input[type=checkbox]");
++    const style = input.attributes("style") ?? "";
++    expect(style).toContain("accent-color");
++    expect(style).toContain("--a2ui-primary-color, #2563eb");
++    expect(style).toContain("width: 16px");
++    expect(style).toContain("height: 16px");
++    expect(style).toContain("#dc2626");
++  });
++});
++
++describe("A2UI catalog polish — ChoicePicker", () => {
++  const mountPicker = (extra: Record<string, unknown> = {}) =>
++    mountSurface([
++      { component: "Column", id: "root", children: ["p"] },
++      {
++        component: "ChoicePicker",
++        id: "p",
++        label: "维度",
++        displayStyle: "chips",
++        options: [
++          { label: "销售额", value: "sales" },
++          { label: "订单量", value: "orders" },
++        ],
++        value: ["sales"],
++        ...extra,
++      },
++    ]);
++
++  it("chips：选中主色实心，未选中 hover 浅主色底", async () => {
++    const { wrapper } = mountPicker();
++    const chips = wrapper.findAll("button");
++    expect(chips.length).toBe(2);
++    const [selected, unselected] = chips;
++    expect(selected!.attributes("style")).toContain(
++      "color: rgb(255, 255, 255)",
++    );
++    expect(selected!.attributes("style")).toContain(
++      "--a2ui-primary-color, #2563eb",
++    );
++    const beforeHover = unselected!.attributes("style") ?? "";
++    expect(beforeHover).toContain("background-color: rgb(255, 255, 255)");
++    await unselected!.trigger("mouseenter");
++    expect(unselected!.attributes("style")).toContain(
++      "--a2ui-primary-soft-color, #eff6ff",
++    );
++  });
++
++  it("filterable 搜索框享有统一输入风格与聚焦环", async () => {
++    const { wrapper } = mountPicker({ filterable: true });
++    const filter = wrapper.find("input[type=text]");
++    expect(filter.exists()).toBe(true);
++    expect(filter.attributes("style")).toContain("padding: 8px 12px");
++    await filter.trigger("focus");
++    expect(filter.attributes("style")).toContain(
++      "--a2ui-primary-focus-ring",
++    );
++  });
++
++  it("列表模式行 hover 底色 + 圆角，radio/checkbox accent-color", async () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["p"] },
++      {
++        component: "ChoicePicker",
++        id: "p",
++        options: [
++          { label: "甲", value: "a" },
++          { label: "乙", value: "b" },
++        ],
++        value: [],
++      },
++    ]);
++    const rows = wrapper.findAll("label");
++    expect(rows.length).toBeGreaterThan(0);
++    const row = rows[0]!;
++    await row.trigger("mouseenter");
++    expect(row.attributes("style")).toContain(
++      "background-color: rgb(249, 250, 251)",
++    );
++    expect(row.attributes("style")).toContain("border-radius: 6px");
++    const input = wrapper.find("input");
++    expect(input.attributes("style")).toContain("accent-color");
++  });
++});
++
++describe("A2UI catalog polish — Slider", () => {
++  it("滑杆 accent-color 主色，当前值渲染为主色 chip（tabular-nums）", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["s"] },
++      { component: "Slider", id: "s", label: "置信度", value: 42, max: 100 },
++    ]);
++    const range = wrapper.find("input[type=range]");
++    expect(range.attributes("style")).toContain(
++      "--a2ui-primary-color, #2563eb",
++    );
++    const chip = wrapper.findAll("span").find((s) => s.text() === "42");
++    expect(chip).toBeDefined();
++    const style = chip!.attributes("style") ?? "";
++    expect(style).toContain("--a2ui-primary-soft-color, #eff6ff");
++    expect(style).toContain("font-variant-numeric: tabular-nums");
++    expect(style).toContain("border-radius: 6px");
++  });
++});
++
++describe("A2UI catalog polish — DateTimeInput", () => {
++  it("日期输入统一输入风格 + 聚焦环", async () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["d"] },
++      {
++        component: "DateTimeInput",
++        id: "d",
++        label: "起止",
++        enableDate: true,
++        enableTime: false,
++      },
++    ]);
++    const input = wrapper.find("input[type=date]");
++    expect(input.exists()).toBe(true);
++    expect(input.attributes("style")).toContain("padding: 8px 12px");
++    await input.trigger("focus");
++    expect(input.attributes("style")).toContain(
++      "--a2ui-primary-focus-ring",
++    );
++  });
++});
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogMedia.test.ts b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogMedia.test.ts
+new file mode 100644
+index 0000000..039aa18
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogMedia.test.ts
+@@ -0,0 +1,97 @@
++import { describe, expect, it } from "vitest";
++import { mountSurface } from "./helpers";
++
++/**
++ * P-VISION-POLISH E：媒体组件缺态补齐 —— Image 加载底色/失败降级/空 url 占位。
++ * 修复点：原实现图片失败只显示破图图标（浏览器默认），无 empty/error 态。
++ */
++describe("A2UI catalog polish — Image", () => {
++  it("正常图片：加载底色 + 变体圆角（feature/header）", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["img"] },
++      {
++        component: "Image",
++        id: "img",
++        url: "https://example.com/a.png",
++        variant: "largeFeature",
++      },
++    ]);
++    const img = wrapper.find("img");
++    expect(img.exists()).toBe(true);
++    const style = img.attributes("style") ?? "";
++    expect(style).toContain("background-color: rgb(243, 244, 246)");
++    expect(style).toContain("border-radius: 8px");
++  });
++
++  it("icon/avatar 变体不加强制圆角底色以外的装饰（avatar 保持圆形）", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["img"] },
++      {
++        component: "Image",
++        id: "img",
++        url: "https://example.com/a.png",
++        variant: "avatar",
++      },
++    ]);
++    const style = wrapper.find("img").attributes("style") ?? "";
++    expect(style).toContain("border-radius: 50%");
++  });
++
++  it("加载失败：破图替换为虚线占位（含描述文案），img 移除", async () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["img"] },
++      {
++        component: "Image",
++        id: "img",
++        url: "https://example.com/broken.png",
++        description: "销售趋势图",
++      },
++    ]);
++    const img = wrapper.find("img");
++    expect(img.exists()).toBe(true);
++    await img.trigger("error");
++    expect(wrapper.find("img").exists()).toBe(false);
++    const placeholder = wrapper
++      .findAll("div")
++      .find((d) => d.element.children.length === 0 && d.text().includes("销售趋势图"));
++    expect(placeholder).toBeDefined();
++    const style = placeholder!.attributes("style") ?? "";
++    expect(style).toContain("dashed");
++    expect(style).toContain("color: rgb(107, 114, 128)");
++  });
++
++  it("空 url：直接渲染占位（Image unavailable）而非破图 img", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["img"] },
++      { component: "Image", id: "img" },
++    ]);
++    expect(wrapper.find("img").exists()).toBe(false);
++    expect(wrapper.text()).toContain("Image unavailable");
++  });
++});
++
++describe("A2UI catalog polish — Video/AudioPlayer", () => {
++  it("视频 8px 圆角 + 深色加载底色", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["v"] },
++      { component: "Video", id: "v", url: "https://example.com/v.mp4" },
++    ]);
++    const style = wrapper.find("video").attributes("style") ?? "";
++    expect(style).toContain("border-radius: 8px");
++  });
++
++  it("音频描述使用弱化色 token（#6b7280）", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["a"] },
++      {
++        component: "AudioPlayer",
++        id: "a",
++        url: "https://example.com/a.mp3",
++        description: "播报",
++      },
++    ]);
++    const desc = wrapper.findAll("span").find((s) => s.text() === "播报");
++    expect(desc).toBeDefined();
++    expect(desc!.attributes("style")).toContain("color: rgb(107, 114, 128)");
++  });
++});
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogTabsModal.test.ts b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogTabsModal.test.ts
+new file mode 100644
+index 0000000..6221b39
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogTabsModal.test.ts
+@@ -0,0 +1,144 @@
++import { describe, expect, it } from "vitest";
++import { mountSurface } from "./helpers";
++
++/**
++ * P-VISION-POLISH D：Tabs 现代下划线页签 + Modal 产品化弹层。
++ * 修复点：Tabs 选中态简陋、无 hover/空态；Modal 灰幕生硬、无动画、无 ESC。
++ */
++describe("A2UI catalog polish — Tabs", () => {
++  const mountTabs = (tabs: unknown[] = [
++    { title: "概览", child: "c1" },
++    { title: "明细", child: "c2" },
++  ]) =>
++    mountSurface([
++      { component: "Tabs", id: "root", tabs },
++      { component: "Text", id: "c1", text: "内容一" },
++      { component: "Text", id: "c2", text: "内容二" },
++    ]);
++
++  it("页签条 #e5e7eb 底边；选中页签主色 + 2px 下划线；未选中弱化色", () => {
++    const { wrapper } = mountTabs();
++    const buttons = wrapper.findAll("button");
++    expect(buttons.length).toBe(2);
++    const [active, inactive] = buttons;
++    expect(active!.attributes("style")).toContain(
++      "--a2ui-primary-color, #2563eb",
++    );
++    expect(active!.attributes("style")).toContain("border-bottom: 2px solid");
++    expect(inactive!.attributes("style")).toContain(
++      "color: rgb(107, 114, 128)",
++    );
++    expect(inactive!.attributes("style")).toContain("transition");
++  });
++
++  it("未选中页签 hover 加深为近黑色", async () => {
++    const { wrapper } = mountTabs();
++    const inactive = wrapper.findAll("button")[1]!;
++    await inactive.trigger("mouseenter");
++    expect(inactive.attributes("style")).toContain("color: rgb(17, 24, 39)");
++    await inactive.trigger("mouseleave");
++    expect(inactive.attributes("style")).toContain(
++      "color: rgb(107, 114, 128)",
++    );
++  });
++
++  it("点击切换页签内容仍然工作", async () => {
++    const { wrapper } = mountTabs();
++    expect(wrapper.text()).toContain("内容一");
++    await wrapper.findAll("button")[1]!.trigger("click");
++    expect(wrapper.text()).toContain("内容二");
++  });
++
++  it("空 tabs 渲染弱化占位而非空白", () => {
++    const { wrapper } = mountTabs([]);
++    expect(wrapper.text()).toContain("No tabs");
++    const placeholder = wrapper
++      .findAll("div")
++      .find((d) => (d.text() ?? "").includes("No tabs"));
++    expect(placeholder!.attributes("style")).toContain(
++      "color: rgb(107, 114, 128)",
++    );
++  });
++});
++
++describe("A2UI catalog polish — Modal", () => {
++  const mountModal = () =>
++    mountSurface([
++      { component: "Modal", id: "root", trigger: "trg", content: "body" },
++      { component: "Text", id: "trg", text: "打开" },
++      { component: "Text", id: "body", text: "弹层正文" },
++    ]);
++
++  it("打开后：role=dialog + aria-modal，深藍灰半透明背板 + 毛玻璃", async () => {
++    const { wrapper } = mountModal();
++    expect(wrapper.text()).not.toContain("弹层正文");
++    const trigger = wrapper
++      .findAll("div")
++      .find(
++        (d) =>
++          d.text() === "打开" &&
++          (d.attributes("style") ?? "").includes("cursor: pointer"),
++      )!;
++    await trigger.trigger("click");
++    const dialog = wrapper.find("[role=dialog]");
++    expect(dialog.exists()).toBe(true);
++    expect(dialog.attributes("aria-modal")).toBe("true");
++    const backdrop = wrapper.find(".a2ui-modal-backdrop");
++    expect(backdrop.exists()).toBe(true);
++    expect(backdrop.attributes("style")).toContain("rgba(15, 23, 42, 0.5)");
++    // 注：backdrop-filter 毛玻璃在源码中保留，jsdom 不支持该属性故不在此断言。
++  });
++
++  it("面板 12px 圆角 + 双层阴影 + pop-in 动画类", async () => {
++    const { wrapper } = mountModal();
++    const trigger = wrapper
++      .findAll("div")
++      .find(
++        (d) =>
++          d.text() === "打开" &&
++          (d.attributes("style") ?? "").includes("cursor: pointer"),
++      )!;
++    await trigger.trigger("click");
++    const panel = wrapper.find(".a2ui-modal-panel");
++    expect(panel.exists()).toBe(true);
++    const style = panel.attributes("style") ?? "";
++    expect(style).toContain("border-radius: 12px");
++    expect(style).toContain("0 20px 25px -5px");
++  });
++
++  it("ESC 关闭弹层；关闭按钮有 aria-label 与 hover 态", async () => {
++    const { wrapper } = mountModal();
++    const trigger = wrapper
++      .findAll("div")
++      .find(
++        (d) =>
++          d.text() === "打开" &&
++          (d.attributes("style") ?? "").includes("cursor: pointer"),
++      )!;
++    await trigger.trigger("click");
++    expect(wrapper.find("[role=dialog]").exists()).toBe(true);
++
++    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
++    await wrapper.vm.$nextTick();
++    expect(wrapper.find("[role=dialog]").exists()).toBe(false);
++
++    // 重开验证关闭按钮
++    await trigger.trigger("click");
++    const close = wrapper.find("button[aria-label=Close]");
++    expect(close.exists()).toBe(true);
++    await close.trigger("mouseenter");
++    expect(close.attributes("style")).toContain(
++      "background-color: rgb(243, 244, 246)",
++    );
++  });
++
++  it("静态动画样式表只注入一次且内容固定", async () => {
++    mountModal();
++    mountModal();
++    const tags = document.querySelectorAll("#a2ui-vue-catalog-styles");
++    expect(tags.length).toBe(1);
++    const css = tags[0]!.textContent ?? "";
++    expect(css).toContain("@keyframes a2ui-pop-in");
++    expect(css).toContain("@keyframes a2ui-fade-in");
++  });
++});
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogText.test.ts b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogText.test.ts
+new file mode 100644
+index 0000000..9daa086
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/catalogText.test.ts
+@@ -0,0 +1,99 @@
++import { describe, expect, it, vi } from "vitest";
++import { mountSurface } from "./helpers";
++
++/**
++ * P-VISION-POLISH A：Text 排版层级 + Divider 弱化 + 未知组件降级占位。
++ * 目标（MASTER-PROMPT §9）：成熟 SaaS 视觉层级，而非浏览器默认样式/Demo 感。
++ */
++describe("A2UI catalog polish — Text typography", () => {
++  it("h1~h5 有明确的字号/字重/行高层级（非浏览器默认）", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["h1", "h2", "h3"] },
++      { component: "Text", id: "h1", text: "标题一", variant: "h1" },
++      { component: "Text", id: "h2", text: "标题二", variant: "h2" },
++      { component: "Text", id: "h3", text: "标题三", variant: "h3" },
++    ]);
++
++    const h1 = wrapper.find("h1");
++    const h2 = wrapper.find("h2");
++    const h3 = wrapper.find("h3");
++    expect(h1.exists()).toBe(true);
++
++    const s1 = h1.attributes("style") ?? "";
++    const s2 = h2.attributes("style") ?? "";
++    const s3 = h3.attributes("style") ?? "";
++    // 明确层级：24/20/18，字重 700/600/600，颜色使用 token 而非继承
++    expect(s1).toContain("font-size: 24px");
++    expect(s1).toContain("font-weight: 700");
++    expect(s1).toContain("line-height: 1.3");
++    expect(s2).toContain("font-size: 20px");
++    expect(s2).toContain("font-weight: 600");
++    expect(s3).toContain("font-size: 18px");
++    // 标题颜色为近黑 token
++    expect(s1).toContain("color: rgb(17, 24, 39)");
++  });
++
++  it("body/caption 使用正文字号与弱化色 token", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["body", "cap"] },
++      { component: "Text", id: "body", text: "正文" },
++      { component: "Text", id: "cap", text: "注释", variant: "caption" },
++    ]);
++
++    const body = wrapper.find("span");
++    const cap = wrapper.find("small");
++    expect(body.attributes("style") ?? "").toContain("font-size: 14px");
++    expect(body.attributes("style") ?? "").toContain("line-height: 1.6");
++    expect(cap.attributes("style") ?? "").toContain("font-size: 12px");
++    expect(cap.attributes("style") ?? "").toContain(
++      "color: rgb(107, 114, 128)",
++    );
++  });
++});
++
++describe("A2UI catalog polish — Divider", () => {
++  it("分隔线使用弱化边框色（#e5e7eb）而非粗糙 #ccc", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["d"] },
++      { component: "Divider", id: "d" },
++    ]);
++    const divider = wrapper
++      .findAll("div")
++      .find((d) => (d.attributes("style") ?? "").includes("height: 1px"));
++    expect(divider).toBeDefined();
++    const style = divider!.attributes("style") ?? "";
++    expect(style).toContain("rgb(229, 231, 235)");
++    expect(style).not.toContain("rgb(204, 204, 204)");
++  });
++});
++
++describe("A2UI catalog polish — unknown component placeholder", () => {
++  it("未知组件渲染为警示 chip（虚线边框+浅黄底）而非裸红字，且保留 console.warn", () => {
++    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["ghost", "ok"] },
++      { component: "Gauge", id: "ghost", value: 1 },
++      { component: "Text", id: "ok", text: "存活" },
++    ]);
++
++    expect(wrapper.text()).toContain("存活");
++    expect(wrapper.text()).toContain("Unknown component: Gauge");
++
++    const placeholder = wrapper
++      .findAll("div")
++      .find(
++        (d) =>
++          d.element.children.length === 0 &&
++          (d.text() ?? "").includes("Unknown component: Gauge"),
++      );
++    expect(placeholder).toBeDefined();
++    const style = placeholder!.attributes("style") ?? "";
++    expect(style).toContain("dashed");
++    expect(style).toContain("rgb(255, 251, 235)"); // #fffbeb 浅黄底
++    expect(style).not.toMatch(/color:\s*red/);
++    expect(warn.mock.calls.some((c) => String(c[0]).includes("Gauge"))).toBe(
++      true,
++    );
++    warn.mockRestore();
++  });
++});
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/helpers.ts b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/helpers.ts
+new file mode 100644
+index 0000000..68583f9
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/helpers.ts
+@@ -0,0 +1,35 @@
++/**
++ * Test helpers for the Vue A2UI basic catalog.
++ *
++ * Builds a real SurfaceModel (no mocks of the core binding path) and mounts
++ * the real A2uiSurface so tests exercise the same render pipeline as prod.
++ */
++import { mount, type VueWrapper } from "@vue/test-utils";
++import {
++  SurfaceModel,
++  ComponentModel,
++} from "@a2ui/web_core/v0_9";
++import { A2uiSurface } from "../VueSurface";
++import { vueBasicCatalog } from "../catalog";
++import type { VueComponentImplementation } from "../adapter";
++
++export interface TestComponentSpec {
++  component: string;
++  id: string;
++  [prop: string]: unknown;
++}
++
++export function mountSurface(components: TestComponentSpec[]): {
++  wrapper: VueWrapper;
++  surface: SurfaceModel<VueComponentImplementation>;
++} {
++  const surface = new SurfaceModel("test-surface", vueBasicCatalog);
++  for (const spec of components) {
++    const { component, id, ...props } = spec;
++    surface.componentsModel.addComponent(
++      new ComponentModel(id, component, props),
++    );
++  }
++  const wrapper = mount(A2uiSurface, { props: { surface } });
++  return { wrapper, surface };
++}
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/vueSurfaceShimmer.test.ts b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/vueSurfaceShimmer.test.ts
+new file mode 100644
+index 0000000..63cbc7d
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/__tests__/vueSurfaceShimmer.test.ts
+@@ -0,0 +1,32 @@
++import { describe, expect, it } from "vitest";
++import { mountSurface } from "./helpers";
++
++/**
++ * P-VISION-POLISH F：流式 shimmer 占位 —— keyframes 移到共享静态样式表。
++ * 修复点：原实现每个 shimmer 实例经 innerHTML 注入一份重复 <style>
++ * （渲染面内唯一 innerHTML 使用点），N 个流式组件 = N 份重复样式。
++ */
++describe("A2UI catalog polish — streaming shimmer placeholder", () => {
++  it("未就绪组件渲染 shimmer：class 化动画，无 innerHTML style 子节点", () => {
++    const { wrapper } = mountSurface([
++      { component: "Column", id: "root", children: ["ghost", "ok"] },
++      { component: "Text", id: "ok", text: "已就绪" },
++      // ghost 组件尚未到达 → shimmer 占位
++    ]);
++
++    const shimmer = wrapper.find(".a2ui-shimmer");
++    expect(shimmer.exists()).toBe(true);
++    expect(shimmer.classes()).toContain("a2ui-shimmer");
++    // 不再内嵌 <style> 子节点（keyframes 由共享样式表提供）
++    expect(shimmer.element.querySelector("style")).toBeNull();
++    expect(shimmer.element.innerHTML).toBe("");
++
++    // 共享静态样式表包含 shimmer keyframes，且全文档只注入一次
++    const tags = document.querySelectorAll("#a2ui-vue-catalog-styles");
++    expect(tags.length).toBe(1);
++    expect(tags[0]!.textContent ?? "").toContain("@keyframes a2ui-shimmer");
++
++    // 正常组件照渲染
++    expect(wrapper.text()).toContain("已就绪");
++  });
++});
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/catalog.ts b/packages/copilotkit-vue/src/v2/components/a2ui/catalog.ts
+index 7a68599..a215460 100644
+--- a/packages/copilotkit-vue/src/v2/components/a2ui/catalog.ts
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/catalog.ts
+@@ -5,7 +5,7 @@
+  * mirroring the React renderer's catalog/basic/.
+  */
+ 
+-import { h, ref, type CSSProperties, type VNode } from "vue";
++import { h, ref, watch, onUnmounted, type CSSProperties, type VNode } from "vue";
+ import { Catalog } from "@a2ui/web_core/v0_9";
+ import {
+   TextApi,
+@@ -32,14 +32,23 @@ import {
+ import { createVueComponent, type VueComponentImplementation } from "./adapter";
+ import {
+   LEAF_MARGIN,
+-  STANDARD_BORDER,
+-  STANDARD_RADIUS,
++  A2UI_PALETTE,
++  A2UI_PRIMARY,
++  A2UI_PRIMARY_HOVER,
++  A2UI_PRIMARY_SOFT,
++  getA2uiInputStyle,
++  getA2uiLabelStyle,
++  getA2uiErrorTextStyle,
+   getBaseLeafStyle,
+   getBaseContainerStyle,
++  ensureA2uiCatalogStyles,
+   mapJustify,
+   mapAlign,
+ } from "./utils";
+ 
++// Static keyframes for modal/dialog transitions (fixed content, injected once).
++ensureA2uiCatalogStyles();
++
+ // -- Helper: render a child list (arrays of { id, basePath } or string IDs) --
+ function renderChildList(
+   childList: unknown,
+@@ -72,63 +81,134 @@ function useA2UIUniqueId(): string {
+ 
+ const Text = createVueComponent(TextApi, ({ props }) => {
+   const text = props.text ?? "";
+-  const style = { ...getBaseLeafStyle(), display: "inline-block" };
++  // Typographic scale (polish 2026-08-16): explicit size/weight/line-height
++  // per variant — no reliance on browser default heading styles.
++  const base = { ...getBaseLeafStyle(), display: "inline-block" } as const;
++  const heading = (
++    fontSize: string,
++    fontWeight: string,
++    lineHeight: string,
++  ): CSSProperties => ({
++    ...base,
++    fontSize,
++    fontWeight,
++    lineHeight,
++    color: A2UI_PALETTE.text,
++  });
+ 
+   switch (props.variant) {
+     case "h1":
+-      return h("h1", { style }, text);
++      return h("h1", { style: heading("24px", "700", "1.3") }, text);
+     case "h2":
+-      return h("h2", { style }, text);
++      return h("h2", { style: heading("20px", "600", "1.35") }, text);
+     case "h3":
+-      return h("h3", { style }, text);
++      return h("h3", { style: heading("18px", "600", "1.4") }, text);
+     case "h4":
+-      return h("h4", { style }, text);
++      return h("h4", { style: heading("16px", "600", "1.4") }, text);
+     case "h5":
+-      return h("h5", { style }, text);
++      return h("h5", { style: heading("14px", "600", "1.5") }, text);
+     case "caption":
+       return h(
+         "small",
+-        { style: { ...style, color: "#666", textAlign: "left" } },
++        {
++          style: {
++            ...base,
++            fontSize: "12px",
++            lineHeight: "1.5",
++            color: A2UI_PALETTE.textMuted,
++            textAlign: "left",
++          },
++        },
+         text,
+       );
+     case "body":
+     default:
+-      return h("span", { style }, text);
++      return h(
++        "span",
++        {
++          style: {
++            ...base,
++            fontSize: "14px",
++            lineHeight: "1.6",
++            color: A2UI_PALETTE.textSecondary,
++          },
++        },
++        text,
++      );
+   }
+ });
+ 
+-const Image = createVueComponent(ImageApi, ({ props }) => {
+-  const mapFit = (fit?: string): string => {
+-    if (fit === "scaleDown") return "scale-down";
+-    return fit || "fill";
+-  };
++const Image = createVueComponent(
++  ImageApi,
++  ({ props, state }) => {
++    const mapFit = (fit?: string): string => {
++      if (fit === "scaleDown") return "scale-down";
++      return fit || "fill";
++    };
+ 
+-  const style: CSSProperties = {
+-    ...getBaseLeafStyle(),
+-    objectFit: mapFit(props.fit) as CSSProperties["objectFit"],
+-    width: "100%",
+-    height: "auto",
+-    display: "block",
+-  };
++    // Missing URL or failed load → calm placeholder instead of a broken icon.
++    if (!props.url || state.errored.value) {
++      return h(
++        "div",
++        {
++          style: {
++            ...getBaseLeafStyle(),
++            padding: "16px",
++            border: `1px dashed ${A2UI_PALETTE.borderStrong}`,
++            borderRadius: "8px",
++            backgroundColor: A2UI_PALETTE.surfaceSunken,
++            color: A2UI_PALETTE.textMuted,
++            fontSize: "12px",
++            lineHeight: "1.4",
++          },
++        },
++        props.description ? props.description : "Image unavailable",
++      );
++    }
+ 
+-  if (props.variant === "icon") {
+-    style.width = "24px";
+-    style.height = "24px";
+-  } else if (props.variant === "avatar") {
+-    style.width = "40px";
+-    style.height = "40px";
+-    style.borderRadius = "50%";
+-  } else if (props.variant === "smallFeature") {
+-    style.maxWidth = "100px";
+-  } else if (props.variant === "largeFeature") {
+-    style.maxHeight = "400px";
+-  } else if (props.variant === "header") {
+-    style.height = "200px";
+-    style.objectFit = "cover";
+-  }
++    const style: CSSProperties = {
++      ...getBaseLeafStyle(),
++      objectFit: mapFit(props.fit) as CSSProperties["objectFit"],
++      width: "100%",
++      height: "auto",
++      display: "block",
++      // Sunken backdrop while the image streams in.
++      backgroundColor: "#f3f4f6",
++    };
+ 
+-  return h("img", { src: props.url, alt: props.description || "", style });
+-});
++    if (props.variant === "icon") {
++      style.width = "24px";
++      style.height = "24px";
++      style.backgroundColor = "transparent";
++    } else if (props.variant === "avatar") {
++      style.width = "40px";
++      style.height = "40px";
++      style.borderRadius = "50%";
++    } else if (props.variant === "smallFeature") {
++      style.maxWidth = "100px";
++      style.borderRadius = "8px";
++    } else if (props.variant === "mediumFeature") {
++      style.borderRadius = "8px";
++    } else if (props.variant === "largeFeature") {
++      style.maxHeight = "400px";
++      style.borderRadius = "8px";
++    } else if (props.variant === "header") {
++      style.height = "200px";
++      style.objectFit = "cover";
++      style.borderRadius = "8px";
++    }
++
++    return h("img", {
++      src: props.url,
++      alt: props.description || "",
++      style,
++      onError: () => {
++        state.errored.value = true;
++      },
++    });
++  },
++  () => ({ errored: ref(false) }),
++);
+ 
+ const Icon = createVueComponent(IconApi, ({ props }) => {
+   const iconName =
+@@ -153,6 +233,8 @@ const Video = createVueComponent(VideoApi, ({ props }) => {
+     ...getBaseLeafStyle(),
+     width: "100%",
+     aspectRatio: "16/9",
++    borderRadius: "8px",
++    backgroundColor: "#111827",
+   };
+ 
+   return h("video", { src: props.url, controls: true, style });
+@@ -175,7 +257,7 @@ const AudioPlayer = createVueComponent(AudioPlayerApi, ({ props }) => {
+       props.description
+         ? h(
+             "span",
+-            { style: { fontSize: "12px", color: "#666" } },
++            { style: { fontSize: "12px", color: A2UI_PALETTE.textMuted } },
+             props.description,
+           )
+         : null,
+@@ -236,22 +318,65 @@ const List = createVueComponent(ListApi, ({ props, buildChild }) => {
+   return h("div", { style }, renderChildList(props.children, buildChild));
+ });
+ 
+-const Card = createVueComponent(CardApi, ({ props, buildChild }) => {
+-  const style = {
+-    ...getBaseContainerStyle(),
+-    backgroundColor: "#fff",
+-    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+-    width: "100%",
+-  };
++const Card = createVueComponent(
++  CardApi,
++  ({ props, buildChild, state }) => {
++    // Elevated surface: subtle resting shadow, gentle lift on hover.
++    const style = {
++      ...getBaseContainerStyle(),
++      backgroundColor: A2UI_PALETTE.surface,
++      border: `1px solid ${A2UI_PALETTE.border}`,
++      borderRadius: "12px",
++      boxShadow: state.hovered.value
++        ? "0 4px 12px rgba(16, 24, 40, 0.08)"
++        : "0 1px 2px rgba(16, 24, 40, 0.05)",
++      transition: "box-shadow 0.2s ease",
++      width: "100%",
++    };
+ 
+-  return h("div", { style }, [props.child ? buildChild(props.child) : null]);
+-});
++    return h(
++      "div",
++      {
++        style,
++        onMouseenter: () => {
++          state.hovered.value = true;
++        },
++        onMouseleave: () => {
++          state.hovered.value = false;
++        },
++      },
++      [props.child ? buildChild(props.child) : null],
++    );
++  },
++  () => ({ hovered: ref(false) }),
++);
+ 
+ const Tabs = createVueComponent(
+   TabsApi,
+   ({ props, buildChild, state }) => {
+     const tabs = props.tabs || [];
+ 
++    // Empty state (can occur mid-stream before tabs arrive).
++    if (tabs.length === 0) {
++      return h(
++        "div",
++        {
++          style: {
++            margin: LEAF_MARGIN,
++            padding: "12px 16px",
++            fontSize: "13px",
++            color: A2UI_PALETTE.textMuted,
++            backgroundColor: A2UI_PALETTE.surfaceSunken,
++            borderRadius: "8px",
++          },
++        },
++        "No tabs",
++      );
++    }
++
++    // Clamp the selection in case the tab list shrank after selection.
++    const selected = Math.min(state.selectedIndex.value, tabs.length - 1);
++
+     return h(
+       "div",
+       {
+@@ -266,10 +391,12 @@ const Tabs = createVueComponent(
+         h(
+           "div",
+           {
++            role: "tablist",
+             style: {
+               display: "flex",
+-              borderBottom: "1px solid #ccc",
+-              marginBottom: "8px",
++              gap: "4px",
++              borderBottom: `1px solid ${A2UI_PALETTE.border}`,
++              marginBottom: "12px",
+             },
+           },
+           tabs.map((tab, i: number) => {
+@@ -277,28 +404,40 @@ const Tabs = createVueComponent(
+               typeof tab.title === "string"
+                 ? tab.title
+                 : String(tab.title ?? "");
++            const isSelected = selected === i;
++            const isHovered = state.hoveredIndex.value === i && !isSelected;
+             return h(
+               "button",
+               {
+                 key: i,
++                role: "tab",
++                "aria-selected": isSelected ? "true" : "false",
+                 onClick: () => {
+                   state.selectedIndex.value = i;
+                 },
++                onMouseenter: () => {
++                  state.hoveredIndex.value = i;
++                },
++                onMouseleave: () => {
++                  state.hoveredIndex.value = null;
++                },
+                 style: {
+-                  padding: "8px 16px",
++                  padding: "8px 12px",
+                   border: "none",
+                   background: "none",
+-                  borderBottom:
+-                    state.selectedIndex.value === i
+-                      ? "2px solid var(--a2ui-primary-color, #007bff)"
+-                      : "none",
+-                  fontWeight:
+-                    state.selectedIndex.value === i ? "bold" : "normal",
++                  marginBottom: "-1px",
++                  borderBottom: isSelected
++                    ? `2px solid ${A2UI_PRIMARY}`
++                    : "2px solid transparent",
++                  fontSize: "14px",
++                  fontWeight: isSelected ? "600" : "500",
+                   cursor: "pointer",
+-                  color:
+-                    state.selectedIndex.value === i
+-                      ? "var(--a2ui-primary-color, #007bff)"
+-                      : "inherit",
++                  color: isSelected
++                    ? A2UI_PRIMARY
++                    : isHovered
++                      ? A2UI_PALETTE.text
++                      : A2UI_PALETTE.textMuted,
++                  transition: "color 0.15s ease, border-color 0.15s ease",
+                 },
+               },
+               title,
+@@ -306,14 +445,15 @@ const Tabs = createVueComponent(
+           }),
+         ),
+         h("div", { style: { flex: "1" } }, [
+-          tabs[state.selectedIndex.value]?.child
+-            ? buildChild(tabs[state.selectedIndex.value]!.child)
+-            : null,
++          tabs[selected]?.child ? buildChild(tabs[selected]!.child) : null,
+         ]),
+       ],
+     );
+   },
+-  () => ({ selectedIndex: ref(0) }),
++  () => ({
++    selectedIndex: ref(0),
++    hoveredIndex: ref<number | null>(null),
++  }),
+ );
+ 
+ const Divider = createVueComponent(DividerApi, ({ props }) => {
+@@ -321,7 +461,7 @@ const Divider = createVueComponent(DividerApi, ({ props }) => {
+   const style: Record<string, string> = {
+     margin: LEAF_MARGIN,
+     border: "none",
+-    backgroundColor: "#ccc",
++    backgroundColor: A2UI_PALETTE.border,
+   };
+ 
+   if (isVertical) {
+@@ -345,7 +485,7 @@ const Modal = createVueComponent(
+           onClick: () => {
+             state.isOpen.value = true;
+           },
+-          style: { display: "inline-block" },
++          style: { display: "inline-block", cursor: "pointer" },
+         },
+         [props.trigger ? buildChild(props.trigger) : null],
+       ),
+@@ -353,13 +493,15 @@ const Modal = createVueComponent(
+         ? h(
+             "div",
+             {
++              class: "a2ui-modal-backdrop",
+               style: {
+                 position: "fixed",
+                 top: "0",
+                 left: "0",
+                 right: "0",
+                 bottom: "0",
+-                backgroundColor: "rgba(0,0,0,0.5)",
++                backgroundColor: "rgba(15, 23, 42, 0.5)",
++                backdropFilter: "blur(2px)",
+                 display: "flex",
+                 alignItems: "center",
+                 justifyContent: "center",
+@@ -373,10 +515,15 @@ const Modal = createVueComponent(
+               h(
+                 "div",
+                 {
++                  class: "a2ui-modal-panel",
++                  role: "dialog",
++                  "aria-modal": "true",
+                   style: {
+-                    backgroundColor: "#fff",
++                    backgroundColor: A2UI_PALETTE.surface,
+                     padding: "24px",
+-                    borderRadius: "8px",
++                    borderRadius: "12px",
++                    boxShadow:
++                      "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                     maxWidth: "90%",
+                     maxHeight: "90%",
+                     overflow: "auto",
+@@ -393,15 +540,28 @@ const Modal = createVueComponent(
+                       h(
+                         "button",
+                         {
++                          "aria-label": "Close",
+                           onClick: () => {
+                             state.isOpen.value = false;
+                           },
++                          onMouseenter: () => {
++                            state.closeHovered.value = true;
++                          },
++                          onMouseleave: () => {
++                            state.closeHovered.value = false;
++                          },
+                           style: {
+                             border: "none",
+-                            background: "none",
+-                            fontSize: "20px",
++                            backgroundColor: state.closeHovered.value
++                              ? "#f3f4f6"
++                              : "transparent",
++                            borderRadius: "6px",
++                            color: A2UI_PALETTE.textMuted,
++                            fontSize: "18px",
++                            lineHeight: "1",
+                             cursor: "pointer",
+-                            padding: "4px",
++                            padding: "6px 8px",
++                            transition: "background-color 0.15s ease",
+                           },
+                         },
+                         "\u00D7",
+@@ -418,39 +578,111 @@ const Modal = createVueComponent(
+         : null,
+     ]);
+   },
+-  () => ({ isOpen: ref(false) }),
++  () => {
++    const isOpen = ref(false);
++    const closeHovered = ref(false);
++    // ESC closes the dialog; listener only attached while open.
++    const onKeydown = (e: KeyboardEvent) => {
++      if (e.key === "Escape") isOpen.value = false;
++    };
++    watch(isOpen, (open) => {
++      if (typeof document === "undefined") return;
++      if (open) {
++        document.addEventListener("keydown", onKeydown);
++      } else {
++        document.removeEventListener("keydown", onKeydown);
++      }
++    });
++    onUnmounted(() => {
++      if (typeof document !== "undefined") {
++        document.removeEventListener("keydown", onKeydown);
++      }
++    });
++    return { isOpen, closeHovered };
++  },
+ );
+ 
+-const Button = createVueComponent(ButtonApi, ({ props, buildChild }) => {
+-  const style = {
+-    margin: LEAF_MARGIN,
+-    padding: "8px 16px",
+-    cursor: "pointer",
+-    border: props.variant === "borderless" ? "none" : "1px solid #ccc",
+-    backgroundColor:
+-      props.variant === "primary"
+-        ? "var(--a2ui-primary-color, #007bff)"
+-        : props.variant === "borderless"
+-          ? "transparent"
+-          : "#fff",
+-    color: props.variant === "primary" ? "#fff" : "inherit",
+-    borderRadius: "4px",
+-    display: "inline-flex",
+-    alignItems: "center",
+-    justifyContent: "center",
+-    boxSizing: "border-box",
+-  };
++const Button = createVueComponent(
++  ButtonApi,
++  ({ props, buildChild, state }) => {
++    // Variant tokens + full interaction states (hover/pressed/disabled).
++    const disabled = props.isValid === false;
++    const hovered = state.hovered.value && !disabled;
++    const pressed = state.pressed.value && !disabled;
+ 
+-  return h(
+-    "button",
+-    {
+-      style,
+-      onClick: props.action,
+-      disabled: props.isValid === false,
+-    },
+-    [props.child ? buildChild(props.child) : null],
+-  );
+-});
++    const palette = (() => {
++      if (props.variant === "primary") {
++        return {
++          backgroundColor: pressed
++            ? A2UI_PRIMARY_HOVER
++            : hovered
++              ? A2UI_PRIMARY_HOVER
++              : A2UI_PRIMARY,
++          border: "none",
++          color: "#ffffff",
++        };
++      }
++      if (props.variant === "borderless") {
++        return {
++          backgroundColor:
++            hovered || pressed ? "rgba(17, 24, 39, 0.04)" : "transparent",
++          border: "none",
++          color: A2UI_PALETTE.textSecondary,
++        };
++      }
++      return {
++        backgroundColor:
++          pressed || hovered
++            ? A2UI_PALETTE.surfaceSunken
++            : A2UI_PALETTE.surface,
++        border: `1px solid ${A2UI_PALETTE.borderStrong}`,
++        color: A2UI_PALETTE.textSecondary,
++      };
++    })();
++
++    const style = {
++      margin: LEAF_MARGIN,
++      padding: "8px 16px",
++      cursor: disabled ? "not-allowed" : "pointer",
++      ...palette,
++      borderRadius: "8px",
++      fontSize: "14px",
++      fontWeight: "500",
++      lineHeight: "1.25",
++      opacity: disabled ? "0.5" : "1",
++      display: "inline-flex",
++      alignItems: "center",
++      justifyContent: "center",
++      boxSizing: "border-box",
++      transition:
++        "background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
++    };
++
++    return h(
++      "button",
++      {
++        style,
++        onClick: props.action,
++        disabled,
++        onMouseenter: () => {
++          state.hovered.value = true;
++        },
++        onMouseleave: () => {
++          state.hovered.value = false;
++          state.pressed.value = false;
++        },
++        onMousedown: () => {
++          state.pressed.value = true;
++        },
++        onMouseup: () => {
++          state.pressed.value = false;
++        },
++      },
++      [props.child ? buildChild(props.child) : null],
++    );
++  },
++  () => ({ hovered: ref(false), pressed: ref(false) }),
++);
+ 
+ const TextField = createVueComponent(
+   TextFieldApi,
+@@ -464,19 +696,25 @@ const TextField = createVueComponent(
+           ? "password"
+           : "text";
+ 
+-    const inputStyle = {
+-      padding: "8px",
+-      width: "100%",
+-      border:
+-        props.validationErrors && props.validationErrors.length > 0
+-          ? "1px solid red"
+-          : STANDARD_BORDER,
+-      borderRadius: STANDARD_RADIUS,
+-      boxSizing: "border-box",
+-    };
+-
+     const hasError =
+       props.validationErrors && props.validationErrors.length > 0;
++    const inputStyle = getA2uiInputStyle({
++      hasError,
++      focused: state.focused.value,
++    });
++    if (isLong) {
++      inputStyle.minHeight = "72px";
++      inputStyle.resize = "vertical";
++    }
++
++    const focusHandlers = {
++      onFocus: () => {
++        state.focused.value = true;
++      },
++      onBlur: () => {
++        state.focused.value = false;
++      },
++    };
+ 
+     return h(
+       "div",
+@@ -484,7 +722,7 @@ const TextField = createVueComponent(
+         style: {
+           display: "flex",
+           flexDirection: "column",
+-          gap: "4px",
++          gap: "6px",
+           width: "100%",
+           margin: LEAF_MARGIN,
+         },
+@@ -493,10 +731,7 @@ const TextField = createVueComponent(
+         props.label
+           ? h(
+               "label",
+-              {
+-                for: uniqueId,
+-                style: { fontSize: "14px", fontWeight: "bold" },
+-              },
++              { for: uniqueId, style: getA2uiLabelStyle() },
+               props.label,
+             )
+           : null,
+@@ -507,6 +742,7 @@ const TextField = createVueComponent(
+               value: props.value || "",
+               onInput: (e: Event) =>
+                 props.setValue((e.target as HTMLTextAreaElement).value),
++              ...focusHandlers,
+             })
+           : h("input", {
+               id: uniqueId,
+@@ -515,18 +751,15 @@ const TextField = createVueComponent(
+               value: props.value || "",
+               onInput: (e: Event) =>
+                 props.setValue((e.target as HTMLInputElement).value),
++              ...focusHandlers,
+             }),
+         hasError
+-          ? h(
+-              "span",
+-              { style: { fontSize: "12px", color: "red" } },
+-              props.validationErrors![0],
+-            )
++          ? h("span", { style: getA2uiErrorTextStyle() }, props.validationErrors![0])
+           : null,
+       ],
+     );
+   },
+-  () => ({ id: useA2UIUniqueId() }),
++  () => ({ id: useA2UIUniqueId(), focused: ref(false) }),
+ );
+ 
+ const CheckBox = createVueComponent(
+@@ -558,7 +791,12 @@ const CheckBox = createVueComponent(
+                 props.setValue((e.target as HTMLInputElement).checked),
+               style: {
+                 cursor: "pointer",
+-                outline: hasError ? "1px solid red" : "none",
++                width: "16px",
++                height: "16px",
++                accentColor: A2UI_PRIMARY,
++                outline: hasError
++                  ? `1px solid ${A2UI_PALETTE.danger}`
++                  : "none",
+               },
+             }),
+             props.label
+@@ -568,7 +806,10 @@ const CheckBox = createVueComponent(
+                     for: uniqueId,
+                     style: {
+                       cursor: "pointer",
+-                      color: hasError ? "red" : "inherit",
++                      fontSize: "14px",
++                      color: hasError
++                        ? A2UI_PALETTE.danger
++                        : A2UI_PALETTE.textSecondary,
+                     },
+                   },
+                   props.label,
+@@ -579,9 +820,7 @@ const CheckBox = createVueComponent(
+         hasError
+           ? h(
+               "span",
+-              {
+-                style: { fontSize: "12px", color: "red", marginTop: "4px" },
+-              },
++              { style: { ...getA2uiErrorTextStyle(), marginTop: "4px" } },
+               props.validationErrors?.[0],
+             )
+           : null,
+@@ -634,7 +873,7 @@ const ChoicePicker = createVueComponent(
+       },
+       [
+         props.label
+-          ? h("strong", { style: { fontSize: "14px" } }, props.label)
++          ? h("span", { style: getA2uiLabelStyle() }, props.label)
+           : null,
+         props.filterable
+           ? h("input", {
+@@ -644,11 +883,13 @@ const ChoicePicker = createVueComponent(
+               onInput: (e: Event) => {
+                 state.filter.value = (e.target as HTMLInputElement).value;
+               },
+-              style: {
+-                padding: "4px 8px",
+-                border: STANDARD_BORDER,
+-                borderRadius: STANDARD_RADIUS,
++              onFocus: () => {
++                state.filterFocused.value = true;
++              },
++              onBlur: () => {
++                state.filterFocused.value = false;
+               },
++              style: getA2uiInputStyle({ focused: state.filterFocused.value }),
+             })
+           : null,
+         h(
+@@ -663,6 +904,7 @@ const ChoicePicker = createVueComponent(
+           },
+           options.map((opt: ChoiceOption, i: number) => {
+             const isSelected = values.includes(opt.value);
++            const isHovered = state.hovered.value === opt.value;
+             const label =
+               typeof opt.label === "string"
+                 ? opt.label
+@@ -673,18 +915,32 @@ const ChoicePicker = createVueComponent(
+                 {
+                   key: i,
+                   onClick: () => onToggle(opt.value),
++                  onMouseenter: () => {
++                    state.hovered.value = opt.value;
++                  },
++                  onMouseleave: () => {
++                    state.hovered.value = null;
++                  },
+                   style: {
+-                    padding: "4px 12px",
+-                    borderRadius: "16px",
++                    padding: "6px 14px",
++                    borderRadius: "9999px",
+                     border: isSelected
+-                      ? "1px solid var(--a2ui-primary-color, #007bff)"
+-                      : STANDARD_BORDER,
++                      ? `1px solid ${A2UI_PRIMARY}`
++                      : isHovered
++                        ? `1px solid ${A2UI_PRIMARY}`
++                        : `1px solid ${A2UI_PALETTE.borderStrong}`,
+                     backgroundColor: isSelected
+-                      ? "var(--a2ui-primary-color, #007bff)"
+-                      : "#fff",
+-                    color: isSelected ? "#fff" : "inherit",
++                      ? A2UI_PRIMARY
++                      : isHovered
++                        ? A2UI_PRIMARY_SOFT
++                        : A2UI_PALETTE.surface,
++                    color: isSelected ? "#fff" : A2UI_PALETTE.textSecondary,
+                     cursor: "pointer",
+-                    fontSize: "12px",
++                    fontSize: "13px",
++                    fontWeight: "500",
++                    lineHeight: "1.3",
++                    transition:
++                      "background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+                   },
+                 },
+                 label,
+@@ -694,11 +950,23 @@ const ChoicePicker = createVueComponent(
+               "label",
+               {
+                 key: i,
++                onMouseenter: () => {
++                  state.hovered.value = opt.value;
++                },
++                onMouseleave: () => {
++                  state.hovered.value = null;
++                },
+                 style: {
+                   display: "flex",
+                   alignItems: "center",
+                   gap: "8px",
+                   cursor: "pointer",
++                  padding: "6px 8px",
++                  borderRadius: "6px",
++                  backgroundColor: isHovered
++                    ? A2UI_PALETTE.surfaceSunken
++                    : "transparent",
++                  transition: "background-color 0.15s ease",
+                 },
+               },
+               [
+@@ -709,8 +977,23 @@ const ChoicePicker = createVueComponent(
+                   name: isMutuallyExclusive
+                     ? `choice-${context.componentModel.id}`
+                     : undefined,
++                  style: {
++                    cursor: "pointer",
++                    width: "16px",
++                    height: "16px",
++                    accentColor: A2UI_PRIMARY,
++                  },
+                 }),
+-                h("span", { style: { fontSize: "14px" } }, label),
++                h(
++                  "span",
++                  {
++                    style: {
++                      fontSize: "14px",
++                      color: A2UI_PALETTE.textSecondary,
++                    },
++                  },
++                  label,
++                ),
+               ],
+             );
+           }),
+@@ -718,7 +1001,11 @@ const ChoicePicker = createVueComponent(
+       ],
+     );
+   },
+-  () => ({ filter: ref("") }),
++  () => ({
++    filter: ref(""),
++    filterFocused: ref(false),
++    hovered: ref<string | null>(null),
++  }),
+ );
+ 
+ const Slider = createVueComponent(
+@@ -732,7 +1019,7 @@ const Slider = createVueComponent(
+         style: {
+           display: "flex",
+           flexDirection: "column",
+-          gap: "4px",
++          gap: "6px",
+           margin: LEAF_MARGIN,
+           width: "100%",
+         },
+@@ -740,21 +1027,35 @@ const Slider = createVueComponent(
+       [
+         h(
+           "div",
+-          { style: { display: "flex", justifyContent: "space-between" } },
++          {
++            style: {
++              display: "flex",
++              justifyContent: "space-between",
++              alignItems: "center",
++            },
++          },
+           [
+             props.label
+               ? h(
+                   "label",
+-                  {
+-                    for: uniqueId,
+-                    style: { fontSize: "14px", fontWeight: "bold" },
+-                  },
++                  { for: uniqueId, style: getA2uiLabelStyle() },
+                   props.label,
+                 )
+               : null,
++            // Current value rendered as a primary chip (not bare gray text).
+             h(
+               "span",
+-              { style: { fontSize: "12px", color: "#666" } },
++              {
++                style: {
++                  fontSize: "12px",
++                  fontWeight: "600",
++                  fontVariantNumeric: "tabular-nums",
++                  color: A2UI_PRIMARY,
++                  backgroundColor: A2UI_PRIMARY_SOFT,
++                  borderRadius: "6px",
++                  padding: "2px 8px",
++                },
++              },
+               String(props.value),
+             ),
+           ],
+@@ -767,7 +1068,11 @@ const Slider = createVueComponent(
+           value: props.value ?? 0,
+           onInput: (e: Event) =>
+             props.setValue(Number((e.target as HTMLInputElement).value)),
+-          style: { width: "100%", cursor: "pointer" },
++          style: {
++            width: "100%",
++            cursor: "pointer",
++            accentColor: A2UI_PRIMARY,
++          },
+         }),
+       ],
+     );
+@@ -784,21 +1089,13 @@ const DateTimeInput = createVueComponent(
+     if (props.enableDate && !props.enableTime) type = "date";
+     if (!props.enableDate && props.enableTime) type = "time";
+ 
+-    const style = {
+-      padding: "8px",
+-      width: "100%",
+-      border: STANDARD_BORDER,
+-      borderRadius: STANDARD_RADIUS,
+-      boxSizing: "border-box",
+-    };
+-
+     return h(
+       "div",
+       {
+         style: {
+           display: "flex",
+           flexDirection: "column",
+-          gap: "4px",
++          gap: "6px",
+           width: "100%",
+           margin: LEAF_MARGIN,
+         },
+@@ -807,27 +1104,30 @@ const DateTimeInput = createVueComponent(
+         props.label
+           ? h(
+               "label",
+-              {
+-                for: uniqueId,
+-                style: { fontSize: "14px", fontWeight: "bold" },
+-              },
++              { for: uniqueId, style: getA2uiLabelStyle() },
+               props.label,
+             )
+           : null,
+         h("input", {
+           id: uniqueId,
+           type,
+-          style,
++          style: getA2uiInputStyle({ focused: state.focused.value }),
+           value: props.value || "",
+           onInput: (e: Event) =>
+             props.setValue((e.target as HTMLInputElement).value),
++          onFocus: () => {
++            state.focused.value = true;
++          },
++          onBlur: () => {
++            state.focused.value = false;
++          },
+           min: typeof props.min === "string" ? props.min : undefined,
+           max: typeof props.max === "string" ? props.max : undefined,
+         }),
+       ],
+     );
+   },
+-  () => ({ id: useA2UIUniqueId() }),
++  () => ({ id: useA2UIUniqueId(), focused: ref(false) }),
+ );
+ 
+ // ============================================================
+diff --git a/packages/copilotkit-vue/src/v2/components/a2ui/utils.ts b/packages/copilotkit-vue/src/v2/components/a2ui/utils.ts
+index cf459b8..01e405c 100644
+--- a/packages/copilotkit-vue/src/v2/components/a2ui/utils.ts
++++ b/packages/copilotkit-vue/src/v2/components/a2ui/utils.ts
+@@ -17,6 +17,46 @@ export const STANDARD_BORDER = "1px solid #ccc";
+ /** Standard border radius. */
+ export const STANDARD_RADIUS = "8px";
+ 
++/**
++ * Design tokens for the Vue A2UI catalog (dataagent polish, 2026-08-16).
++ * Goal (MASTER-PROMPT §9): mature SaaS look — neutral gray scale, one
++ * primary accent, consistent radii/elevation — instead of browser defaults.
++ */
++export const A2UI_PALETTE = {
++  /** Near-black primary text. */
++  text: "#111827",
++  /** Secondary body text. */
++  textSecondary: "#374151",
++  /** Muted labels/captions. */
++  textMuted: "#6b7280",
++  /** Subtle borders/dividers. */
++  border: "#e5e7eb",
++  /** Input borders (slightly stronger than dividers). */
++  borderStrong: "#d1d5db",
++  /** Card/panel background. */
++  surface: "#ffffff",
++  /** Sunken background (hover fills, loading blocks). */
++  surfaceSunken: "#f9fafb",
++  /** Destructive / validation error. */
++  danger: "#dc2626",
++  /** Warning text. */
++  warningText: "#b45309",
++  /** Warning border. */
++  warningBorder: "#f59e0b",
++  /** Warning soft background. */
++  warningSoft: "#fffbeb",
++} as const;
++
++/** Primary accent — themable via --a2ui-primary-color, refined blue fallback. */
++export const A2UI_PRIMARY = "var(--a2ui-primary-color, #2563eb)";
++/** Primary accent hover — themable via --a2ui-primary-hover-color. */
++export const A2UI_PRIMARY_HOVER = "var(--a2ui-primary-hover-color, #1d4ed8)";
++/** Primary soft fill (selected chips, value badges). */
++export const A2UI_PRIMARY_SOFT = "var(--a2ui-primary-soft-color, #eff6ff)";
++/** Focus ring halo. */
++export const A2UI_FOCUS_RING =
++  "var(--a2ui-primary-focus-ring, rgba(37, 99, 235, 0.15))";
++
+ export const mapJustify = (j?: string): string => {
+   switch (j) {
+     case "center":
+@@ -65,3 +105,91 @@ export const getBaseContainerStyle = (): CSSProperties => ({
+   borderRadius: STANDARD_RADIUS,
+   boxSizing: "border-box",
+ });
++
++/**
++ * Shared form-field style (TextField / DateTimeInput / ChoicePicker filter).
++ * Encodes the focus ring and error border so all inputs behave identically.
++ */
++export const getA2uiInputStyle = (opts: {
++  hasError?: boolean;
++  focused?: boolean;
++}): CSSProperties => ({
++  padding: "8px 12px",
++  width: "100%",
++  fontSize: "14px",
++  lineHeight: "1.4",
++  color: A2UI_PALETTE.text,
++  backgroundColor: A2UI_PALETTE.surface,
++  border: `1px solid ${
++    opts.hasError
++      ? A2UI_PALETTE.danger
++      : opts.focused
++        ? A2UI_PRIMARY
++        : A2UI_PALETTE.borderStrong
++  }`,
++  borderRadius: "8px",
++  boxShadow:
++    !opts.hasError && opts.focused ? `0 0 0 3px ${A2UI_FOCUS_RING}` : "none",
++  outline: "none",
++  boxSizing: "border-box",
++  transition: "border-color 0.15s ease, box-shadow 0.15s ease",
++});
++
++/** Label style shared by form controls. */
++export const getA2uiLabelStyle = (): CSSProperties => ({
++  fontSize: "13px",
++  fontWeight: "500",
++  color: A2UI_PALETTE.textSecondary,
++});
++
++/** Validation error text style. */
++export const getA2uiErrorTextStyle = (): CSSProperties => ({
++  fontSize: "12px",
++  color: A2UI_PALETTE.danger,
++});
++
++/**
++ * Warning chip used for degraded rendering (unknown component / cycle).
++ * Visible and calm — a placeholder, not an error splat.
++ */
++export const getWarningChipStyle = (): CSSProperties => ({
++  padding: "8px 12px",
++  border: `1px dashed ${A2UI_PALETTE.warningBorder}`,
++  borderRadius: "8px",
++  backgroundColor: A2UI_PALETTE.warningSoft,
++  color: A2UI_PALETTE.warningText,
++  fontSize: "12px",
++  lineHeight: "1.4",
++  boxSizing: "border-box",
++});
++
++const A2UI_CATALOG_STYLE_ID = "a2ui-vue-catalog-styles";
++
++/**
++ * Injects the catalog's static keyframes/transition stylesheet once.
++ * Content is a fixed string — never derived from payload data.
++ */
++export function ensureA2uiCatalogStyles(): void {
++  if (typeof document === "undefined") return;
++  if (document.getElementById(A2UI_CATALOG_STYLE_ID)) return;
++  const style = document.createElement("style");
++  style.id = A2UI_CATALOG_STYLE_ID;
++  style.textContent = `
++@keyframes a2ui-fade-in {
++  from { opacity: 0; }
++  to { opacity: 1; }
++}
++@keyframes a2ui-pop-in {
++  from { opacity: 0; transform: translateY(8px) scale(0.98); }
++  to { opacity: 1; transform: translateY(0) scale(1); }
++}
++@keyframes a2ui-shimmer {
++  0% { background-position: 200% 0; }
++  100% { background-position: -200% 0; }
++}
++.a2ui-modal-backdrop { animation: a2ui-fade-in 0.15s ease-out; }
++.a2ui-modal-panel { animation: a2ui-pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
++.a2ui-shimmer { animation: a2ui-shimmer 1.5s ease-in-out infinite; }
++`;
++  document.head.appendChild(style);
++}
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/CopilotChatAssistantMessage.vue b/packages/copilotkit-vue/src/v2/components/chat/CopilotChatAssistantMessage.vue
+index d441237..cf32be9 100644
+--- a/packages/copilotkit-vue/src/v2/components/chat/CopilotChatAssistantMessage.vue
++++ b/packages/copilotkit-vue/src/v2/components/chat/CopilotChatAssistantMessage.vue
+@@ -254,7 +254,7 @@ const MarkdownImage = defineComponent({
+             {
+               type: "button",
+               class:
+-                "cpk:absolute cpk:right-2 cpk:bottom-2 cpk:flex cpk:h-8 cpk:w-8 cpk:cursor-pointer cpk:items-center cpk:justify-center cpk:rounded-md cpk:border cpk:border-border cpk:bg-background/90 cpk:shadow-sm cpk:backdrop-blur-sm cpk:transition-all cpk:duration-200 cpk:hover:bg-background cpk:opacity-0 cpk:group-hover:opacity-100",
++                "cpk:absolute cpk:right-2 cpk:bottom-2 cpk:flex cpk:h-8 cpk:w-8 cpk:cursor-pointer cpk:items-center cpk:justify-center cpk:rounded-md cpk:border cpk:border-border cpk:bg-background/90 cpk:shadow-sm cpk:backdrop-blur-sm cpk:transition-all cpk:duration-200 cpk:hover:bg-background cpk:opacity-0 cpk:group-hover:opacity-100 cpk:pointer-events-none cpk:group-hover:pointer-events-auto", // FORK-PATCH(touch-safe): 隐形时禁 pointer-events,触屏无 hover 不拦截点击
+               title: "Download image",
+               onClick: handleDownload,
+             },
+@@ -743,7 +743,7 @@ onBeforeUnmount(() => {
+     <div
+       data-copilotkit
+       data-testid="copilot-assistant-message"
+-      class="cpk:prose cpk:max-w-full cpk:break-words cpk:dark:prose-invert"
++      class="cpk:prose cpk:max-w-full cpk:break-words cpk:dark:prose-invert cpk:group"
+       :data-message-id="message.id"
+       v-bind="$attrs"
+     >
+@@ -792,7 +792,7 @@ onBeforeUnmount(() => {
+         :should-show-toolbar="shouldShowToolbar"
+       >
+         <div
+-          class="cpk:w-full cpk:bg-transparent cpk:flex cpk:items-center cpk:-ml-[5px] cpk:-mt-[0px]"
++          class="cpk:w-full cpk:bg-transparent cpk:flex cpk:items-center cpk:-ml-[5px] cpk:-mt-[0px] cpk:invisible cpk:group-hover:visible"
+         >
+           <div class="cpk:flex cpk:items-center cpk:gap-1">
+             <slot
+@@ -873,6 +873,7 @@ onBeforeUnmount(() => {
+             >
+               <button
+                 type="button"
++                data-testid="copilot-regenerate-button"
+                 :class="toolbarButtonClass"
+                 :aria-label="labels.assistantMessageToolbarRegenerateLabel"
+                 :title="labels.assistantMessageToolbarRegenerateLabel"
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/CopilotChatInput.vue b/packages/copilotkit-vue/src/v2/components/chat/CopilotChatInput.vue
+index afd0b4b..4219eb8 100644
+--- a/packages/copilotkit-vue/src/v2/components/chat/CopilotChatInput.vue
++++ b/packages/copilotkit-vue/src/v2/components/chat/CopilotChatInput.vue
+@@ -78,7 +78,10 @@ const props = withDefaults(
+     positioning: "static",
+     keyboardHeight: 0,
+     showDisclaimer: undefined,
+-    maxRows: 5,
++    // FORK-PATCH(P-F): default maxRows 5 → 3 —— 与产品输入规范一致(自适应
++    // 增高,超 3 行出滚动条,同欢迎页输入框)。upstream default 为 5;
++    // 升级 re-apply 见 FORK.md 条目 11。
++    maxRows: 3,
+     bottomAnchored: false,
+   },
+ );
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/CopilotChatMessageView.vue b/packages/copilotkit-vue/src/v2/components/chat/CopilotChatMessageView.vue
+index 9054d2d..f9c6e71 100644
+--- a/packages/copilotkit-vue/src/v2/components/chat/CopilotChatMessageView.vue
++++ b/packages/copilotkit-vue/src/v2/components/chat/CopilotChatMessageView.vue
+@@ -341,11 +341,99 @@ function resolveToolMessage(
+       (candidate as ToolMessage).toolCallId === toolCallId,
+   ) as ToolMessage | undefined;
+ }
++
++// ---- P-S: 消息级操作 ----
++
++/** 仅最后一条 assistant 消息且非运行中可重新生成。 */
++function canRegenerate(message: Message): boolean {
++  if (props.isRunning) return false;
++  return props.messages[props.messages.length - 1]?.id === message.id;
++}
++
++/** 重新生成: 截掉该 assistant 回答(及其后残留)后重发 run。 */
++async function handleRegenerate(message: Message) {
++  if (!canRegenerate(message)) return;
++  const agent = resolvedThreadAgent.value;
++  if (!agent) return;
++  const msgs = [...(agent.messages ?? [])];
++  const idx = msgs.findIndex((m) => m.id === message.id);
++  if (idx < 0) return;
++  agent.setMessages(msgs.slice(0, idx));
++  try {
++    await copilotkit.value.runAgent({ agent });
++  } catch {
++    // 失败由 core onError 通道呈现(P-B 错误卡)
++  }
++}
++
++/** 首见时间(live 消息的时间戳来源;history 消息自带 createdAt)。 */
++const firstSeenAt = new Map<string, number>();
++
++/** P-S: 消息时间戳 —— createdAt(history) ?? 首次渲染时间(live)。 */
++function messageTimeLabel(message: Message): string {
++  const m = message as Message & { createdAt?: unknown };
++  let ts: number | null = null;
++  if (typeof m.createdAt === "string") {
++    const parsed = Date.parse(m.createdAt);
++    if (!Number.isNaN(parsed)) ts = parsed;
++  }
++  if (ts === null) {
++    if (!firstSeenAt.has(message.id)) firstSeenAt.set(message.id, Date.now());
++    ts = firstSeenAt.get(message.id)!;
++  }
++  const d = new Date(ts);
++  const pad = (n: number) => String(n).padStart(2, "0");
++  const today = new Date();
++  const sameDay = d.toDateString() === today.toDateString();
++  return sameDay
++    ? `${pad(d.getHours())}:${pad(d.getMinutes())}`
++    : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
++}
++
++/**
++ * P11: v-memo 签名 —— @ag-ui/client 对流式 delta 是**原地修改**
++ * （o.content += delta，对象身份不变），不能用对象 identity 做 memo key。
++ * 内容长度签名：流式中活动消息长度增长 → 仅它重渲染；历史消息签名稳定
++ * → 整树跳过（500+ 消息下每次 tick 不再全量重渲染）。
++ * toolCalls 长度覆盖工具调用卡片递增；tool 结果到达走 messages.length。
++ *
++ * stateTick 必须进 memo 依赖：STATE_SNAPSHOT/STATE_DELTA 到达时消息内容、
++ * isRunning、messages.length 全都不变，仅靠前三项签名会跳过整块渲染，
++ * 导致 renderCustomMessages 的 stateSnapshot prop 滞留旧值（P-baseline
++ * 失败 "re-renders custom message when state updates within the same run"）。
++ */
++function memoSignature(message: Message): string {
++  const m = message as Message & {
++    toolCalls?: { function?: { arguments?: unknown } }[];
++  };
++  const c = m.content;
++  const contentLen =
++    typeof c === "string" ? c.length : Array.isArray(c) ? c.length : 0;
++  // 工具参数同样是原地流式增长的（arguments += delta）——必须计入签名，
++  // 否则工具卡参数流式期间不重渲染
++  const toolSig = (m.toolCalls ?? [])
++    .map((t) =>
++      typeof t?.function?.arguments === "string"
++        ? (t.function.arguments as string).length
++        : 0,
++    )
++    .join(",");
++  return `${m.id}:${m.role}:${contentLen}:${m.toolCalls?.length ?? 0}:${toolSig}`;
++}
+ </script>
+ 
+ <template>
+   <div data-copilotkit class="cpk:flex cpk:flex-col" v-bind="$attrs">
+-    <template v-for="message in deduplicatedMessages" :key="message.id">
++    <template
++      v-for="message in deduplicatedMessages"
++      :key="message.id"
++      v-memo="[
++        memoSignature(message),
++        props.isRunning,
++        props.messages.length,
++        stateTick,
++      ]"
++    >
+       <slot
+         v-if="componentSlots['message-before']"
+         name="message-before"
+@@ -375,6 +463,7 @@ function resolveToolMessage(
+           :message="message"
+           :messages="messages"
+           :is-running="isRunning"
++          v-bind="canRegenerate(message) ? { onRegenerate: handleRegenerate } : {}"
+         >
+           <template
+             v-for="slotName in forwardedSlotNames"
+@@ -384,6 +473,13 @@ function resolveToolMessage(
+             <slot :name="slotName" v-bind="slotProps" />
+           </template>
+         </CopilotChatAssistantMessage>
++        <div
++          class="cpk:flex cpk:justify-start"
++          data-testid="copilot-message-time"
++          style="font-size: 11px; color: #9ca3af; margin: 2px 6px 0"
++        >
++          {{ messageTimeLabel(message) }}
++        </div>
+       </slot>
+ 
+       <slot
+@@ -400,6 +496,13 @@ function resolveToolMessage(
+             <slot :name="slotName" v-bind="slotProps" />
+           </template>
+         </CopilotChatUserMessage>
++        <div
++          class="cpk:flex cpk:justify-end"
++          data-testid="copilot-message-time"
++          style="font-size: 11px; color: #9ca3af; margin: 2px 6px 0"
++        >
++          {{ messageTimeLabel(message) }}
++        </div>
+       </slot>
+ 
+       <slot
 diff --git a/packages/copilotkit-vue/src/v2/components/chat/CopilotChatView.vue b/packages/copilotkit-vue/src/v2/components/chat/CopilotChatView.vue
-index 2719990..e9b0ca6 100644
+index 2719990..bb70590 100644
 --- a/packages/copilotkit-vue/src/v2/components/chat/CopilotChatView.vue
 +++ b/packages/copilotkit-vue/src/v2/components/chat/CopilotChatView.vue
 @@ -194,8 +194,10 @@ const shouldShowWelcomeScreen = computed(
@@ -9846,6 +12225,847 @@ index 2719990..e9b0ca6 100644
  );
  const hasAddFileAction = computed(() => hasListener("onAddFile"));
  const hasStopAction = computed(() => hasListener("onStop"));
+@@ -539,6 +541,7 @@ onBeforeUnmount(() => {
+               <CopilotChatInput
+                 :model-value="resolvedInputValue"
+                 :is-running="isRunning"
++                :disabled="isRunning"
+                 :mode="inputMode"
+                 :tools-menu="inputToolsMenu"
+                 positioning="static"
+@@ -725,6 +728,7 @@ onBeforeUnmount(() => {
+           <CopilotChatInput
+             :model-value="resolvedInputValue"
+             :is-running="isRunning"
++            :disabled="isRunning"
+             :mode="inputMode"
+             :tools-menu="inputToolsMenu"
+             positioning="static"
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatAssistantMessage.test.ts b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatAssistantMessage.test.ts
+index 21b2336..0fc408b 100644
+--- a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatAssistantMessage.test.ts
++++ b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatAssistantMessage.test.ts
+@@ -1104,5 +1104,40 @@ describe("CopilotChatAssistantMessage", () => {
+         document.querySelector('button[title="Download table"]'),
+       ).toBeDefined();
+     });
++
++    it("hover-reveal image download button is not clickable while invisible (touch-safe)", () => {
++      // 实测 bug 类（ThreadSidebar/FilesPanel 同案）：opacity-0 但未禁
++      // pointer-events 的按钮在触屏(无 hover)上拦截点击。
++      const message: AssistantMessage = {
++        id: "assistant-img-pointer",
++        role: "assistant",
++        content: `![Alt text](https://example.com/image.png)`,
++        timestamp: new Date(),
++      };
++      const Host = defineComponent({
++        components: {
++          CopilotKitProvider,
++          CopilotChatConfigurationProvider,
++          CopilotChatAssistantMessage,
++        },
++        setup() {
++          return { message, TEST_THREAD_ID };
++        },
++        template: `
++          <CopilotKitProvider runtime-url="/api/copilotkit">
++            <CopilotChatConfigurationProvider :thread-id="TEST_THREAD_ID">
++              <CopilotChatAssistantMessage :message="message" />
++            </CopilotChatConfigurationProvider>
++          </CopilotKitProvider>
++        `,
++      });
++      renderWithProvider(Host);
++      const btn = document.querySelector('button[title="Download image"]');
++      expect(btn).toBeTruthy();
++      const cls = btn!.getAttribute("class") ?? "";
++      expect(cls).toContain("cpk:opacity-0");
++      expect(cls).toContain("cpk:pointer-events-none");
++      expect(cls).toContain("cpk:group-hover:pointer-events-auto");
++    });
+   });
+ });
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatInput.test.ts b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatInput.test.ts
+index a2f7198..017067c 100644
+--- a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatInput.test.ts
++++ b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatInput.test.ts
+@@ -1048,4 +1048,56 @@ describe("CopilotChatInput", () => {
+       expect(input.value).toBe("部分");
+     });
+   });
++
++  // P-F: 主输入框自适应高度 —— 钉住 fork 的 auto-grow + FORK-PATCH 的
++  // maxRows 默认 3 行封顶(超出出滚动条),防止升级回退。
++  describe("P-F: auto-grow height with 3-row cap", () => {
++    function mockScrollHeightByLines(ta: HTMLTextAreaElement, lineHeight = 20) {
++      Object.defineProperty(ta, "scrollHeight", {
++        configurable: true,
++        get(this: HTMLTextAreaElement) {
++          // jsdom 无布局:空值=单行高,否则按 \n 行数计
++          return this.value === "" ? lineHeight : lineHeight * this.value.split("\n").length;
++        },
++      });
++    }
++
++    it("grows with content up to 3 rows, then caps (maxRows default = 3)", async () => {
++      renderWithProvider({ listeners: { "onUpdate:modelValue": vi.fn() } });
++      const ta = screen.getByTestId(
++        "copilot-chat-input-textarea",
++      ) as HTMLTextAreaElement;
++      mockScrollHeightByLines(ta);
++
++      // 2 行:跟随内容(40px)
++      ta.value = "a\nb";
++      await fireEvent.input(ta);
++      await waitFor(() => expect(ta.style.height).toBe("40px"));
++      // maxHeight ≈ 3 行 + 上下 padding(样式表 padding 在 jsdom 亦生效,不断言死值)
++      const cap = parseInt(ta.style.maxHeight, 10);
++      expect(cap).toBeGreaterThanOrEqual(60);
++      expect(cap).toBeLessThan(100); // 严格小于 5 行 —— 默认 maxRows=3(FORK-PATCH P-F)
++
++      // 5 行:封顶,不超过 maxHeight
++      ta.value = "a\nb\nc\nd\ne";
++      await fireEvent.input(ta);
++      await waitFor(() => expect(ta.style.height).toBe(ta.style.maxHeight));
++    });
++
++    it("shrinks back when content is cleared", async () => {
++      renderWithProvider({ listeners: { "onUpdate:modelValue": vi.fn() } });
++      const ta = screen.getByTestId(
++        "copilot-chat-input-textarea",
++      ) as HTMLTextAreaElement;
++      mockScrollHeightByLines(ta);
++
++      ta.value = "a\nb\nc";
++      await fireEvent.input(ta);
++      await waitFor(() => expect(ta.style.height).toBe("60px"));
++
++      ta.value = "a";
++      await fireEvent.input(ta);
++      await waitFor(() => expect(ta.style.height).toBe("20px"));
++    });
++  });
+ });
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatMessageView.PS.test.ts b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatMessageView.PS.test.ts
+new file mode 100644
+index 0000000..c48b939
+--- /dev/null
++++ b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatMessageView.PS.test.ts
+@@ -0,0 +1,133 @@
++import { defineComponent } from "vue";
++import { fireEvent, render, screen } from "@testing-library/vue";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import type { AssistantMessage, Message, UserMessage } from "@ag-ui/core";
++import { HttpAgent } from "@ag-ui/client";
++import CopilotKitProvider from "../../../providers/CopilotKitProvider.vue";
++import CopilotChatConfigurationProvider from "../../../providers/CopilotChatConfigurationProvider.vue";
++import CopilotChatMessageView from "../CopilotChatMessageView.vue";
++
++/**
++ * P-S: 消息级操作 —— hover 复制(既有默认 UI,此处钉住)、重新生成
++ * (仅最后一条 assistant 消息,截掉该回答后重发 run)、消息时间戳
++ * (history 用 gateway createdAt,live 用首次见到的时间)。
++ */
++
++function renderView({
++  messages,
++  agent,
++  isRunning = false,
++}: {
++  messages: Message[];
++  agent: HttpAgent;
++  isRunning?: boolean;
++}) {
++  const Host = defineComponent({
++    components: {
++      CopilotKitProvider,
++      CopilotChatConfigurationProvider,
++      CopilotChatMessageView,
++    },
++    setup() {
++      return { messages, agent, isRunning };
++    },
++    template: `
++      <CopilotKitProvider :direct-agents="{ default: agent }">
++        <CopilotChatConfigurationProvider agent-id="default" thread-id="t-ps">
++          <CopilotChatMessageView :messages="messages" :is-running="isRunning" />
++        </CopilotChatConfigurationProvider>
++      </CopilotKitProvider>
++    `,
++  });
++  return render(Host);
++}
++
++const userMsg = (id: string, content: string, createdAt?: string) =>
++  ({ id, role: "user", content, ...(createdAt ? { createdAt } : {}) }) as unknown as UserMessage;
++const assistantMsg = (id: string, content: string, createdAt?: string) =>
++  ({ id, role: "assistant", content, ...(createdAt ? { createdAt } : {}) }) as unknown as AssistantMessage;
++
++describe("P-S: message-level actions", () => {
++  beforeEach(() => {
++    vi.restoreAllMocks();
++  });
++
++  it("复制按钮(hover 显示,默认 UI)点击把消息内容写入剪贴板", async () => {
++    const writeText = vi.fn().mockResolvedValue(undefined);
++    Object.defineProperty(navigator, "clipboard", {
++      value: { writeText },
++      configurable: true,
++    });
++    const agent = new HttpAgent({ url: "/unused-ps" });
++    renderView({ messages: [assistantMsg("a1", "这是回答")], agent });
++
++    const btn = screen.getByTestId("copilot-copy-button");
++    await fireEvent.click(btn);
++    expect(writeText).toHaveBeenCalledWith("这是回答");
++  });
++
++  it("重新生成按钮只在最后一条 assistant 消息上出现", () => {
++    const agent = new HttpAgent({ url: "/unused-ps" });
++    renderView({
++      messages: [userMsg("u1", "问"), assistantMsg("a1", "答1"), assistantMsg("a2", "答2")],
++      agent,
++    });
++    const btns = screen.queryAllByTestId("copilot-regenerate-button");
++    expect(btns).toHaveLength(1);
++    const hostMsg = btns[0].closest("[data-message-id]");
++    expect(hostMsg?.getAttribute("data-message-id")).toBe("a2");
++  });
++
++  it("点重新生成: 截掉该回答(保留之前的消息)并重发 run", async () => {
++    const fetchMock = vi.fn(async () => ({
++      ok: true,
++      json: async () => ({}),
++      body: null,
++    }));
++    vi.stubGlobal("fetch", fetchMock);
++    const agent = new HttpAgent({ url: "/unused-ps" });
++    const u1 = userMsg("u1", "问");
++    const a1 = assistantMsg("a1", "答1");
++    const a2 = assistantMsg("a2", "答2");
++    agent.setMessages([u1, a1, a2]);
++    renderView({ messages: [u1, a1, a2], agent });
++
++    await fireEvent.click(screen.getByTestId("copilot-regenerate-button"));
++    await new Promise((r) => setTimeout(r, 20));
++
++    expect(
++      agent.messages.map((m) => m.id),
++      "最后一条回答被截掉",
++    ).toEqual(["u1", "a1"]);
++    expect(
++      fetchMock.mock.calls.some(([url]) => String(url).includes("/unused-ps")),
++      "应重新发起 run",
++    ).toBe(true);
++  });
++
++  it("运行中不出重新生成按钮", () => {
++    const agent = new HttpAgent({ url: "/unused-ps" });
++    renderView({
++      messages: [userMsg("u1", "问"), assistantMsg("a1", "答")],
++      agent,
++      isRunning: true,
++    });
++    expect(screen.queryByTestId("copilot-regenerate-button")).toBeNull();
++  });
++
++  it("消息时间戳: history 用 createdAt,live 用首见时间(HH:mm)", () => {
++    const agent = new HttpAgent({ url: "/unused-ps" });
++    renderView({
++      messages: [
++        userMsg("u1", "历史问题", "2026-08-16T10:20:30Z"),
++        assistantMsg("a1", "实时回答"),
++      ],
++      agent,
++    });
++    const times = screen.getAllByTestId("copilot-message-time");
++    expect(times).toHaveLength(2);
++    for (const t of times) {
++      expect(t.textContent).toMatch(/\d{2}:\d{2}/);
++    }
++  });
++});
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatView.connectingGate.test.ts b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatView.connectingGate.test.ts
+index 7758233..166c227 100644
+--- a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatView.connectingGate.test.ts
++++ b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatView.connectingGate.test.ts
+@@ -45,10 +45,13 @@ describe("CopilotChatView connect-gating", () => {
+     ).toBe(false);
+   });
+ 
+-  it("suppresses the welcome screen when hasExplicitThreadId=true", () => {
+-    // A caller-managed thread (threadId prop / config provider) should never
+-    // display the generic "start a new chat" welcome — even when the thread
+-    // has no messages yet.
++  it("shows the welcome screen when hasExplicitThreadId=true (FORK#8)", () => {
++    // FORK CHANGE (FORK.md #8): upstream suppressed the welcome screen for
++    // explicit threadIds, assuming a runtime /connect history replay. In
++    // direct-agent setups (no runtime) an explicit threadId with zero
++    // messages IS a fresh chat — the app always passes an explicit threadId
++    // and relies on the welcome screen for the empty state. `isConnecting`
++    // remains the suppression gate (covered above).
+     const wrapper = mountChatView({
+       messages: [],
+       hasExplicitThreadId: true,
+@@ -56,7 +59,7 @@ describe("CopilotChatView connect-gating", () => {
+ 
+     expect(
+       wrapper.find("[data-testid='copilot-chat-view-welcome-screen']").exists(),
+-    ).toBe(false);
++    ).toBe(true);
+   });
+ 
+   it("shows the welcome screen by default for a fresh empty chat", () => {
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatView.test.ts b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatView.test.ts
+index 56dbf7b..5080a56 100644
+--- a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatView.test.ts
++++ b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotChatView.test.ts
+@@ -371,4 +371,30 @@ describe("CopilotChatView", () => {
+         .exists(),
+     ).toBe(true);
+   });
+-});
++
++  // P9-①: run 进行中主输入框禁用（停止按钮接管发送位）
++  it("disables the textarea while a run is in progress", async () => {
++    const wrapper = mountChatView({
++      messages: chatMessages,
++      isRunning: true,
++      onStop: vi.fn(),
++    });
++    await nextTick();
++    const textarea = wrapper.get(
++      "[data-testid='copilot-chat-input-textarea']",
++    );
++    expect(textarea.attributes("disabled")).toBeDefined();
++  });
++
++  it("keeps the textarea enabled when idle", async () => {
++    const wrapper = mountChatView({
++      messages: chatMessages,
++      isRunning: false,
++    });
++    await nextTick();
++    const textarea = wrapper.get(
++      "[data-testid='copilot-chat-input-textarea']",
++    );
++    expect(textarea.attributes("disabled")).toBeUndefined();
++  });
++})
+diff --git a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotThreadsDrawer.ssr.test.ts b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotThreadsDrawer.ssr.test.ts
+index f355ffe..680fc1a 100644
+--- a/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotThreadsDrawer.ssr.test.ts
++++ b/packages/copilotkit-vue/src/v2/components/chat/__tests__/CopilotThreadsDrawer.ssr.test.ts
+@@ -17,9 +17,17 @@ vi.mock("@copilotkit/web-components/threads-drawer", () => {
+ });
+ 
+ describe("@copilotkit/vue SSR import safety", () => {
+-  it("does not eagerly evaluate the Lit element module when the package entry is imported", async () => {
+-    const mod = await import("../../../../index");
+-    expect(mod.CopilotThreadsDrawer).toBeDefined();
+-    expect(evaluated.current).toBe(false);
+-  });
++  // The cold dynamic import of the whole package barrel takes well over the
++  // 5s default timeout on a loaded shared machine (observed 7-14s), making
++  // this test flaky without an explicit budget. The assertion itself is
++  // unaffected by the timeout.
++  it(
++    "does not eagerly evaluate the Lit element module when the package entry is imported",
++    { timeout: 30000 },
++    async () => {
++      const mod = await import("../../../../index");
++      expect(mod.CopilotThreadsDrawer).toBeDefined();
++      expect(evaluated.current).toBe(false);
++    },
++  );
+ });
+diff --git a/packages/copilotkit-vue/src/v2/hooks/__tests__/use-default-render-tool.test.ts b/packages/copilotkit-vue/src/v2/hooks/__tests__/use-default-render-tool.test.ts
+index 33eb18e..494e82a 100644
+--- a/packages/copilotkit-vue/src/v2/hooks/__tests__/use-default-render-tool.test.ts
++++ b/packages/copilotkit-vue/src/v2/hooks/__tests__/use-default-render-tool.test.ts
+@@ -1,8 +1,20 @@
+ import { fireEvent, render, screen } from "@testing-library/vue";
+-import { defineComponent } from "vue";
+-import { describe, it, expect, beforeEach, vi } from "vitest";
++import {
++  computed,
++  defineComponent,
++  h,
++  nextTick,
++  provide,
++  ref,
++  shallowRef,
++} from "vue";
++import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+ import { useDefaultRenderTool } from "../use-default-render-tool";
+ import { useRenderTool } from "../use-render-tool";
++import {
++  CopilotChatConfigurationKey,
++  CopilotKitKey,
++} from "../../providers/keys";
+ 
+ vi.mock("../use-render-tool", () => ({
+   useRenderTool: vi.fn(),
+@@ -15,6 +27,71 @@ describe("useDefaultRenderTool", () => {
+     vi.clearAllMocks();
+   });
+ 
++    function getDefaultRenderer(): (props: Record<string, unknown>) => unknown {
++      const Harness = defineComponent({
++        setup() {
++          useDefaultRenderTool();
++          return {};
++        },
++        template: `<div />`,
++      });
++      render(Harness);
++      const [config] = mockUseRenderTool.mock.calls[0] as [
++        { render: (props: Record<string, unknown>) => unknown },
++      ];
++      return config.render;
++    }
++
++    function renderWithRunContext(
++      renderer: (props: Record<string, unknown>) => unknown,
++      props: Record<string, unknown>,
++      fakeAgent: {
++        isRunning: boolean;
++        subscribe: ReturnType<typeof vi.fn>;
++      },
++    ) {
++      const fakeCore = { getAgent: vi.fn(() => fakeAgent) };
++      const Harness = defineComponent({
++        setup() {
++          provide(CopilotKitKey, {
++            copilotkit: shallowRef(fakeCore),
++            executingToolCallIds: ref(new Set<string>()),
++            a2uiTheme: computed(() => undefined),
++            a2uiCatalog: computed(() => undefined),
++            a2uiLoadingComponent: computed(() => undefined),
++            a2uiIncludeSchema: computed(() => false),
++          } as never);
++          provide(
++            CopilotChatConfigurationKey,
++            computed(
++              () =>
++                ({ agentId: "default", threadId: "t-f3" }) as never,
++            ),
++          );
++          return () => h(renderer as never, props);
++        },
++      });
++      render(Harness);
++    }
++
++    function makeFakeAgent(isRunning = true) {
++      let subscriber: Record<string, ((evt?: unknown) => void) | undefined>;
++      const agent = {
++        isRunning,
++        subscribe: vi.fn((sub: Record<string, (evt?: unknown) => void>) => {
++          subscriber = sub;
++          return { unsubscribe: vi.fn() };
++        }),
++      };
++      return {
++        agent,
++        fire(event: "onRunStartedEvent" | "onRunFinishedEvent" | "onRunErrorEvent") {
++          return subscriber[event]?.({});
++        },
++      };
++    }
++
++
+   it("registers a wildcard renderer when called without config", () => {
+     const Harness = defineComponent({
+       setup() {
+@@ -577,4 +654,355 @@ describe("useDefaultRenderTool", () => {
+     expect(warnSpy).toHaveBeenCalled();
+     warnSpy.mockRestore();
+   });
++
++  // F3: tool-call observability — live duration, status icons (spinner/✓/✗),
++  // and failure/interrupt marking driven by agent run-lifecycle events.
++  describe("F3 duration / status icon / failure state", () => {
++    afterEach(() => {
++      vi.useRealTimers();
++    });
++
++    it("shows a spinner and live elapsed time while running, then freezes the duration on complete", async () => {
++      vi.useFakeTimers();
++      vi.setSystemTime(1_000_000);
++      const DefaultRenderer = getDefaultRenderer();
++
++      const rendered = render(DefaultRenderer as never, {
++        props: {
++          name: "bash",
++          toolCallId: "tc-dur-1",
++          parameters: {},
++          status: "executing",
++          result: undefined,
++        },
++      });
++
++      // spinner visible while active, no ✓/✗ glyph
++      expect(
++        screen.getByTestId("copilot-tool-render-spinner"),
++      ).toBeDefined();
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
++        "Running",
++      );
++
++      await vi.advanceTimersByTimeAsync(1500);
++      expect(
++        screen.getByTestId("copilot-tool-render-duration").textContent,
++      ).toBe("1.5s");
++
++      await rendered.rerender({ status: "complete", result: "ok" });
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
++        "Done",
++      );
++      expect(
++        screen.getByTestId("copilot-tool-render-status-icon").textContent,
++      ).toBe("✓");
++      expect(
++        screen.getByTestId("copilot-tool-render-duration").textContent,
++      ).toBe("1.5s");
++
++      // frozen: further time passing must not change the displayed duration
++      await vi.advanceTimersByTimeAsync(5000);
++      expect(
++        screen.getByTestId("copilot-tool-render-duration").textContent,
++      ).toBe("1.5s");
++    });
++
++    it("shows no duration for calls that were already complete at mount (history restore)", () => {
++      const DefaultRenderer = getDefaultRenderer();
++      render(DefaultRenderer as never, {
++        props: {
++          name: "bash",
++          toolCallId: "tc-dur-hist",
++          parameters: {},
++          status: "complete",
++          result: "ok",
++        },
++      });
++
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
++        "Done",
++      );
++      expect(
++        screen.getByTestId("copilot-tool-render-status-icon").textContent,
++      ).toBe("✓");
++      expect(screen.queryByTestId("copilot-tool-render-duration")).toBeNull();
++    });
++
++    it("marks the card ✗失败 when the run errors while the call is still active", async () => {
++      const { agent, fire } = makeFakeAgent(true);
++      const DefaultRenderer = getDefaultRenderer();
++      renderWithRunContext(DefaultRenderer, {
++        name: "bash",
++        toolCallId: "tc-fail-1",
++        parameters: {},
++        status: "inProgress",
++        result: undefined,
++      }, agent);
++
++      expect(agent.subscribe).toHaveBeenCalledTimes(1);
++      fire("onRunErrorEvent");
++      await nextTick();
++
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
++        "失败",
++      );
++      expect(
++        screen.getByTestId("copilot-tool-render-status-icon").textContent,
++      ).toBe("✗");
++    });
++
++    it("marks the card ✗已中断 when the run finishes without a result for this call", async () => {
++      const { agent, fire } = makeFakeAgent(true);
++      const DefaultRenderer = getDefaultRenderer();
++      renderWithRunContext(DefaultRenderer, {
++        name: "bash",
++        toolCallId: "tc-abort-1",
++        parameters: {},
++        status: "executing",
++        result: undefined,
++      }, agent);
++
++      fire("onRunFinishedEvent");
++      await nextTick();
++
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
++        "已中断",
++      );
++      expect(
++        screen.getByTestId("copilot-tool-render-status-icon").textContent,
++      ).toBe("✗");
++    });
++
++    it("does not mark an already-complete card when the run errors later", async () => {
++      const { agent, fire } = makeFakeAgent(true);
++      const DefaultRenderer = getDefaultRenderer();
++      renderWithRunContext(DefaultRenderer, {
++        name: "bash",
++        toolCallId: "tc-done-1",
++        parameters: {},
++        status: "complete",
++        result: "ok",
++      }, agent);
++
++      fire("onRunErrorEvent");
++      await nextTick();
++
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
++        "Done",
++      );
++      expect(
++        screen.getByTestId("copilot-tool-render-status-icon").textContent,
++      ).toBe("✓");
++    });
++
++    it("recovers to spinner when a new run starts (resume after failure)", async () => {
++      const { agent, fire } = makeFakeAgent(true);
++      const DefaultRenderer = getDefaultRenderer();
++      renderWithRunContext(DefaultRenderer, {
++        name: "bash",
++        toolCallId: "tc-resume-1",
++        parameters: {},
++        status: "inProgress",
++        result: undefined,
++      }, agent);
++
++      fire("onRunErrorEvent");
++      await nextTick();
++      expect(
++        screen.getByTestId("copilot-tool-render-status-icon").textContent,
++      ).toBe("✗");
++
++      fire("onRunStartedEvent");
++      await nextTick();
++      expect(
++        screen.getByTestId("copilot-tool-render-spinner"),
++      ).toBeDefined();
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
++        "Running",
++      );
++    });
++
++    it("marks a stale active card as 已中断 at mount when the agent is idle (restored dangling call)", async () => {
++      const { agent } = makeFakeAgent(false);
++      const DefaultRenderer = getDefaultRenderer();
++      renderWithRunContext(DefaultRenderer, {
++        name: "bash",
++        toolCallId: "tc-stale-1",
++        parameters: {},
++        status: "inProgress",
++        result: undefined,
++      }, agent);
++
++      await nextTick();
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe(
++        "已中断",
++      );
++      expect(
++        screen.getByTestId("copilot-tool-render-status-icon").textContent,
++      ).toBe("✗");
++    });
++  });
++
++  // P-L: 状态点颜色语义统一(F3/P9 语义: running 蓝 / done 绿 / failed 红 /
++  // interrupted 琥珀) + 长参数/结果超阈值默认截断、点击展开。
++  describe("P-L status dot + collapsible long payload", () => {
++    it("status dot data-state 与状态语义一致: running/done/failed/interrupted", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++
++      const running = render(DefaultRenderer as never, {
++        props: { name: "t", toolCallId: "pl-run", parameters: {}, status: "executing", result: undefined },
++      });
++      expect(screen.getByTestId("copilot-tool-render-status-dot").getAttribute("data-state")).toBe("running");
++      running.unmount();
++
++      const done = render(DefaultRenderer as never, {
++        props: { name: "t", toolCallId: "pl-done", parameters: {}, status: "complete", result: "ok" },
++      });
++      expect(screen.getByTestId("copilot-tool-render-status-dot").getAttribute("data-state")).toBe("done");
++      done.unmount();
++
++      // failed: run 出错时仍 active
++      const { agent, fire } = makeFakeAgent(true);
++      renderWithRunContext(DefaultRenderer, {
++        name: "t", toolCallId: "pl-fail", parameters: {}, status: "inProgress", result: undefined,
++      }, agent);
++      fire("onRunErrorEvent");
++      await nextTick();
++      expect(screen.getByTestId("copilot-tool-render-status-dot").getAttribute("data-state")).toBe("failed");
++    });
++
++    it("长参数超阈值默认截断(标注总字符数),点击展开看全文,再点收起", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      const longValue = "x".repeat(800);
++      render(DefaultRenderer as never, {
++        props: {
++          name: "bash",
++          toolCallId: "pl-long-args",
++          parameters: { data: longValue },
++          status: "complete",
++          result: "short",
++        },
++      });
++
++      await fireEvent.click(screen.getByText("bash"));
++      const pre = screen.getByTestId("copilot-tool-render-args-pre");
++      expect(pre.textContent!.length).toBeLessThan(800);
++      expect(pre.textContent).toContain("…");
++
++      const toggle = screen.getByTestId("copilot-tool-render-args-toggle");
++      expect(toggle.textContent).toContain("展开全部");
++      expect(toggle.textContent).toMatch(/共 \d+ 字符/);
++
++      await fireEvent.click(toggle);
++      expect(screen.getByTestId("copilot-tool-render-args-pre").textContent).toContain(longValue);
++
++      await fireEvent.click(screen.getByTestId("copilot-tool-render-args-toggle"));
++      expect(screen.getByTestId("copilot-tool-render-args-pre").textContent!.length).toBeLessThan(800);
++    });
++
++    it("短参数不出展开按钮,完整显示", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      render(DefaultRenderer as never, {
++        props: { name: "bash", toolCallId: "pl-short", parameters: { q: "hi" }, status: "complete", result: "ok" },
++      });
++      await fireEvent.click(screen.getByText("bash"));
++      expect(screen.queryByTestId("copilot-tool-render-args-toggle")).toBeNull();
++      expect(screen.getByTestId("copilot-tool-render-args-pre").textContent).toContain('"hi"');
++    });
++
++    it("长结果同样默认截断并可展开", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      const longResult = "y".repeat(900);
++      render(DefaultRenderer as never, {
++        props: { name: "bash", toolCallId: "pl-long-res", parameters: {}, status: "complete", result: longResult },
++      });
++      await fireEvent.click(screen.getByText("bash"));
++      const pre = screen.getByTestId("copilot-tool-render-result-pre");
++      expect(pre.textContent!.length).toBeLessThan(900);
++      await fireEvent.click(screen.getByTestId("copilot-tool-render-result-toggle"));
++      expect(screen.getByTestId("copilot-tool-render-result-pre").textContent).toBe(longResult);
++    });
++  });
++
++  // P-R: 工具结果为空时的明确提示(完成态但无输出 → "（无输出）",不留空白)
++  describe("P-R empty tool result hint", () => {
++    it("complete + result undefined → 展开显示（无输出）", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      render(DefaultRenderer as never, {
++        props: { name: "bash", toolCallId: "pr-empty-1", parameters: {}, status: "complete", result: undefined },
++      });
++      await fireEvent.click(screen.getByText("bash"));
++      expect(screen.getByTestId("copilot-tool-render-result-empty").textContent).toContain("无输出");
++    });
++
++    it("complete + 空白结果字符串 → 同样提示", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      render(DefaultRenderer as never, {
++        props: { name: "bash", toolCallId: "pr-empty-2", parameters: {}, status: "complete", result: "   " },
++      });
++      await fireEvent.click(screen.getByText("bash"));
++      expect(screen.getByTestId("copilot-tool-render-result-empty").textContent).toContain("无输出");
++    });
++
++    it("运行中(result undefined)不显示空提示", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      render(DefaultRenderer as never, {
++        props: { name: "bash", toolCallId: "pr-run", parameters: {}, status: "executing", result: undefined },
++      });
++      await fireEvent.click(screen.getByText("bash"));
++      expect(screen.queryByTestId("copilot-tool-render-result-empty")).toBeNull();
++    });
++
++    it("有结果时不显示空提示", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      render(DefaultRenderer as never, {
++        props: { name: "bash", toolCallId: "pr-ok", parameters: {}, status: "complete", result: "done" },
++      });
++      await fireEvent.click(screen.getByText("bash"));
++      expect(screen.queryByTestId("copilot-tool-render-result-empty")).toBeNull();
++      expect(screen.getByTestId("copilot-tool-render-result-pre").textContent).toBe("done");
++    });
++  });
++
++  // gateway `session.tool.failed` → TOOL_CALL_RESULT content 前缀契约
++  // （AguiEventTranslator.java "工具执行失败: "）：工具级失败不是 run 级
++  // RUN_ERROR，卡片仍以 complete 收尾，必须按内容前缀识别为失败态。
++  describe("tool-level failure result (gateway session.tool.failed contract)", () => {
++    it("complete + 失败前缀结果 → ✗失败 / 红点 / data-run-end=failed，而非 ✓Done", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      render(DefaultRenderer as never, {
++        props: {
++          name: "read",
++          toolCallId: "tf-1",
++          parameters: { path: "sales-2026-08.csv" },
++          status: "complete",
++          result: "工具执行失败: 文件不存在: sales-2026-08.csv",
++        },
++      });
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe("失败");
++      expect(screen.getByTestId("copilot-tool-render-status-icon").textContent).toBe("✗");
++      expect(
++        screen.getByTestId("copilot-tool-render-status-dot").getAttribute("data-state"),
++      ).toBe("failed");
++      expect(
++        screen.getByTestId("copilot-tool-render").getAttribute("data-run-end"),
++      ).toBe("failed");
++    });
++
++    it("前缀只认行首：结果中段含同样字样不误判", async () => {
++      const DefaultRenderer = getDefaultRenderer();
++      render(DefaultRenderer as never, {
++        props: {
++          name: "bash",
++          toolCallId: "tf-2",
++          parameters: {},
++          status: "complete",
++          result: "grep 完成：日志中出现 0 次 '工具执行失败: ' 字样",
++        },
++      });
++      expect(screen.getByTestId("copilot-tool-render-status").textContent).toBe("Done");
++      expect(screen.getByTestId("copilot-tool-render-status-icon").textContent).toBe("✓");
++    });
++  });
+ });
+diff --git a/packages/copilotkit-vue/src/v2/hooks/__tests__/use-frontend-tool.e2e.test.ts b/packages/copilotkit-vue/src/v2/hooks/__tests__/use-frontend-tool.e2e.test.ts
+index f18130c..61b2ca4 100644
+--- a/packages/copilotkit-vue/src/v2/hooks/__tests__/use-frontend-tool.e2e.test.ts
++++ b/packages/copilotkit-vue/src/v2/hooks/__tests__/use-frontend-tool.e2e.test.ts
+@@ -1276,7 +1276,15 @@ describe("useFrontendTool E2E - Dynamic Registration", () => {
+             <DefaultAgentTool />
+             <SpecificAgentTool />
+             <div style="height: 400px;">
+-              <CopilotChat agentId="default" />
++              <!-- welcome-screen=false: same stabilization every other
++                   submit-driven test in this file uses. With the default
++                   welcome screen, the explicit threadId starts isConnecting
++                   and the transient pre-connect main-path input is destroyed
++                   when the welcome screen flips in (~10ms MockStepwiseAgent
++                   connect), making the grab-a-textbox-then-submit race
++                   unwinnable. Agent scoping (the subject under test) does not
++                   depend on the welcome screen. -->
++              <CopilotChat agentId="default" :welcome-screen="false" />
+             </div>
+           </div>
+         `,
+@@ -1409,7 +1417,8 @@ describe("useFrontendTool E2E - Dynamic Registration", () => {
+             <ScopedTool />
+             <GlobalTool />
+             <div style="height: 400px;">
+-              <CopilotChat agentId="default" />
++              <!-- welcome-screen=false: see the Agent Scoping sibling above. -->
++              <CopilotChat agentId="default" :welcome-screen="false" />
+             </div>
+           </div>
+         `,
 diff --git a/packages/copilotkit-vue/src/v2/hooks/index.ts b/packages/copilotkit-vue/src/v2/hooks/index.ts
 index 43ad7cf..c14669f 100644
 --- a/packages/copilotkit-vue/src/v2/hooks/index.ts
@@ -9860,7 +13080,7 @@ index 43ad7cf..c14669f 100644
  export type { AgentContextInput, JsonSerializable } from "./use-agent-context";
  export { useFrontendTool } from "./use-frontend-tool";
 diff --git a/packages/copilotkit-vue/src/v2/hooks/use-agent.ts b/packages/copilotkit-vue/src/v2/hooks/use-agent.ts
-index 912ff02..3de8e18 100644
+index 912ff02..578ec10 100644
 --- a/packages/copilotkit-vue/src/v2/hooks/use-agent.ts
 +++ b/packages/copilotkit-vue/src/v2/hooks/use-agent.ts
 @@ -1,4 +1,4 @@
@@ -9869,7 +13089,21 @@ index 912ff02..3de8e18 100644
  import type { MaybeRefOrGetter } from "vue";
  import { DEFAULT_AGENT_ID } from "@copilotkit/shared";
  import { HttpAgent } from "@ag-ui/client";
-@@ -175,9 +175,15 @@ export function useAgent(props: UseAgentProps = {}) {
+@@ -87,7 +87,12 @@ export function getThreadClone(
+   threadId: string | undefined | null,
+ ): AbstractAgent | undefined {
+   if (!registryAgent || !threadId) return undefined;
+-  return globalThreadCloneMap.get(registryAgent)?.get(threadId);
++  // FORK FIX: `getOrCreateThreadClone` keys `globalThreadCloneMap` by the
++  // toRaw()-unwrapped registry agent (see `resolveAgent`), but callers
++  // typically pass `core.getAgent(id)`'s reactive proxy straight back in.
++  // Unwrap here too so the WeakMap lookup hits; `toRaw` is a no-op on raw
++  // instances.
++  return globalThreadCloneMap.get(toRaw(registryAgent))?.get(threadId);
+ }
+ 
+ function getOrCreateThreadClone(
+@@ -175,9 +180,15 @@ export function useAgent(props: UseAgentProps = {}) {
        provisionalAgentCache.delete(cacheKey);
        provisionalAgentCache.delete(id);
  
@@ -9887,6 +13121,479 @@ index 912ff02..3de8e18 100644
        const shouldForceUpdate = agent.value === resolvedAgent;
        agent.value = resolvedAgent;
        subscriptionAgent.value = resolvedAgent;
+diff --git a/packages/copilotkit-vue/src/v2/hooks/use-default-render-tool.ts b/packages/copilotkit-vue/src/v2/hooks/use-default-render-tool.ts
+index cda7473..ef6c8eb 100644
+--- a/packages/copilotkit-vue/src/v2/hooks/use-default-render-tool.ts
++++ b/packages/copilotkit-vue/src/v2/hooks/use-default-render-tool.ts
+@@ -1,8 +1,24 @@
+-import { defineComponent, h, ref } from "vue";
++import {
++  computed,
++  defineComponent,
++  h,
++  inject,
++  onUnmounted,
++  ref,
++  toRaw,
++  watch,
++  watchEffect,
++} from "vue";
+ import type { WatchSource } from "vue";
+ import type { Component, VNodeChild } from "vue";
+ import { ToolCallStatus } from "@copilotkit/core";
++import { DEFAULT_AGENT_ID } from "@copilotkit/shared";
+ import { useRenderTool } from "./use-render-tool";
++import { getThreadClone } from "./use-agent";
++import {
++  CopilotChatConfigurationKey,
++  CopilotKitKey,
++} from "../providers/keys";
+ 
+ type DefaultRenderProps = {
+   name: string;
+@@ -104,6 +120,84 @@ function safeStringifyForPre(value: unknown): string {
+   }
+ }
+ 
++/**
++ * Human-readable tool-call duration: "850ms" under a second, "1.2s" under a
++ * minute, "2m 5s" beyond.
++ */
++function formatToolCallDuration(ms: number): string {
++  const clamped = Math.max(0, ms);
++  if (clamped < 1000) return `${Math.round(clamped)}ms`;
++  if (clamped < 60_000) return `${(clamped / 1000).toFixed(1)}s`;
++  const minutes = Math.floor(clamped / 60_000);
++  const seconds = Math.round((clamped % 60_000) / 1000);
++  return `${minutes}m ${seconds}s`;
++}
++
++/** P-L: 参数/结果文本超此阈值默认截断,点击展开全文。 */
++const LONG_TEXT_THRESHOLD = 600;
++
++/** P-L: 状态点颜色语义(与 F3/P9 状态语义统一)。 */
++const STATUS_DOT_COLORS = {
++  running: "#3b82f6",
++  done: "#16a34a",
++  failed: "#dc2626",
++  interrupted: "#d97706",
++} as const;
++
++/**
++ * 工具级失败结果前缀 —— gateway AguiEventTranslator 对 `session.tool.failed`
++ * 下发的 TOOL_CALL_RESULT content 固定以 `"工具执行失败: "` 开头
++ * （AgUiProtocolServiceTest.toolFailureEmitsToolCallResult 锁定该契约）。
++ * 工具级失败不产生 RUN_ERROR，卡片仍以 complete 收尾；按行首前缀识别，
++ * 结果中段出现同样字样不算（如 grep 命中日志）。
++ */
++const TOOL_FAILURE_RESULT_PREFIX = "工具执行失败: ";
++
++function isFailureResult(result: unknown): boolean {
++  return (
++    typeof result === "string" && result.startsWith(TOOL_FAILURE_RESULT_PREFIX)
++  );
++}
++
++/** Inline SVG spinner (SMIL-animated, no CSS keyframes needed). */
++function renderSpinner() {  return h(
++    "svg",
++    {
++      width: "12",
++      height: "12",
++      viewBox: "0 0 16 16",
++      "data-testid": "copilot-tool-render-spinner",
++      "aria-hidden": "true",
++    },
++    [
++      h(
++        "circle",
++        {
++          cx: "8",
++          cy: "8",
++          r: "6",
++          fill: "none",
++          stroke: "#64748b",
++          "stroke-width": "2.5",
++          "stroke-linecap": "round",
++          "stroke-dasharray": "28.3 9.4",
++        },
++        [
++          h("animateTransform", {
++            attributeName: "transform",
++            attributeType: "XML",
++            type: "rotate",
++            from: "0 8 8",
++            to: "360 8 8",
++            dur: "0.8s",
++            repeatCount: "indefinite",
++          }),
++        ],
++      ),
++    ],
++  );
++}
++
+ const DefaultToolCallRenderer = defineComponent({
+   props: {
+     name: {
+@@ -135,16 +229,207 @@ const DefaultToolCallRenderer = defineComponent({
+   },
+   setup(props) {
+     const isExpanded = ref(false);
++    // P-L: 长参数/结果块级折叠(超阈值默认截断,点击展开全文)
++    const argsExpanded = ref(false);
++    const resultExpanded = ref(false);
++
++    const isActiveStatus = () =>
++      props.status === "inProgress" || props.status === "executing";
++
++    // --- Duration tracking -------------------------------------------------
++    // `startedAt` is set the first time an active status is observed; the
++    // duration freezes when the call completes OR when the run dies while
++    // the call is still active. Calls that mount already-complete (history
++    // restore) never get a `startedAt`, so no duration is shown for them.
++    const startedAt = ref<number | null>(null);
++    const frozenDurationMs = ref<number | null>(null);
++    const nowTick = ref(Date.now());
++    let tickTimer: ReturnType<typeof setInterval> | null = null;
++
++    function stopTicking() {
++      if (tickTimer !== null) {
++        clearInterval(tickTimer);
++        tickTimer = null;
++      }
++    }
++    function startTicking() {
++      if (tickTimer === null) {
++        tickTimer = setInterval(() => {
++          nowTick.value = Date.now();
++        }, 100);
++      }
++    }
++    function freezeDuration() {
++      if (startedAt.value !== null && frozenDurationMs.value === null) {
++        frozenDurationMs.value = Date.now() - startedAt.value;
++      }
++      stopTicking();
++    }
++
++    watch(
++      () => props.status,
++      () => {
++        if (isActiveStatus()) {
++          if (startedAt.value === null) startedAt.value = Date.now();
++          nowTick.value = Date.now();
++          startTicking();
++        } else {
++          freezeDuration();
++        }
++      },
++      { immediate: true },
++    );
++    onUnmounted(stopTicking);
++
++    // --- Run lifecycle (failure / interrupt detection) ---------------------
++    // The ToolCallStatus enum has no error state, so a failed or aborted run
++    // leaves the card stuck on "Running". Subscribe to the same (possibly
++    // thread-cloned) agent the chat uses and mark still-active cards ✗ when
++    // the run errors or ends without a result for this call.
++    // Both injections degrade gracefully to null outside a provider (unit
++    // tests mount the renderer bare), in which case the card simply keeps
++    // the spinner/✓ behaviour.
++    type RunEnd = "failed" | "finished" | null;
++    const runEnd = ref<RunEnd>(null);
++
++    const kitContext = inject(CopilotKitKey, null);
++    const chatConfig = inject(CopilotChatConfigurationKey, null);
++
++    watchEffect((onCleanup) => {
++      const core = kitContext?.copilotkit.value;
++      if (!core) return;
++      const agentId = chatConfig?.value?.agentId ?? DEFAULT_AGENT_ID;
++      const threadId = chatConfig?.value?.threadId;
++      const registryAgent = core.getAgent(agentId);
++      const rawRegistry = registryAgent ? toRaw(registryAgent) : undefined;
++      const agent =
++        (threadId ? getThreadClone(rawRegistry, threadId) : undefined) ??
++        rawRegistry;
++      if (!agent) return;
++
++      // A card that mounts still-active while the agent is idle is a
++      // dangling call from a dead run (e.g. restored history) — mark it
++      // interrupted immediately instead of spinning forever.
++      if (!agent.isRunning && isActiveStatus() && runEnd.value === null) {
++        runEnd.value = "finished";
++        freezeDuration();
++      }
++
++      const sub = agent.subscribe({
++        onRunStartedEvent: () => {
++          // A fresh run (e.g. resume after failure) revives active cards.
++          runEnd.value = null;
++          if (isActiveStatus() && frozenDurationMs.value === null) {
++            startTicking();
++          }
++        },
++        onRunFinishedEvent: () => {
++          if (runEnd.value === null) runEnd.value = "finished";
++          if (isActiveStatus()) freezeDuration();
++        },
++        onRunErrorEvent: () => {
++          runEnd.value = "failed";
++          if (isActiveStatus()) freezeDuration();
++        },
++      });
++      onCleanup(() => sub.unsubscribe());
++    });
++
++    const failedState = computed<RunEnd>(() => {
++      if (props.status === "complete") {
++        // 工具级失败（session.tool.failed）：run 正常收尾，但结果本身是错误。
++        return isFailureResult(props.result) ? "failed" : null;
++      }
++      return runEnd.value;
++    });
++
++    const durationText = computed(() => {
++      if (frozenDurationMs.value !== null) {
++        return formatToolCallDuration(frozenDurationMs.value);
++      }
++      if (startedAt.value !== null && props.status !== "complete") {
++        return formatToolCallDuration(nowTick.value - startedAt.value);
++      }
++      return null;
++    });
++
++    /** P-L: 参数/结果块 —— 超阈值默认截断(标注总字符数),点击展开/收起。 */
++    function renderPayloadBlock(
++      label: string,
++      text: string,
++      expanded: typeof argsExpanded,
++      testidBase: string,
++    ) {
++      const isLong = text.length > LONG_TEXT_THRESHOLD;
++      const shown =
++        isLong && !expanded.value
++          ? `${text.slice(0, LONG_TEXT_THRESHOLD)}…`
++          : text;
++      return h("div", [
++        h("div", label),
++        h("pre", { "data-testid": `${testidBase}-pre` }, shown),
++        isLong
++          ? h(
++              "button",
++              {
++                type: "button",
++                "data-testid": `${testidBase}-toggle`,
++                onClick: (e: MouseEvent) => {
++                  e.stopPropagation();
++                  expanded.value = !expanded.value;
++                },
++                style: {
++                  border: "none",
++                  background: "transparent",
++                  color: "#6366f1",
++                  fontSize: "12px",
++                  cursor: "pointer",
++                  padding: "2px 0",
++                },
++              },
++              expanded.value ? "收起" : `展开全部(共 ${text.length} 字符)`,
++            )
++          : null,
++      ]);
++    }
+ 
+     return () => {
+-      const isActive =
+-        props.status === "inProgress" || props.status === "executing";
++      const isActive = isActiveStatus();
+       const isComplete = props.status === "complete";
+-      const statusLabel = isActive
+-        ? "Running"
++      const failed = failedState.value;
++      const statusLabel = failed
++        ? failed === "failed"
++          ? "失败"
++          : "已中断"
++        : isActive
++          ? "Running"
++          : isComplete
++            ? "Done"
++            : props.status;
++      const statusColor = failed
++        ? failed === "failed"
++          ? "#dc2626"
++          : "#d97706"
++        : isComplete
++          ? "#16a34a"
++          : undefined;
++
++      const iconNode = failed
++        ? "✗"
+         : isComplete
+-          ? "Done"
+-          : props.status;
++          ? "✓"
++          : isActive
++            ? renderSpinner()
++            : null;
++
++      // P-L: 状态点(头部左侧,颜色语义与状态图标/文字统一)
++      const dotState = failed
++        ? failed === "failed"
++          ? "failed"
++          : "interrupted"
++        : isComplete
++          ? "done"
++          : "running";
+ 
+       return h(
+         "div",
+@@ -153,6 +438,7 @@ const DefaultToolCallRenderer = defineComponent({
+           "data-tool-name": props.name,
+           "data-tool-call-id": props.toolCallId,
+           "data-status": props.status,
++          "data-run-end": failed ?? "",
+           "data-args": safeStringifyForAttr(props.parameters),
+           "data-result": safeStringifyForAttr(props.result),
+           style: { marginTop: "8px", paddingBottom: "8px" },
+@@ -164,7 +450,7 @@ const DefaultToolCallRenderer = defineComponent({
+               style: {
+                 borderRadius: "12px",
+                 border: "1px solid #e4e4e7",
+-                backgroundColor: "#fafafa",
++                backgroundColor: failed ? "#fef2f2" : "#fafafa",
+                 padding: "14px 16px",
+               },
+             },
+@@ -195,33 +481,114 @@ const DefaultToolCallRenderer = defineComponent({
+                   h(
+                     "span",
+                     {
+-                      "data-testid": "copilot-tool-render-name",
+-                      style: { fontWeight: "600" },
++                      style: {
++                        display: "inline-flex",
++                        alignItems: "center",
++                        gap: "8px",
++                        minWidth: 0,
++                      },
+                     },
+-                    props.name,
++                    [
++                      h("span", {
++                        "data-testid": "copilot-tool-render-status-dot",
++                        "data-state": dotState,
++                        "aria-hidden": "true",
++                        style: {
++                          width: "8px",
++                          height: "8px",
++                          borderRadius: "50%",
++                          backgroundColor: STATUS_DOT_COLORS[dotState],
++                          flex: "none",
++                        },
++                      }),
++                      h(
++                        "span",
++                        {
++                          "data-testid": "copilot-tool-render-name",
++                          style: { fontWeight: "600" },
++                        },
++                        props.name,
++                      ),
++                    ],
+                   ),
+                   h(
+                     "span",
+-                    { "data-testid": "copilot-tool-render-status" },
+-                    statusLabel,
++                    {
++                      style: {
++                        display: "inline-flex",
++                        alignItems: "center",
++                        gap: "6px",
++                        color: statusColor,
++                      },
++                    },
++                    [
++                      h(
++                        "span",
++                        {
++                          "data-testid": "copilot-tool-render-status-icon",
++                          style: {
++                            display: "inline-flex",
++                            alignItems: "center",
++                            fontSize: "12px",
++                            lineHeight: 1,
++                          },
++                        },
++                        iconNode ? [iconNode] : [],
++                      ),
++                      h(
++                        "span",
++                        { "data-testid": "copilot-tool-render-status" },
++                        statusLabel,
++                      ),
++                      durationText.value
++                        ? h(
++                            "span",
++                            {
++                              "data-testid": "copilot-tool-render-duration",
++                              style: { color: "#94a3b8", fontSize: "12px" },
++                            },
++                            durationText.value,
++                          )
++                        : null,
++                    ],
+                   ),
+                 ],
+               ),
+               isExpanded.value
+                 ? h("div", { style: { marginTop: "12px" } }, [
+-                    h("div", "Arguments"),
+-                    h("pre", safeStringifyForPre(props.parameters ?? {})),
+-                    props.result !== undefined
++                    renderPayloadBlock(
++                      "Arguments",
++                      safeStringifyForPre(props.parameters ?? {}),
++                      argsExpanded,
++                      "copilot-tool-render-args",
++                    ),
++                    // P-R: 完成态但无输出 → 明确提示,不留空白
++                    isComplete &&
++                    (props.result === undefined ||
++                      (typeof props.result === "string"
++                        ? props.result.trim() === ""
++                        : safeStringifyForPre(props.result).trim() === ""))
+                       ? h("div", [
+                           h("div", "Result"),
+                           h(
+-                            "pre",
++                            "div",
++                            {
++                              "data-testid": "copilot-tool-render-result-empty",
++                              style: { color: "#9ca3af", fontSize: "12.5px", fontStyle: "italic" },
++                            },
++                            "（无输出）",
++                          ),
++                        ])
++                      : props.result !== undefined
++                        ? renderPayloadBlock(
++                            "Result",
+                             typeof props.result === "string"
+                               ? props.result
+                               : safeStringifyForPre(props.result),
+-                          ),
+-                        ])
+-                      : null,
++                            resultExpanded,
++                            "copilot-tool-render-result",
++                          )
++                        : null,
+                   ])
+                 : null,
+             ],
 diff --git a/packages/copilotkit-vue/src/v2/index.ts b/packages/copilotkit-vue/src/v2/index.ts
 index a5743ff..d84d484 100644
 --- a/packages/copilotkit-vue/src/v2/index.ts
