@@ -335,3 +335,72 @@ describe("CopilotChatUserMessage", () => {
     });
   });
 });
+
+describe("FORK#26 用户消息附件区渲染", () => {
+  it("多模态消息: 文本进气泡,图片/文档 parts 渲染为附件区(AttachmentRenderer)", () => {
+    const message = {
+      id: "user-att-1",
+      role: "user",
+      content: [
+        { type: "text", text: "分析这几个文件" },
+        {
+          type: "image",
+          source: { type: "url", value: "/agui-api/chat/threads/t1/files/chart.png", mimeType: "image/png" },
+          metadata: { filename: "chart.png" },
+        },
+        {
+          type: "document",
+          source: { type: "url", value: "/agui-api/chat/threads/t1/files/sales.csv", mimeType: "text/csv" },
+          metadata: { filename: "sales.csv" },
+        },
+      ],
+    } as unknown as UserMessage;
+    const wrapper = mount(CopilotChatUserMessage, { props: { message } });
+
+    const zone = wrapper.find("[data-testid='copilot-user-message-attachments']");
+    expect(zone.exists(), "应有附件区容器").toBe(true);
+    const img = zone.find("[data-testid='copilot-chat-attachment-renderer-image']");
+    expect(img.exists()).toBe(true);
+    expect(img.attributes("src")).toContain("/files/chart.png");
+    const doc = zone.find("[data-testid='copilot-chat-attachment-renderer-document']");
+    expect(doc.exists()).toBe(true);
+    expect(doc.text()).toContain("sales.csv");
+    // 文本仍在气泡里
+    expect(wrapper.find("[data-testid='copilot-user-message']").text()).toContain("分析这几个文件");
+  });
+
+  it("历史消息无 source 的 document part 也渲染 chip(点击预览由 App 委托按文件名解析)", () => {
+    const message = {
+      id: "user-att-2",
+      role: "user",
+      content: [
+        { type: "text", text: "看这个" },
+        { type: "document", metadata: { filename: "report.pdf" } },
+      ],
+    } as unknown as UserMessage;
+    const wrapper = mount(CopilotChatUserMessage, { props: { message } });
+    const doc = wrapper.find("[data-testid='copilot-chat-attachment-renderer-document']");
+    expect(doc.exists(), "无 source 的 document part 也要渲染 chip").toBe(true);
+    expect(doc.text()).toContain("report.pdf");
+  });
+
+  it("无 source 的 image part 跳过(无法渲染,不出 broken img)", () => {
+    const message = {
+      id: "user-att-3",
+      role: "user",
+      content: [
+        { type: "text", text: "看图" },
+        { type: "image", metadata: { filename: "lost.png" } },
+      ],
+    } as unknown as UserMessage;
+    const wrapper = mount(CopilotChatUserMessage, { props: { message } });
+    expect(wrapper.find("[data-testid='copilot-chat-attachment-renderer-image']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='copilot-user-message-attachments']").exists()).toBe(false);
+  });
+
+  it("纯文本消息不渲染附件区(回归)", () => {
+    const message: UserMessage = { id: "user-att-4", role: "user", content: "hello" } as UserMessage;
+    const wrapper = mount(CopilotChatUserMessage, { props: { message } });
+    expect(wrapper.find("[data-testid='copilot-user-message-attachments']").exists()).toBe(false);
+  });
+});

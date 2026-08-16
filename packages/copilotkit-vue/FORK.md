@@ -203,6 +203,20 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     StreamMarkdown content 改喂 streamdownContent（限频+mermaid 降级合成）。
     Covered by `__tests__/degrade-mermaid.test.ts` (4 cases) + 两个 throttle
     测试各新增 mermaid 断言（流式收到 ```text、结束回 ```mermaid）。
+26. `src/v2/components/chat/CopilotChatUserMessage.vue`
+    (2026-08-17, 多模态文件预览) — 用户消息附件区接线：上游把多模态
+    content parts 摊平成纯文本（`flattenUserMessageContent` 只取 text
+    part），已发送消息的附件完全不可见（`CopilotChatAttachmentRenderer`
+    导出但无人使用）。新增 `attachmentParts` computed：非文本 parts
+    （image/audio/video/document）→ 在默认 message-renderer 槽之上渲染
+    附件条（容器 `data-testid="copilot-user-message-attachments"`，复用
+    AttachmentRenderer）。历史消息里 gateway 还原的 document part 可能
+    没有 source —— chip 只靠 metadata.filename 也渲染（App 侧点击委托
+    按文件名解析会话下载链做预览）；无可用 URL 的 image/audio/video
+    part 跳过（不出 broken img）。附件区放在 message-renderer 槽之外，
+    覆盖槽不丢附件。
+    Covered by `__tests__/CopilotChatUserMessage.test.ts` 新增
+    "FORK#26 用户消息附件区渲染" describe（4 cases）。
 
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)

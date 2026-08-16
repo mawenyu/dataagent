@@ -20,6 +20,7 @@ import type {
   CopilotChatUserMessageOnSwitchToBranchProps,
   CopilotChatUserMessageToolbarSlotProps,
 } from "./types";
+import CopilotChatAttachmentRenderer from "./CopilotChatAttachmentRenderer.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -97,6 +98,43 @@ function flattenUserMessageContent(content?: UserMessage["content"]): string {
 const flattenedContent = computed(() =>
   flattenUserMessageContent(props.message.content),
 );
+
+// FORK#26: 用户消息附件区 —— 非文本 parts 渲染为 AttachmentRenderer 附件条
+//（上游只把 parts 摊平成文本,附件完全不可见）。历史消息里 gateway 还原的
+// document part 可能没有 source —— chip 只靠 filename 也能渲染/被点击预览
+//（App 侧按文件名解析下载链）；无可用 URL 的 image/audio/video 跳过。
+interface UserAttachmentPart {
+  type: string;
+  source: { type: "url" | "data"; value: string; mimeType?: string };
+  filename?: string;
+}
+const attachmentParts = computed<UserAttachmentPart[]>(() => {
+  const content = props.message.content;
+  if (!Array.isArray(content)) return [];
+  const out: UserAttachmentPart[] = [];
+  for (const part of content) {
+    if (!part || typeof part !== "object") continue;
+    const p = part as Record<string, unknown>;
+    const type = p.type;
+    if (type !== "image" && type !== "audio" && type !== "video" && type !== "document") continue;
+    const meta = (p.metadata ?? {}) as Record<string, unknown>;
+    const filename = typeof meta.filename === "string" ? meta.filename : undefined;
+    const rawSource = p.source as
+      | { type?: string; value?: string; mimeType?: string }
+      | undefined;
+    const hasUrl = typeof rawSource?.value === "string" && rawSource.value.length > 0;
+    if (!hasUrl && type !== "document") continue; // 无源图片/音视频无法渲染
+    const mimeType = typeof meta.mimeType === "string" ? meta.mimeType : rawSource?.mimeType;
+    out.push({
+      type,
+      source: hasUrl
+        ? { type: rawSource!.type === "data" ? "data" : "url", value: rawSource!.value!, mimeType }
+        : { type: "url", value: "", mimeType },
+      filename,
+    });
+  }
+  return out;
+});
 const isMultiline = computed(() => flattenedContent.value.includes("\n"));
 function hasListener(listenerName: string) {
   const listener = vnodeProps.value[listenerName];
@@ -211,6 +249,20 @@ onBeforeUnmount(() => {
       :data-message-id="message.id"
       v-bind="$attrs"
     >
+      <!-- FORK#26: 附件区在 message-renderer 槽之外 —— 覆盖槽不丢附件 -->
+      <div
+        v-if="attachmentParts.length > 0"
+        class="cpk:flex cpk:flex-wrap cpk:gap-2 cpk:justify-end cpk:max-w-[80%] cpk:mb-1.5"
+        data-testid="copilot-user-message-attachments"
+      >
+        <CopilotChatAttachmentRenderer
+          v-for="(part, index) in attachmentParts"
+          :key="index"
+          :type="part.type as never"
+          :source="part.source"
+          :filename="part.filename"
+        />
+      </div>
       <slot
         name="message-renderer"
         :message="message"
