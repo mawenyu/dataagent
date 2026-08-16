@@ -32,8 +32,6 @@ import {
 import { createVueComponent, type VueComponentImplementation } from "./adapter";
 import {
   LEAF_MARGIN,
-  STANDARD_BORDER,
-  STANDARD_RADIUS,
   A2UI_PALETTE,
   A2UI_PRIMARY,
   A2UI_PRIMARY_HOVER,
@@ -576,19 +574,25 @@ const TextField = createVueComponent(
           ? "password"
           : "text";
 
-    const inputStyle = {
-      padding: "8px",
-      width: "100%",
-      border:
-        props.validationErrors && props.validationErrors.length > 0
-          ? "1px solid red"
-          : STANDARD_BORDER,
-      borderRadius: STANDARD_RADIUS,
-      boxSizing: "border-box",
-    };
-
     const hasError =
       props.validationErrors && props.validationErrors.length > 0;
+    const inputStyle = getA2uiInputStyle({
+      hasError,
+      focused: state.focused.value,
+    });
+    if (isLong) {
+      inputStyle.minHeight = "72px";
+      inputStyle.resize = "vertical";
+    }
+
+    const focusHandlers = {
+      onFocus: () => {
+        state.focused.value = true;
+      },
+      onBlur: () => {
+        state.focused.value = false;
+      },
+    };
 
     return h(
       "div",
@@ -596,7 +600,7 @@ const TextField = createVueComponent(
         style: {
           display: "flex",
           flexDirection: "column",
-          gap: "4px",
+          gap: "6px",
           width: "100%",
           margin: LEAF_MARGIN,
         },
@@ -605,10 +609,7 @@ const TextField = createVueComponent(
         props.label
           ? h(
               "label",
-              {
-                for: uniqueId,
-                style: { fontSize: "14px", fontWeight: "bold" },
-              },
+              { for: uniqueId, style: getA2uiLabelStyle() },
               props.label,
             )
           : null,
@@ -619,6 +620,7 @@ const TextField = createVueComponent(
               value: props.value || "",
               onInput: (e: Event) =>
                 props.setValue((e.target as HTMLTextAreaElement).value),
+              ...focusHandlers,
             })
           : h("input", {
               id: uniqueId,
@@ -627,18 +629,15 @@ const TextField = createVueComponent(
               value: props.value || "",
               onInput: (e: Event) =>
                 props.setValue((e.target as HTMLInputElement).value),
+              ...focusHandlers,
             }),
         hasError
-          ? h(
-              "span",
-              { style: { fontSize: "12px", color: "red" } },
-              props.validationErrors![0],
-            )
+          ? h("span", { style: getA2uiErrorTextStyle() }, props.validationErrors![0])
           : null,
       ],
     );
   },
-  () => ({ id: useA2UIUniqueId() }),
+  () => ({ id: useA2UIUniqueId(), focused: ref(false) }),
 );
 
 const CheckBox = createVueComponent(
@@ -670,7 +669,12 @@ const CheckBox = createVueComponent(
                 props.setValue((e.target as HTMLInputElement).checked),
               style: {
                 cursor: "pointer",
-                outline: hasError ? "1px solid red" : "none",
+                width: "16px",
+                height: "16px",
+                accentColor: A2UI_PRIMARY,
+                outline: hasError
+                  ? `1px solid ${A2UI_PALETTE.danger}`
+                  : "none",
               },
             }),
             props.label
@@ -680,7 +684,10 @@ const CheckBox = createVueComponent(
                     for: uniqueId,
                     style: {
                       cursor: "pointer",
-                      color: hasError ? "red" : "inherit",
+                      fontSize: "14px",
+                      color: hasError
+                        ? A2UI_PALETTE.danger
+                        : A2UI_PALETTE.textSecondary,
                     },
                   },
                   props.label,
@@ -691,9 +698,7 @@ const CheckBox = createVueComponent(
         hasError
           ? h(
               "span",
-              {
-                style: { fontSize: "12px", color: "red", marginTop: "4px" },
-              },
+              { style: { ...getA2uiErrorTextStyle(), marginTop: "4px" } },
               props.validationErrors?.[0],
             )
           : null,
@@ -746,7 +751,7 @@ const ChoicePicker = createVueComponent(
       },
       [
         props.label
-          ? h("strong", { style: { fontSize: "14px" } }, props.label)
+          ? h("span", { style: getA2uiLabelStyle() }, props.label)
           : null,
         props.filterable
           ? h("input", {
@@ -756,11 +761,13 @@ const ChoicePicker = createVueComponent(
               onInput: (e: Event) => {
                 state.filter.value = (e.target as HTMLInputElement).value;
               },
-              style: {
-                padding: "4px 8px",
-                border: STANDARD_BORDER,
-                borderRadius: STANDARD_RADIUS,
+              onFocus: () => {
+                state.filterFocused.value = true;
               },
+              onBlur: () => {
+                state.filterFocused.value = false;
+              },
+              style: getA2uiInputStyle({ focused: state.filterFocused.value }),
             })
           : null,
         h(
@@ -775,6 +782,7 @@ const ChoicePicker = createVueComponent(
           },
           options.map((opt: ChoiceOption, i: number) => {
             const isSelected = values.includes(opt.value);
+            const isHovered = state.hovered.value === opt.value;
             const label =
               typeof opt.label === "string"
                 ? opt.label
@@ -785,18 +793,32 @@ const ChoicePicker = createVueComponent(
                 {
                   key: i,
                   onClick: () => onToggle(opt.value),
+                  onMouseenter: () => {
+                    state.hovered.value = opt.value;
+                  },
+                  onMouseleave: () => {
+                    state.hovered.value = null;
+                  },
                   style: {
-                    padding: "4px 12px",
-                    borderRadius: "16px",
+                    padding: "6px 14px",
+                    borderRadius: "9999px",
                     border: isSelected
-                      ? "1px solid var(--a2ui-primary-color, #007bff)"
-                      : STANDARD_BORDER,
+                      ? `1px solid ${A2UI_PRIMARY}`
+                      : isHovered
+                        ? `1px solid ${A2UI_PRIMARY}`
+                        : `1px solid ${A2UI_PALETTE.borderStrong}`,
                     backgroundColor: isSelected
-                      ? "var(--a2ui-primary-color, #007bff)"
-                      : "#fff",
-                    color: isSelected ? "#fff" : "inherit",
+                      ? A2UI_PRIMARY
+                      : isHovered
+                        ? A2UI_PRIMARY_SOFT
+                        : A2UI_PALETTE.surface,
+                    color: isSelected ? "#fff" : A2UI_PALETTE.textSecondary,
                     cursor: "pointer",
-                    fontSize: "12px",
+                    fontSize: "13px",
+                    fontWeight: "500",
+                    lineHeight: "1.3",
+                    transition:
+                      "background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease",
                   },
                 },
                 label,
@@ -806,11 +828,23 @@ const ChoicePicker = createVueComponent(
               "label",
               {
                 key: i,
+                onMouseenter: () => {
+                  state.hovered.value = opt.value;
+                },
+                onMouseleave: () => {
+                  state.hovered.value = null;
+                },
                 style: {
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
                   cursor: "pointer",
+                  padding: "6px 8px",
+                  borderRadius: "6px",
+                  backgroundColor: isHovered
+                    ? A2UI_PALETTE.surfaceSunken
+                    : "transparent",
+                  transition: "background-color 0.15s ease",
                 },
               },
               [
@@ -821,8 +855,23 @@ const ChoicePicker = createVueComponent(
                   name: isMutuallyExclusive
                     ? `choice-${context.componentModel.id}`
                     : undefined,
+                  style: {
+                    cursor: "pointer",
+                    width: "16px",
+                    height: "16px",
+                    accentColor: A2UI_PRIMARY,
+                  },
                 }),
-                h("span", { style: { fontSize: "14px" } }, label),
+                h(
+                  "span",
+                  {
+                    style: {
+                      fontSize: "14px",
+                      color: A2UI_PALETTE.textSecondary,
+                    },
+                  },
+                  label,
+                ),
               ],
             );
           }),
@@ -830,7 +879,11 @@ const ChoicePicker = createVueComponent(
       ],
     );
   },
-  () => ({ filter: ref("") }),
+  () => ({
+    filter: ref(""),
+    filterFocused: ref(false),
+    hovered: ref<string | null>(null),
+  }),
 );
 
 const Slider = createVueComponent(
@@ -844,7 +897,7 @@ const Slider = createVueComponent(
         style: {
           display: "flex",
           flexDirection: "column",
-          gap: "4px",
+          gap: "6px",
           margin: LEAF_MARGIN,
           width: "100%",
         },
@@ -852,21 +905,35 @@ const Slider = createVueComponent(
       [
         h(
           "div",
-          { style: { display: "flex", justifyContent: "space-between" } },
+          {
+            style: {
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            },
+          },
           [
             props.label
               ? h(
                   "label",
-                  {
-                    for: uniqueId,
-                    style: { fontSize: "14px", fontWeight: "bold" },
-                  },
+                  { for: uniqueId, style: getA2uiLabelStyle() },
                   props.label,
                 )
               : null,
+            // Current value rendered as a primary chip (not bare gray text).
             h(
               "span",
-              { style: { fontSize: "12px", color: "#666" } },
+              {
+                style: {
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  fontVariantNumeric: "tabular-nums",
+                  color: A2UI_PRIMARY,
+                  backgroundColor: A2UI_PRIMARY_SOFT,
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                },
+              },
               String(props.value),
             ),
           ],
@@ -879,7 +946,11 @@ const Slider = createVueComponent(
           value: props.value ?? 0,
           onInput: (e: Event) =>
             props.setValue(Number((e.target as HTMLInputElement).value)),
-          style: { width: "100%", cursor: "pointer" },
+          style: {
+            width: "100%",
+            cursor: "pointer",
+            accentColor: A2UI_PRIMARY,
+          },
         }),
       ],
     );
@@ -896,21 +967,13 @@ const DateTimeInput = createVueComponent(
     if (props.enableDate && !props.enableTime) type = "date";
     if (!props.enableDate && props.enableTime) type = "time";
 
-    const style = {
-      padding: "8px",
-      width: "100%",
-      border: STANDARD_BORDER,
-      borderRadius: STANDARD_RADIUS,
-      boxSizing: "border-box",
-    };
-
     return h(
       "div",
       {
         style: {
           display: "flex",
           flexDirection: "column",
-          gap: "4px",
+          gap: "6px",
           width: "100%",
           margin: LEAF_MARGIN,
         },
@@ -919,27 +982,30 @@ const DateTimeInput = createVueComponent(
         props.label
           ? h(
               "label",
-              {
-                for: uniqueId,
-                style: { fontSize: "14px", fontWeight: "bold" },
-              },
+              { for: uniqueId, style: getA2uiLabelStyle() },
               props.label,
             )
           : null,
         h("input", {
           id: uniqueId,
           type,
-          style,
+          style: getA2uiInputStyle({ focused: state.focused.value }),
           value: props.value || "",
           onInput: (e: Event) =>
             props.setValue((e.target as HTMLInputElement).value),
+          onFocus: () => {
+            state.focused.value = true;
+          },
+          onBlur: () => {
+            state.focused.value = false;
+          },
           min: typeof props.min === "string" ? props.min : undefined,
           max: typeof props.max === "string" ? props.max : undefined,
         }),
       ],
     );
   },
-  () => ({ id: useA2UIUniqueId() }),
+  () => ({ id: useA2UIUniqueId(), focused: ref(false) }),
 );
 
 // ============================================================
