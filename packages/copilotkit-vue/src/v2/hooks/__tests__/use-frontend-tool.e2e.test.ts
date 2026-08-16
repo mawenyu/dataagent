@@ -1276,7 +1276,15 @@ describe("useFrontendTool E2E - Dynamic Registration", () => {
             <DefaultAgentTool />
             <SpecificAgentTool />
             <div style="height: 400px;">
-              <CopilotChat agentId="default" />
+              <!-- welcome-screen=false: same stabilization every other
+                   submit-driven test in this file uses. With the default
+                   welcome screen, the explicit threadId starts isConnecting
+                   and the transient pre-connect main-path input is destroyed
+                   when the welcome screen flips in (~10ms MockStepwiseAgent
+                   connect), making the grab-a-textbox-then-submit race
+                   unwinnable. Agent scoping (the subject under test) does not
+                   depend on the welcome screen. -->
+              <CopilotChat agentId="default" :welcome-screen="false" />
             </div>
           </div>
         `,
@@ -1409,7 +1417,8 @@ describe("useFrontendTool E2E - Dynamic Registration", () => {
             <ScopedTool />
             <GlobalTool />
             <div style="height: 400px;">
-              <CopilotChat agentId="default" />
+              <!-- welcome-screen=false: see the Agent Scoping sibling above. -->
+              <CopilotChat agentId="default" :welcome-screen="false" />
             </div>
           </div>
         `,
