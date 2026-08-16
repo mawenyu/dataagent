@@ -1,0 +1,9 @@
+== S1 未知 session 强写公共区根 → 应被拒 ==
+PASS: S1 公共区根写入被插件拦截，文件未落盘
+== S2 未知 session 写 /tmp → 应放行 ==
+PASS: S2 /tmp 放行
+== S3/S4/S5 绑定 session → 自己目录放行 / 别人目录拒 / 公共区 CSV 拒 ==
+PASS: S3 自己会话目录放行
+PASS: S4 跨会话目录写入被拦截
+PASS: S5 公共区 CSV 覆盖被拦截
+== 结果: 5 PASS / 0 FAIL ==
