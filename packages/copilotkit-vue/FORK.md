@@ -132,6 +132,17 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     microtask+网络往返渲染；三个同步断言的 fork 测试相应改 waitFor。
     预算断言脚本：vue-frontend/scripts/check-bundle-budget.mjs。
 
+20. `src/v2/components/a2ui.ts` (2026-08-16, 协议边界第二批) —
+    `sanitizeA2uiOperations()` 消毒管线追加三段（第一批见条目 18）：
+    超大 payload 截断（单条 string >1MB 截断留 `…[truncated]` marker，
+    整条 op 序列化 >4MB 整条丢弃，上限可经 opts 注入）；重复 op 去重
+    （断连重放/快照重叠重复送达时，逐字节相同的 op 与同 surfaceId 的
+    重复 createSurface 只留第一条 —— web_core 对重复 createSurface
+    直接 throw "already exists"）；out-of-order 归一化（createSurface
+    稳定提前、deleteSurface 押后，乱序到达的 updateComponents/
+    updateDataModel 不再被逐 op 容错永久丢弃）。Covered by
+    `__tests__/A2UIBoundaryBatch2.test.ts` (10 cases，含 2MB 截断渲染)。
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 
