@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -26,8 +28,13 @@ import java.util.regex.Pattern;
  *
  * <p>五路并行（Mono.zip）真实拉取 opencode server：/api/agent、/api/command、
  * /api/skill、/api/plugin、/api/tool。禁写死清单。单路失败不拖垮整体：
- * 该路空数组 + log.warn；/api/tool 目前 404（opencode-fork 另一线新增中），
- * 失败时 serverTools 空数组且 toolsAvailable=false，其余区照常。</p>
+ * 该路空数组 + log.warn；/api/tool 失败（404/连接拒绝）时 serverTools 空数组
+ * 且 toolsAvailable=false，其余区照常。</p>
+ *
+ * <p>P28-B 冷启动竞态：opencode 端口就绪远早于插件/工具注册（实测 /api/tool
+ * 先回 200 + 空清单；内置 12 工具不可能为空，空即未就绪）→ 空清单按
+ * {@code toolRetryDelays} 退避重试，拿到非空清单才放行；重试耗尽仍空则
+ * available=true + 空数组 + log.warn（不阻塞其余四路）。</p>
  *
  * <p>serverTools.source 启发式：插件清单含 {@code opencode.tool.<name>} → builtin；
  * 工具名命中业务插件注册的工具名（从 agents/plugins/a2ui-tools.ts 源码
@@ -44,14 +51,26 @@ public class CapabilitiesService {
 
     private final WebClient webClient;
     private final String pluginToolsFile;
+    /** /api/tool 空清单的退避重试节奏（P28-B）。默认 ~7.75s 预算覆盖冷启动窗口。 */
+    private final List<Duration> toolRetryDelays;
     /** 业务插件工具名缓存（文件内容运行期不变，读一次即可；null = 未加载）。 */
     private volatile Set<String> pluginToolNames;
 
+    @Autowired
     public CapabilitiesService(WebClient opencodeWebClient,
                                @Value("${opencode.plugin-tools-file:agents/plugins/a2ui-tools.ts}")
                                String pluginToolsFile) {
+        this(opencodeWebClient, pluginToolsFile,
+                List.of(Duration.ofMillis(250), Duration.ofMillis(500),
+                        Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(4)));
+    }
+
+    /** 测试友好：可注入零延迟重试节奏。 */
+    public CapabilitiesService(WebClient opencodeWebClient, String pluginToolsFile,
+                               List<Duration> toolRetryDelays) {
         this.webClient = opencodeWebClient;
         this.pluginToolsFile = pluginToolsFile;
+        this.toolRetryDelays = toolRetryDelays;
     }
 
     public Mono<JsonNode> capabilities() {
@@ -78,14 +97,31 @@ public class CapabilitiesService {
                 });
     }
 
-    /** /api/tool 单路：失败（404/连接拒绝等）→ available=false，与其余路区分语义。 */
+    /** /api/tool 单路：失败（404/连接拒绝等）→ available=false，与其余路区分语义。
+     *  200 但空清单 → 冷启动竞态（注册表未就绪），按退避节奏重试（P28-B）。 */
     private Mono<ToolFetch> fetchTools() {
+        return fetchToolsWithRetry(0);
+    }
+
+    private Mono<ToolFetch> fetchToolsWithRetry(int attempt) {
         return webClient.get()
                 .uri("/api/tool")
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
                 .bodyToMono(String.class)
                 .map(body -> new ToolFetch(parseDataArray(body), true))
+                .flatMap(tf -> {
+                    if (!tf.available() || !tf.items().isEmpty()
+                            || attempt >= toolRetryDelays.size()) {
+                        if (tf.available() && tf.items().isEmpty()
+                                && attempt >= toolRetryDelays.size() && attempt > 0) {
+                            log.warn("capabilities: /api/tool 重试 {} 次后仍为空清单（降级空数组返回）", attempt);
+                        }
+                        return Mono.just(tf);
+                    }
+                    return Mono.delay(toolRetryDelays.get(attempt))
+                            .then(fetchToolsWithRetry(attempt + 1));
+                })
                 .onErrorResume(e -> {
                     log.warn("capabilities: /api/tool 不可用（toolsAvailable=false，serverTools 空数组）: {}",
                             e.toString());

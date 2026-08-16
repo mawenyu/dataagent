@@ -136,6 +136,63 @@ class CapabilitiesServiceTest {
         assertEquals(2, res.path("plugins").size());
     }
 
+    /**
+     * P28-B 冷启动竞态：opencode 端口就绪远早于插件/工具注册 —— 实测
+     * /api/tool 先回 200 + data:[]（内置 12 工具也不可能为空，空即未就绪）。
+     * gateway 必须退避重试，拿到非空清单才放行。
+     */
+    @Test
+    void emptyToolListTriggersReadinessRetryUntilPopulated() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger toolCalls = new java.util.concurrent.atomic.AtomicInteger();
+        Map<String, Object> routes = happyRoutes();
+        WebClient client = WebClient.builder().exchangeFunction((ClientRequest req) -> {
+            if (req.url().getPath().equals("/api/tool")
+                    && toolCalls.incrementAndGet() == 1) {
+                return Mono.just(ClientResponse.create(HttpStatus.OK)
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .body("{\"data\":[]}").build());
+            }
+            Object scripted = routes.get(req.url().getPath());
+            return Mono.just(ClientResponse.create(HttpStatus.OK)
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                    .body((String) scripted).build());
+        }).build();
+        CapabilitiesService svc = new CapabilitiesService(
+                client, writePluginToolsFile().toString(),
+                java.util.List.of(java.time.Duration.ofMillis(1), java.time.Duration.ofMillis(1)));
+
+        JsonNode res = svc.capabilities().block();
+
+        assertEquals(2, toolCalls.get(), "空清单必须触发一次重试");
+        assertTrue(res.path("toolsAvailable").asBoolean());
+        assertEquals(3, res.path("serverTools").size(), "重试后拿到真实工具清单");
+    }
+
+    @Test
+    void persistentlyEmptyToolListExhaustsRetriesAndDegrades() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger toolCalls = new java.util.concurrent.atomic.AtomicInteger();
+        Map<String, Object> routes = happyRoutes();
+        routes.put("/api/tool", "{\"data\":[]}");
+        WebClient client = WebClient.builder().exchangeFunction((ClientRequest req) -> {
+            if (req.url().getPath().equals("/api/tool")) toolCalls.incrementAndGet();
+            Object scripted = routes.get(req.url().getPath());
+            return Mono.just(ClientResponse.create(HttpStatus.OK)
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                    .body((String) scripted).build());
+        }).build();
+        CapabilitiesService svc = new CapabilitiesService(
+                client, writePluginToolsFile().toString(),
+                java.util.List.of(java.time.Duration.ofMillis(1), java.time.Duration.ofMillis(1)));
+
+        JsonNode res = svc.capabilities().block();
+
+        assertEquals(3, toolCalls.get(), "1 次首调 + 2 次重试后放弃");
+        assertTrue(res.path("toolsAvailable").asBoolean(), "端点活着但持续空：available=true");
+        assertEquals(0, res.path("serverTools").size());
+        // 其余区不受拖累
+        assertEquals(1, res.path("agents").size());
+    }
+
     @Test
     void singleSectionFailureDoesNotBreakOthers() throws Exception {
         Map<String, Object> routes = happyRoutes();
