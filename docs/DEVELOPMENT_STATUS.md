@@ -1,6 +1,6 @@
 # DEVELOPMENT_STATUS — 当前完成度 / 问题清单 / 下一步（2026-08-16 全面审查）
 
-> 每次开发循环更新。基线：main @ P27（frontend 262 绿 / gateway 210 绿 / fork 1144 绿、仅剩 1 例 vision 线领地 SKIP）。
+> 每次开发循环更新。基线：main @ P28（frontend 262 绿 / gateway 213 绿 / fork 1155 绿 **0 红**）。
 
 ## 本轮审查新发现（两个探查代理 + 主线自查，全部给出行号证据）
 
@@ -23,7 +23,7 @@
 9. ~~错误映射 / 阻塞 IO~~ ✅ c209fa0（@RestControllerAdvice：400/404/409/500 结构化 JSON，栈帧不外泄）/ 393319f（store+文件 IO 全量 boundedElastic，SSE 逐事件副作用 concatMap 下移）。189 绿。
 10. ~~每事件 `new ObjectMapper()`（AgUiProtocolService 3 处）~~ ✅ a8f4354。
 11. ~~死代码：WorkspaceFileService.sizeOf、A2UiActionHandler.parse、A2UiService.BASIC_CATALOG_ID~~ ✅ 2fb571d（parse/ParsedAction 连带清理，-43 行）。
-12. ~~fork 10 个既有失败测试~~ ✅ 2026-08-16 A 线修复 9 例（ac501c6 getThreadClone toRaw / 1dd295c 测试对齐 FORK#8 / f5b466b agent-scoping 竞态 / 41c4c20 v-memo+stateTick / 2c3d9ed SSR 超时预算）；剩 1 例 A2UI /connect replay 属 vision 线领地按约 SKIP。
+12. ~~fork 10 个既有失败测试~~ ✅ 2026-08-16 A 线修复 9 例（ac501c6 getThreadClone toRaw / 1dd295c 测试对齐 FORK#8 / f5b466b agent-scoping 竞态 / 41c4c20 v-memo+stateTick / 2c3d9ed SSR 超时预算）；最后 1 例 A2UI /connect replay 由 P28-A 根治（vitest inline @copilotkit/core，22b74ae）→ **fork 套件 0 红（1155/1155）**。
 13. ~~根目录陈旧顶层 `dist/`~~ ✅ 已不存在（复核 2026-08-16）。
 
 ### P3
@@ -54,12 +54,15 @@
 - [x] **能力清单全链路通车（P27，六线并行循环）**：opencode-fork 新增 `GET /api/tool` 注册工具清单端点（d5d737f，server 25/25 + tool.test 3/3，已 push origin/dataagent-v2）→ gateway `GET /capabilities` 五路并行聚合（agents/skills/commands/plugins/tools，单路失败降级、skills content 剥离、hidden agent 过滤、source 启发式 builtin/plugin/custom）→ 前端 `CapabilitiesPanel` 六区展示 + `useCapabilities` composable（侧栏第三 tab，frontendTools 经 props 区分客户端工具）。两处实测抓虫修复：controller 误映射带前缀路径（5557a6a + 反射回归）/ opencode 未重启端点未装载（已重启 :4096 实测 18 工具：builtin 12 / plugin 5=render_a2ui 等五个全中 / custom 1=timestamp；浏览器实测面板渲染 /tmp/caps-final.png）。已知：冷启动 ~23s（插件异步加载竞态），热态 1.7s。
 - [x] **fork 失败基线清零收尾**：9 红 → 1 红（见 P2-12）；三线回归 frontend 262 ✅ / gateway 210 ✅ / fork 1144+1SKIP ✅；fork patch 重生成（patches/copilotkit-vue-fork.patch，41 文件 13844 行，git apply 干净应用 + diff -rq 逐字节一致验证）。
 - [x] **spreadsheetEdits modal 不弹二次根因修复**（2026-08-16 P26 续，ffe2e3c + fed6ce6）：d992ab5 部署后真实链路复跑仍不弹 modal —— 四场景隔离实验（真实 HttpAgent + CopilotChat + 打桩 fetch 逐字节复现 gateway SSE，`vue-frontend/src/components/frontendToolExec.test.ts`）定位唯一致因：**RUN_FINISHED 前插的 MESSAGES_SNAPSHOT 以 opencode 历史为权威冲刷客户端消息流，而历史里伪 `<tool_call>` 是纯文本** → 流式 TOOL_CALL_* 被抹掉 → handler 永不执行（悬空 parentMessageId、TEXT_MESSAGE 包裹均非致因）。修复：`ThreadMessagesService` 历史转换把标记还原成 `toolCalls`（复用 `FrontendToolBridge.parseToolCall`，含 DSML 伪尾巴容错；确定性 id `histcall-*`；标记前引导文本保留、标记后余文按截断语义丢弃），顺带消除快照/回放把裸标记渲染成可见文本的 UX 泄漏。TDD：gateway `ThreadMessagesServiceTest` +3 → 全量 199/199 绿；前端 252/252 绿。**真实链路复跑 PASS**：modal 弹出 → 确认 → CSV 落盘含 999999（/tmp/p26-diag.py + /tmp/p26-modal.png）；gateway 已重启上生产；`test-multi-turn.sh` 7/7 回归通过。
+- [x] **P28-A fork 剩红清零**（22b74ae）：最后 1 例 A2UI /connect replay 挂起根因 = @copilotkit/core 是安装依赖被 vitest 外部化，其 dist 顶层 `import { Socket } from "phoenix"` 绕过 vi.mock（探针实锤 sockets:0）→ 真 Phoenix Socket 在 jsdom 挂死。修复：vitest.config `server.deps.inline: [/@copilotkit\/core/]`。全量 1155/1155，**fork 套件 0 红**。
+- [x] **P28-B capabilities 冷启动竞态根治**（a7e77d1）：实测冷启动窗口期五路都可能回 200+空清单，且 plugins 空会污染 source 分类（实测 builtin 12 全误判 custom 13）——比原记录的"23s 慢"更严重（返回即时的错数据）。修复：gateway 五路统一 `readinessGuard` 空清单退避重试（250ms/500ms/1s/2s/4s，~7.75s 预算覆盖冷启动窗口；连接拒绝不重试快速降级；耗尽降级空数组+log.warn）。TDD +3（工具空清单重试/耗尽降级/plugins 空清单分类污染回归）→ gateway 213/213 绿；gateway 重启上生产。**实测对照**：修复前窗口直击 plugins:0/custom:13 错数据；修复后端口就绪瞬间直击 → 5.91s 返回完整正确数据（boot+9.6s，agents 6/skills 10/commands 4/plugins 70/builtin 12+plugin 5+custom 1），热态 0.13s 无回归（/tmp/p28b-capabilities-cold.json）。
+- [x] **FORK#18 A2UI 协议边界第一批**（cd2bd9c）：`sanitizeA2uiOperations` 入口消毒（畸形 JSONL 容错解析/非对象条目丢弃/300KB props 耐压），payload 在但 0 可用 op → `a2ui-payload-error` 警告 chip 取代无限 loading；A2UIBoundaryPayloads.test.ts 10 例。
 
 ## 下一步（修完 P0/P1 后）
 
 剩余：
 1. ~~gateway 重启上生产（4 commit 未部署）→ test-multi-turn 回归~~ ✅ 2026-08-16 已完成两轮（d992ab5 一轮 + ffe2e3c 一轮），multi-turn 7/7。
 2. ~~spreadsheetEdits 真实链路复跑~~ ✅ 2026-08-16 PASS（modal → confirm → CSV 999999 落盘）。
-3. ~~fork 既有失败（use-frontend-tool.e2e Agent Scoping 等）~~ ✅ 2026-08-16 A 线清零（9→1，仅剩 vision 线领地 1 例 SKIP，见 P2-12）。
+3. ~~fork 既有失败（use-frontend-tool.e2e Agent Scoping 等）~~ ✅ 2026-08-16 清零（9→0，P28-A 根治最后 1 例，fork 1155/1155 全绿，见 P2-12）。
 4. DeepSeek 伪 `<tool_call>` 文本输出习性：已确认双路径（native + 文本 marker）都会触发，bridge 均兜住；记录为模型行为基线（本条为观察记录，长期有效）。
 5. ~~观察项：模型偶发拒用 frontend tool 改用原生 edit 绕过 HITL 直改 CSV~~ ✅ P27 已加固（2026-08-16）：提示词层 client_tools 段落 + 工具描述双重显式禁止；gateway 对原生 edit/write/multiedit 直改 CSV/TSV/XLS 追加警告回执（观测模式不阻断，log.warn 可检索）。长期效果待线上观测。

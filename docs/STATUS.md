@@ -1,26 +1,26 @@
-# DataAgent 项目状态总览（P27 并行循环收官巡检 · 2026-08-16）
+# DataAgent 项目状态总览（P28 遗留根治巡检 · 2026-08-16）
 
-> 本文每次回归巡检时更新。最近更新：P27（2026-08-16，能力清单全链路通车 + fork 失败基线 9→1 清零收尾）。
+> 本文每次回归巡检时更新。最近更新：P28（2026-08-16，fork 剩红清零 0 红 + capabilities 冷启动竞态根治 + A2UI 协议边界第一批）。
 
 ## 架构一句话
 
 Vue 3 + @copilotkit/vue(fork) 前端 → nginx `/agui-api/` → Java gateway(8090, Spring Cloud Gateway/WebFlux) → OpenCode server(4096, bun) → DeepSeek。
 公网入口 `http://101.34.246.179/agui/`（部署 `/var/www/blog/agui/`）。
 
-## ① 测试三线核验（2026-08-16 P27 复核）
+## ① 测试三线核验（2026-08-16 P28 复核）
 
 | 线 | 结果 | 说明 |
 |---|---|---|
 | 前端 vue-frontend vitest | **262/262 ✅** | 全量（+10：capabilities 面板 8 + App 接线 2 等） |
-| gateway mvn test | **210/210 ✅** | 全量（+11：CapabilitiesService 聚合/降级/路径回归等） |
-| fork packages/copilotkit-vue vitest | **1144/1145**（唯一失败 = vision 线领地 A2UI /connect replay，按约 SKIP） | 全量 |
+| gateway mvn test | **213/213 ✅** | 全量（P28-B +3：空清单就绪重试 ×2 + plugins 空清单分类污染回归） |
+| fork packages/copilotkit-vue vitest | **1155/1155 ✅ 0 红** | 全量（P28-A：vitest inline @copilotkit/core 根治 /connect replay 挂起；FORK#18 +10 边界用例） |
 
-fork 既有失败基线 10 → 1（A 线 5 commit 修复 9 例，ac501c6/1dd295c/f5b466b/41c4c20/2c3d9ed）：
+fork 既有失败基线 10 → **0**（A 线 5 commit 修复 9 例 + P28-A 根治最后 1 例）：
 - agentId/threadId 解析与 clearOnFresh/connectingGate（5 例）—— getThreadClone toRaw 解包（FORK#15）+ 测试对齐 FORK#8 语义
 - useFrontendTool agent scoping（2 例）—— 测试竞态修复（welcome-screen=false 对齐同文件其余 18 例）
 - renderCustomMessages（1 例）—— v-memo 签名补 stateTick（FORK#17）
 - SSR import safety（1 例）—— 测试加显式 30s 超时预算（共享机冷 import 7-14s）
-- 剩余 1 例：A2UI surface replay —— vision 线领地，baseline 即在红
+- 最后 1 例：A2UI /connect replay 挂起 —— P28-A 根治：@copilotkit/core 是安装依赖被 vitest 外部化，其 dist 顶层 `import { Socket } from "phoenix"` 绕过 vi.mock → 真 Phoenix Socket 在 jsdom 挂死；vitest.config `server.deps.inline: [/@copilotkit\/core/]` 修复（22b74ae）
 
 ## ② 部署一致性核验（2026-08-16 P24，两处陈旧已修复）
 
@@ -58,6 +58,7 @@ fork 既有失败基线 10 → 1（A 线 5 commit 修复 9 例，ac501c6/1dd295c
 | P25 | 抛光收尾：README 公网实拍图（真实 run → A2UI 看板）+ fork 可升级性抽查（上游 1.68.1 删除 getThreadClone = 升级硬阻塞，路径已立项） | docs/screenshots/p25-home.png、docs/FORK-UPGRADE-PATH.md |
 | P26 | spreadsheetEdits modal 不弹二次根因修复：MESSAGES_SNAPSHOT 裸标记冲刷流式工具调用 → 历史转换还原 toolCalls（ffe2e3c）+ 客户端钉板测试（fed6ce6）；真实链路复跑 PASS（modal→confirm→CSV 999999），gateway 已上生产，multi-turn 7/7 | /tmp/p26-modal.png、frontendToolExec.test.ts、DEVELOPMENT_STATUS 下一步 1/2 闭环 |
 | P27 | 能力清单全链路 + 六线并行循环收官：opencode-fork 新增 `GET /api/tool`（d5d737f，已 push）→ gateway `/capabilities` 五路聚合（source 启发式 builtin/plugin/custom）→ 前端 CapabilitiesPanel 六区展示（侧栏第三 tab）；实测：serverTools 18（builtin 12 / plugin 5=render_a2ui 等 / custom 1=timestamp）、agents 6、skills 10、commands 4、plugins 70，浏览器实测渲染通过；opencode 已重启装载端点；fork 失败基线 9→1；fork patch 重生成（41 文件 13844 行，git apply 验证逐字节一致） | /tmp/caps-final.png、CapabilitiesServiceTest、docs/spec/a2ui-component-matrix.md |
+| P28 | 遗留根治：A) fork 剩红清零 0 红（vitest inline @copilotkit/core 根治 phoenix mock 被绕过导致的 /connect replay 挂起，22b74ae）；B) capabilities 冷启动竞态根治 —— 实测窗口期五路都可能回 200+空清单且 plugins 空会污染 source 分类（builtin 12 误判 custom 13），gateway 五路统一 readinessGuard 空清单退避重试（250ms→4s，~7.75s 预算；连接拒绝不重试快速降级）；实测对照：修复前窗口直击即时空/错数据（plugins:0/custom:13），修复后端口就绪直击 5.91s 返回完整正确数据（boot+9.6s），热态 0.13s 无回归（a7e77d1）；FORK#18 A2UI 协议边界第一批（畸形 JSONL/未知条目/300KB props 降级渲染，cd2bd9c） | /tmp/p28b-capabilities-cold.json、CapabilitiesServiceTest（213/213）、A2UIBoundaryPayloads.test.ts |
 
 ### READY-FRONTEND（前端 UX 线）
 
@@ -85,8 +86,8 @@ docs/spec/workspace-*.md。
 
 ## 已知边界（择要）
 
-- fork 仅剩 1 个既有失败测试（A2UI /connect replay，vision 线领地按约 SKIP；其余 9 例已修）
-- capabilities 冷启动 ~23s（插件异步加载竞态，热态 1.7s；gateway 消费方宜在 session 启动后拉取）
+- fork 既有失败测试 **0 红**（P28-A 根治，1155/1155）
+- capabilities 冷启动竞态已根治（P28-B）：gateway 五路空清单退避重试，冷启动窗口直击 5.91s 返回完整正确数据（修复前即时空/错数据；原始投诉 23s 为空清单场景），热态 0.13s。剩余固有边界：opencode 自身插件注册完成前窗口约 boot+3.7~9.6s，重试预算 7.75s 覆盖
 - HITL 确认卡片无超时（设计：interrupt 后 run 即结束，卡片持久有效）
 - opencode 重启后 resume 走新 session（无旧上下文，A2UI_ACTION prompt 携带足够决策信息）
 - 欢迎页自绘输入框的附件走独立链路（P-J 已真实化）；gallery 页 Button disabled 无视觉弱化
