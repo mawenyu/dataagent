@@ -500,3 +500,45 @@ describe('能力面板接线(侧栏第三个 tab)', () => {
     expect(text).toContain('applySpreadsheetEdits')
   })
 })
+
+describe('P-b 快捷指令面板(App 集成)', () => {
+  const flush = async (n = 10, ms = 20) => {
+    for (let i = 0; i < n; i++) { await nextTick(); await new Promise((r) => setTimeout(r, ms)) }
+  }
+
+  it('顶栏 ✨ 模板 开合面板;欢迎页四卡仍渲染(数据源迁移回归)', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    await flush()
+    expect(w.findAll('.welcome-card').length, '欢迎页四卡不漂移').toBe(4)
+
+    expect(document.querySelector('[data-testid="template-panel"]')).toBeNull()
+    await w.find('[data-testid="template-open"]').trigger('click')
+    await nextTick()
+    expect(document.querySelector('[data-testid="template-panel"]'), '面板打开').not.toBeNull()
+    await (document.querySelector('[data-testid="template-close"]') as HTMLElement).click()
+    await nextTick()
+    expect(document.querySelector('[data-testid="template-panel"]'), '面板关闭').toBeNull()
+    w.unmount()
+  })
+
+  it('点击追问指令 → 直接作为 user 消息触发 /agent/run,面板关闭', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App)
+    await flush()
+    const runs = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent/run'))
+
+    await w.find('[data-testid="template-open"]').trigger('click')
+    await nextTick()
+    const item = document.querySelector('[data-testid="template-item-fu-summary"]') as HTMLElement
+    expect(item, '追问指令项可见').not.toBeNull()
+    item.click()
+    await flush(8)
+    expect(runs().length, '快捷指令应直接触发 run').toBe(1)
+    expect(String((runs()[0][1] as RequestInit)?.body ?? '')).toContain('一句话总结')
+    expect(document.querySelector('[data-testid="template-panel"]'), '选中后面板关闭').toBeNull()
+    w.unmount()
+  })
+})

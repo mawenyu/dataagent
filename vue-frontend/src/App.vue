@@ -10,6 +10,8 @@ import { useThreads } from './composables/useThreads'
 import { useWorkspaceFiles } from './composables/useWorkspaceFiles'
 import { buildAttachmentsConfig, ATTACH_ACCEPT } from './composables/chatAttachments'
 import { useWelcomeAttachments } from './composables/welcomeAttachments'
+import { PROMPT_TEMPLATES, templatesByGroup, type PromptTemplate } from './composables/promptTemplates'
+import PromptTemplatePanel from './components/PromptTemplatePanel.vue'
 import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
 import { buildThreadJson, buildThreadMarkdown, downloadJson, downloadMarkdown, exportFilename } from './composables/exportThread'
 import { useRunErrorRecovery, isAbortError, parseRunError } from './composables/runErrorRecovery'
@@ -201,28 +203,8 @@ useGlobalShortcuts({
 })
 
 // P-D: 空会话欢迎页的场景模板卡 —— 点击填充输入框(可编辑后再发送,非直接提交)
-const promptTemplates = [
-  {
-    title: '销售分析',
-    desc: '总额 / 区域排名 / 品类结构',
-    prompt: '分析本月销售情况：总销售额、各区域销售额排名、品类销售结构，并指出值得关注的异常波动。',
-  },
-  {
-    title: '可视化看板',
-    desc: '指标卡 + 图表直观呈现',
-    prompt: '分析本月各区域销售额，用图表看板展示：顶部核心指标卡，下方销售额柱状图与占比图。',
-  },
-  {
-    title: '周报生成',
-    desc: '核心指标 + 趋势 + 风险',
-    prompt: '根据 workspace 里的销售数据生成本周周报：核心指标一览、按日趋势变化、同比异常点与风险提示，用 Markdown 格式输出。',
-  },
-  {
-    title: '数据清洗',
-    desc: '缺失 / 重复 / 异常值体检',
-    prompt: '检查 workspace 里 CSV 文件的数据质量：缺失值、重复行、明显异常值，给出清洗建议，并生成清洗后的新文件。',
-  },
-]
+// P-b: 数据源迁至 composables/promptTemplates(与顶栏快捷指令面板共享,防漂移)
+const promptTemplates = templatesByGroup('开场')
 const welcomeTextarea = ref<HTMLTextAreaElement | null>(null)
 /** P-E: 当前高亮的模板卡标题(手动编辑/清空时移除) */
 const activeTemplate = ref<string | null>(null)
@@ -253,6 +235,19 @@ function onWelcomeInput(e: Event, onUpdate: (v: string) => void) {
   activeTemplate.value = null
   onUpdate((e.target as HTMLTextAreaElement).value)
   autoGrowWelcome()
+}
+
+// P-b: 顶栏快捷指令面板 —— 选中模板直接作为 user 消息发送到当前会话
+const templatePanelOpen = ref(false)
+function applyTemplate(t: PromptTemplate) {
+  templatePanelOpen.value = false
+  const agent = getThreadClone(dataAgent, threadsApi.currentId.value) ?? dataAgent
+  if (agentBusy.value || agent.isRunning) {
+    pushToast({ title: '运行中', message: '当前会话正在生成，结束后再使用快捷指令', type: 'info' })
+    return
+  }
+  agent.addMessage({ id: crypto.randomUUID(), role: 'user', content: t.prompt })
+  void agent.runAgent()
 }
 
 /** 一键清空: 清空文本 + 移除高亮 + 复位高度。 */
@@ -350,7 +345,13 @@ const errorRecovery = useRunErrorRecovery({
   threadId: threadsApi.currentId,
   run: async (agent) => { await (agent as typeof dataAgent).runAgent() },
 })
-dataAgent.subscribe({ onRunStartedEvent: () => errorRecovery.clear() })
+// P-b: 快捷指令发送的运行态守卫（clone 事件与 base agent 订阅互通，同 errorRecovery.clear 路径）
+const agentBusy = ref(false)
+dataAgent.subscribe({
+  onRunStartedEvent: () => { errorRecovery.clear(); agentBusy.value = true },
+  onRunFinishedEvent: () => { agentBusy.value = false },
+  onRunErrorEvent: () => { agentBusy.value = false },
+})
 
 // P-I: 网络断线检测 —— 顶栏离线徽章;离线期间中断的 run 在恢复后自动续跑
 const pendingAutoResume = ref(false)
@@ -423,6 +424,12 @@ async function exportThread(id: string, format: 'md' | 'json') {
       <div class="topbar-right">
         <button
           class="branch-open"
+          data-testid="template-open"
+          title="提示词模板 / 快捷指令"
+          @click="templatePanelOpen = !templatePanelOpen"
+        >✨ 模板</button>
+        <button
+          class="branch-open"
           data-testid="branch-open"
           :disabled="branchMessages.length === 0"
           title="从任意历史消息分叉新会话"
@@ -455,6 +462,11 @@ async function exportThread(id: string, format: 'md' | 'json') {
         <span class="badge">Vue + CopilotKit · No Node Runtime · DeepSeek via OpenCode</span>
       </div>
     </header>
+    <PromptTemplatePanel
+      :open="templatePanelOpen"
+      @close="templatePanelOpen = false"
+      @select="applyTemplate"
+    />
     <main class="chat-wrap">
       <div class="chat-card">
         <CopilotKitProvider
