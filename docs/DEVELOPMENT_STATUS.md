@@ -13,7 +13,7 @@
 ### P1（本轮修）
 
 4. ~~agents/ 混入上游样例死代码~~ ✅ 514c13f（全部 git mv 到 `agents/upstream-examples/`，build-opencode.sh 部署循环只含 plugins/tool/skills/command/agent 顶层目录；P30 复核 2026-08-16：脚本排除逻辑结构核验 ✓、运行侧 .opencode/ 仅剩 a2ui-tools.ts ✓、gateway 221/221 绿）。
-5. **a2ui-tools.ts 过时注释**：头注释"4 个 UI 工具"实为 5 个（漏 request_user_confirm）；build-opencode.sh:61 同样。
+5. ~~a2ui-tools.ts 过时注释~~ ✅ 514c13f（P32 复核 2026-08-16：头注释已是"5 个 UI 工具"，与 name: 计数一致；build-opencode.sh 已不存在，部署循环并入 up.sh，无残留）。
 6. **文档漂移**：DELIVERY-README 与现状 6 处矛盾（vendor 空目录 / DEEPSEEK_API_KEY 不存在 / scripts 清单 / 版本状态停滞 / example 空 provider）；`docs/spec/workspace-files.md` 仍写 5MB（实际 50MB）且缺 PUT/子目录/baseModified；`workspace-isolation.md` 缺 409 契约。
 7. ~~applySpreadsheetEdits 原生 confirm~~ ✅ db7bc07（Promise 化 askConfirm + 自绘 ConfirmDialog，全仓原生弹窗清零；P30 复核 2026-08-16：grep 零残留、ConfirmDialog/spreadsheetEdits 17 例绿、公网 HITL 取消路径实测 PASS，证据 docs/evidence/2026-08-16-p30-hitl-modal-cancel.txt）。
 
@@ -66,6 +66,8 @@
 - [x] **P31 长会话历史加载 256KB 缓冲截杀修复**（本轮 audit 新发现，308ce21）：生产日志实锤 vision-p6-form 历史加载 DataBufferLimitException（WebClient 默认 maxInMemorySize 256KB，多 A2UI surface 长会话历史 JSON 轻易超限）。修复：WebClientConfig maxInMemorySize 可配、默认 8MB 常量。TDD：JDK HttpServer 真实 512KB 响应体，显式 262144 完整复现生产异常（红）→ 默认路径绿 + 显式小上限保护语义不丢。gateway 223/223 绿；已重启上生产，70/70 会话历史回归 OK + multi-turn 7/7；证据 docs/evidence/2026-08-16-p31-webclient-buffer-limit.txt。旁证：P29 新 rail 移动端 390px 触屏实测无回归。
 
 - [x] **P0-abc 三连**（274421a / 60a8163 / 589325a）：**P0-a 能力页插件区空白行** —— 公网实测根因 = opencode /api/plugin 70 条仅含 id，gateway 透传，前端 PluginInfo 契约要 name → 70 条空白行 + key 冲突；修复在 gateway 协议边界归一化补 name=id（BFF 职责），CapabilitiesServiceTest 红→绿。**P0-b 文件面板升格 rail 第三主视图** —— rail 新增「文件」入口，FilesPanel 独占主视图绑定当前会话隔离工作目录；对话视图纯粹化：删 sidebar tabs，只剩会话列表 + 聊天工作区。**P0-c 顶栏品牌净化** —— 删「Vue + CopilotKit · No Node Runtime · DeepSeek via OpenCode」badge，副标题 → AI 数据分析助手。前端 281/281 + typecheck 绿；已部署，**公网实测 14/14 PASS**（插件 70 行全带名 / rail 三视图切换 / 顶栏零技术栈残留，证据 docs/evidence/2026-08-16-p0abc-plugins-rail-brand.txt）。
+
+- [x] **P32 多模态文件预览 —— 图片直渲弹层**（786b534）：体验价值点（P 清单清零后按架构师路线）。缺口 = 图片扩展名不在 PREVIEWABLE，二进制图按文本拉会乱码；修复 = isImage() 判定 + FilePreviewModal imageUrl 分支 `<img>` 直渲下载 URL（gateway 按扩展名给 Content-Type，前端零二进制处理），阈值 5MB 超大图走下载提示。TDD 6 新例先红后绿，前端 288/288 + typecheck 绿；已部署，**公网实测 6/6 PASS**（真实 PNG 上传→点击→naturalWidth=64 真解码，CSV 表格回归，证据 docs/evidence/2026-08-16-p32-image-preview.txt）。**至此 P0/P1/P2 清单全部清零**（P3 为既定接受项）。
 
 ## 下一步（修完 P0/P1 后）
 

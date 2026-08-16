@@ -1,0 +1,33 @@
+P32 多模态文件预览（图片直渲弹层）公网实测 —— 2026-08-16
+URL: http://101.34.246.179/agui/  (Playwright headless chromium, 1440x900)
+脚本: /tmp/p32-accept.py (6 项断言)；夹具: 真实生成的 64x32 渐变 PNG (4197B) + 4 行 CSV
+
+== 背景 ==
+文件预览已有 csv/tsv 表格、json 美化、md 渲染、txt/log 原文（P-C/P-N）；
+缺口 = 图片（PREVIEWABLE 无图片扩展名，previewFile 只会按文本拉内容，
+二进制图会被 UTF-8 解码成乱码）。
+
+== 修复（786b534）==
+- filePreview.ts: isImage()（png/jpg/jpeg/gif/webp/svg/bmp/avif/ico）+ isPreviewable 纳入
+- FilePreviewModal: imageUrl 分支 <img> 直渲下载 URL —— gateway GET 按扩展名
+  guessContentType，浏览器流式解码，前端零二进制处理；棋盘格底色衬透明图
+- FilesPanel: 图片点击不发内容请求（只有列表那次 fetch）；阈值放宽 5MB
+  （agent 生成图表远小于此），超大图仍走下载提示 modal
+
+== TDD ==
+红：纯函数 2 例（isImage 正反）+ modal 2 例（img 分支/ESC）+ 面板 2 例
+（不拉内容请求 / 6MB 走下载提示）全部失败 → 实现后 42/42 绿；
+全量 288/288 + typecheck 干净。
+
+== 公网实测 ==
+PASS  PNG 真实上传出现在文件列表（会话隔离工作目录）
+PASS  图片 modal <img> src = /agui-api/chat/threads/<id>/files/p32-chart.png
+PASS  图片真实解码 naturalWidth=64（经 nginx → gateway content-type 全链路）
+PASS  ESC 关闭预览
+PASS  CSV 表格预览回归（表头 区域/销售额 + 388082 + 华南）
+PASS  浏览器零 pageerror
+== ALL PASS (6/6) ==
+截图: /tmp/p32-image-preview.png（蓝紫渐变 PNG 在 modal 中真实渲染）
+
+附带复核: P1#5 a2ui-tools.ts 过时注释 —— 早已闭环（头注释已"5 个 UI 工具"，
+build-opencode.sh 不存在，部署循环并入 up.sh），STATUS 划线。
