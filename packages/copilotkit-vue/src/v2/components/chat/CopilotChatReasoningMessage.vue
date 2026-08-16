@@ -9,6 +9,7 @@ const StreamMarkdown = defineAsyncComponent(() =>
 );
 import { IconChevronRight } from "../icons";
 import { useThrottledContent } from "../../lib/use-throttled-content";
+import { degradeMermaidForStreaming } from "../../lib/degrade-mermaid";
 import { PlainCodeBlock } from "./plain-code-block";
 
 const props = withDefaults(
@@ -99,6 +100,12 @@ const { content: markdownContent } = useThrottledContent(normalizedContent, isSt
 // 风暴；流式结束回到默认 shiki CodeBlock（一次性高亮 + 复制/下载按钮）。
 const streamdownComponents = computed(() =>
   isStreaming.value ? { codeblock: PlainCodeBlock } : undefined,
+);
+// FORK-PATCH(25 stream-degrade-mermaid): mermaid 分支在 streamdown-vue 内先于
+// codeblock 覆盖键，只能在渲染副本层降级 —— 流式期 ```mermaid 改名 ```text，
+// 结束用原始内容一次性真渲染 mermaid。
+const streamdownContent = computed(() =>
+  isStreaming.value ? degradeMermaidForStreaming(markdownContent.value) : markdownContent.value,
 );
 
 const elapsed = ref(0);
@@ -246,7 +253,7 @@ function toggleOpen() {
             >
               <div v-if="hasContent || isStreaming" class="cpk:pb-2 cpk:pt-1">
                 <div class="cpk:text-sm cpk:text-muted-foreground">
-                  <StreamMarkdown :content="markdownContent" :components="streamdownComponents" />
+                  <StreamMarkdown :content="streamdownContent" :components="streamdownComponents" />
                   <span
                     v-if="isStreaming && hasContent"
                     class="cpk:inline-flex cpk:items-center cpk:ml-1 cpk:align-middle"

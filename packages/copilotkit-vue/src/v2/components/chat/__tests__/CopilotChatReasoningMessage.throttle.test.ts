@@ -98,4 +98,18 @@ describe("CopilotChatReasoningMessage 流式限频（FORK#23）", () => {
       | undefined;
     expect(doneMap?.codeblock).toBeUndefined(); // 结束：回默认高亮渲染
   });
+
+  it("FORK#25 补充：流式期 mermaid 围栏降级 text，结束用原始内容", async () => {
+    const message = createReasoningMessage("```mermaid\ngraph TD; A-->B\n```");
+    const wrapper = mount(CopilotChatReasoningMessage, {
+      props: { message, messages: [message] as Message[], isRunning: true },
+    });
+    await flushPromises();
+    expect(mdUpdates[mdUpdates.length - 1]).toContain("```text");
+    expect(mdUpdates[mdUpdates.length - 1]).not.toContain("```mermaid");
+
+    await wrapper.setProps({ isRunning: false });
+    await nextTick();
+    expect(mdUpdates[mdUpdates.length - 1]).toContain("```mermaid"); // 结束真渲染
+  });
 });

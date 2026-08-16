@@ -18,6 +18,7 @@ const StreamMarkdown = defineAsyncComponent(() =>
 );
 import { useCopilotChatConfiguration } from "../../providers/useCopilotChatConfiguration";
 import { useThrottledContent } from "../../lib/use-throttled-content";
+import { degradeMermaidForStreaming } from "../../lib/degrade-mermaid";
 import { PlainCodeBlock } from "./plain-code-block";
 import { CopilotChatDefaultLabels } from "../../providers/types";
 import {
@@ -684,6 +685,14 @@ const markdownComponents = computed(() =>
     ? { ...markdownComponentsBase, codeblock: PlainCodeBlock }
     : markdownComponentsBase,
 );
+// FORK-PATCH(25 stream-degrade-mermaid): mermaid 分支在 streamdown-vue 内先于
+// codeblock 覆盖键，只能在渲染副本层降级 —— 流式期 ```mermaid 改名 ```text，
+// 结束用原始内容一次性真渲染 mermaid。
+const streamdownContent = computed(() =>
+  isStreamingContent.value
+    ? degradeMermaidForStreaming(markdownContent.value)
+    : markdownContent.value,
+);
 const shouldShowToolbar = computed(
   () =>
     props.toolbarVisible &&
@@ -781,7 +790,7 @@ onBeforeUnmount(() => {
         <StreamMarkdown
           v-if="hasContent"
           class="copilot-chat-assistant-markdown"
-          :content="markdownContent"
+          :content="streamdownContent"
           :components="markdownComponents"
           :code-block-actions="[CodeBlockDownloadAction, CodeBlockCopyAction]"
           :code-block-show-line-numbers="false"

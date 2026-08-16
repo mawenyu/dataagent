@@ -116,4 +116,16 @@ describe("CopilotChatAssistantMessage 流式限频（FORK#23）", () => {
       | undefined;
     expect(doneMap?.codeblock).toBeUndefined(); // 结束：回默认高亮渲染
   });
+
+  it("FORK#25 补充：流式期 mermaid 围栏降级 text，结束用原始内容", async () => {
+    const { msg, running } = mountAssistant();
+    msg.value = createAssistantMessage("```mermaid\ngraph TD; A-->B\n```");
+    await flushPromises();
+    expect(mdUpdates[mdUpdates.length - 1]).toContain("```text");
+    expect(mdUpdates[mdUpdates.length - 1]).not.toContain("```mermaid");
+
+    running.value = false;
+    await nextTick();
+    expect(mdUpdates[mdUpdates.length - 1]).toContain("```mermaid"); // 结束真渲染
+  });
 });
