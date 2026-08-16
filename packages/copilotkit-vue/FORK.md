@@ -193,6 +193,16 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     复制/下载按钮，assistant 侧与既有 img/table 覆盖合并）。
     Covered by `__tests__/plain-code-block.test.ts` (2 cases) + 两个
     throttle 测试新增 components prop 断言（流式有 codeblock、结束无）。
+    补充（同日 mermaid 残留热点）：部署后实测仍有内容相关的 ~3.2s 探针
+    冻结，抓内容实锤 = DeepSeek 分析类回答带 ```mermaid 围栏，而
+    streamdown-vue 的 mermaid 分支（`if (v === "mermaid") return m(rt,...)`）
+    先于 codeblock 覆盖键 —— 流式期每个限频 tick 对半截 mermaid 源码重跑
+    parse+layout。新增 `src/v2/lib/degrade-mermaid.ts`：流式渲染副本把
+    ```mermaid 围栏改名 ```text（未闭合半截围栏同样降级；无 mermaid 走
+    同引用快路径），结束用原始内容一次性真渲染。两处 chat 组件的
+    StreamMarkdown content 改喂 streamdownContent（限频+mermaid 降级合成）。
+    Covered by `__tests__/degrade-mermaid.test.ts` (4 cases) + 两个 throttle
+    测试各新增 mermaid 断言（流式收到 ```text、结束回 ```mermaid）。
 
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
