@@ -111,9 +111,12 @@ class CapabilitiesServiceTest {
         assertEquals(1, commands.size());
         assertEquals("init", commands.get(0).path("name").asText());
         assertEquals("build", commands.get(0).path("agent").asText());
-        // plugins 原样 id 列表
+        // plugins 原样 id 列表 + P30-a: name 字段（前端 PluginInfo 契约是 name/detail，
+        // 上游只给 id 时网关必须归一化，否则面板 70 条空白行）
         assertEquals(2, res.path("plugins").size());
         assertEquals("dataagent.a2ui-tools", res.path("plugins").get(1).path("id").asText());
+        assertEquals("dataagent.a2ui-tools", res.path("plugins").get(1).path("name").asText(),
+                "plugins 条目必须带 name（= id），前端面板按 name 渲染");
         // serverTools source 启发式
         JsonNode tools = res.path("serverTools");
         assertEquals(3, tools.size());

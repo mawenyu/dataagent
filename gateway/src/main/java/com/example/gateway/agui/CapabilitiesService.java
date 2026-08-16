@@ -166,6 +166,9 @@ public class CapabilitiesService {
             pluginIds.add(id);
             ObjectNode o = MAPPER.createObjectNode();
             o.put("id", id);
+            // P30-a: 前端 PluginInfo 契约是 {name, detail}，上游只有 id ——
+            // 网关归一化补 name，否则能力面板渲染 70 条空白行（key 全 undefined）
+            o.put("name", id);
             pluginsArr.add(o);
         }
 
