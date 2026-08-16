@@ -1,0 +1,12 @@
+PASS: 欢迎页 3 个附件上传就绪(png/pdf/csv)
+PASS: 欢迎页 CSV chip → 表格预览(首行表头+数据)
+PASS: 欢迎页 PDF chip → iframe 预览(blob URL,绕过 attachment disposition) —— blob:http://101.34.246.179/c3234299-5068
+PASS: 欢迎页图片 chip → lightbox(会话下载链) —— /agui-api/chat/threads/b7079246-74ce-439c-83a0-21ee9d234018/files/e2e-chart.png
+PASS: 主输入区附件队列就绪(3 项)
+PASS: 消息附件区渲染图片附件(inline img)
+PASS: 消息图片附件点击 → lightbox —— http://101.34.246.179/agui-api/chat/threads/b7079246-74ce-439c-83a0-21ee9d234018
+PASS: 消息 PDF chip 点击 → iframe blob 预览 —— blob:http://101.34.246.179/ad3cdb60-a341
+PASS: 消息 CSV chip 点击 → 表格预览
+PASS: 文件面板 PDF 点击 → iframe blob 预览 —— blob:http://101.34.246.179/5ed267a6-201d
+PASS: 文件面板图片点击 → modal 直渲(P32 回归)
+== RESULT: PASS (11/11) ==
