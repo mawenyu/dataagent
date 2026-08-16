@@ -1,0 +1,19 @@
+# 收尾三件套复检 @HEAD 6ae7685（2026-08-17）
+
+## ① 稳定性（主仓工作树）
+- 前端 vitest 337/337（47 文件；exit=1 由既有 getReader unhandled-rejection 噪音所致，测试全过——STATUS 在案）
+- typecheck exit=0
+- gateway mvn 217/217 BUILD SUCCESS
+- multi-turn 真链路打生产 :8090 == 7 passed, 0 failed（暗号跨轮记忆 ✓）
+
+## ② 长思考卡顿
+本轮无新代码变更涉渲染路径（FORK#27 a1f6ef5 即为修复本体）；探针验收见 docs/evidence/2026-08-17-fork27-idle-upgrade-probe.txt（8 跑 7 PASS，worst 2~219ms，收尾 4841→237ms）——维持已解决结论。
+
+## ③ 干净 clone 重建（HEAD 6ae7685，含 FORK#27）
+- GitHub clone 主仓库 + fork（depth 50）一轮成功（无重试）
+- mvn package 含测试 217/217 BUILD SUCCESS
+- 前端 npm install + build（fork prebuild 含 FORK#27, build:types 正常产出）dist OK + vitest 337/337
+- 干净 opencode :4196 鉴权 200 / 干净 gateway :8190 UP / up.sh 幂等识别在跑三件套
+- multi-turn 打 :8190 == 7 passed, 0 failed
+- 干净实例已停；生产三件套未动
+- 注：本轮重建脚本把密钥注入移回主 shell（上轮脚本 bug 的固化修复），全流程一次通过
