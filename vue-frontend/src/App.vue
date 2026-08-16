@@ -21,6 +21,7 @@ import ConfirmDialog from './components/ConfirmDialog.vue'
 import DefaultToolRender from './components/DefaultToolRender.vue'
 import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
 import FilesPanel from './components/FilesPanel.vue'
+import CapabilitiesPanel from './components/CapabilitiesPanel.vue'
 import ThreadSidebar from './components/ThreadSidebar.vue'
 
 // Registered via the fork's `directAgents` prop (see packages/copilotkit-vue/FORK.md).
@@ -162,8 +163,8 @@ const frontendTools = [
 
 // 需求4: 侧边栏可折叠（移动端抽屉化）
 const sidebarOpen = ref(true)
-// task5-A: 侧边栏 Tab（会话 / 文件面板）
-const sidebarTab = ref<'threads' | 'files'>('threads')
+// task5-A: 侧边栏 Tab（会话 / 文件面板 / 能力面板）
+const sidebarTab = ref<'threads' | 'files' | 'caps'>('threads')
 function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
 function closeSidebarOnMobile() {
   if (window.innerWidth <= 720) sidebarOpen.value = false
@@ -477,6 +478,11 @@ async function exportThread(id: string, format: 'md' | 'json') {
                     data-testid="tab-files"
                     @click="sidebarTab = 'files'"
                   >文件</button>
+                  <button
+                    :class="{ on: sidebarTab === 'caps' }"
+                    data-testid="tab-caps"
+                    @click="sidebarTab = 'caps'"
+                  >能力</button>
                 </div>
                 <ThreadSidebar
                   v-if="sidebarTab === 'threads'"
@@ -488,8 +494,11 @@ async function exportThread(id: string, format: 'md' | 'json') {
                   @rename="(id: string, title: string) => threadsApi.rename(id, title)"
                   @export="(id: string, format: 'md' | 'json') => exportThread(id, format)"
                 />
-                <aside v-else class="sidebar">
+                <aside v-else-if="sidebarTab === 'files'" class="sidebar">
                   <FilesPanel :thread-id="threadsApi.currentId.value" />
+                </aside>
+                <aside v-else class="sidebar">
+                  <CapabilitiesPanel :frontend-tools="frontendTools" />
                 </aside>
               </div>
             </Transition>

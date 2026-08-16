@@ -483,3 +483,20 @@ describe('P27 提示词契约(源码守卫)', () => {
     expect(desc).toContain('edit/write')
   })
 })
+
+describe('能力面板接线(侧栏第三个 tab)', () => {
+  it('点「能力」tab → CapabilitiesPanel 渲染, 前端工具经 props 传入(不发网络请求)', async () => {
+    const w = mount(App)
+    for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    const tab = w.find('[data-testid="tab-caps"]')
+    expect(tab.exists(), '侧栏 tabs 里有「能力」入口').toBe(true)
+    await tab.trigger('click')
+    await nextTick()
+    const panel = w.find('[data-testid="capabilities-panel"]')
+    expect(panel.exists(), 'CapabilitiesPanel 已挂载').toBe(true)
+    // frontend tools 来自 App.vue 既有 frontendTools 数组(props), 与网络无关
+    const text = panel.text()
+    expect(text).toContain('showNotification')
+    expect(text).toContain('applySpreadsheetEdits')
+  })
+})
