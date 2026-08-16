@@ -589,6 +589,21 @@ describe('能力主视图（导航 rail）', () => {
   })
 })
 
+describe('P0-c 品牌净化（顶栏不显示技术栈文案）', () => {
+  it('顶栏只有产品名，无 Vue/CopilotKit/DeepSeek/OpenCode/No Node Runtime 字样', async () => {
+    const w = mount(App)
+    for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    const topbar = w.find('.topbar')
+    expect(topbar.exists()).toBe(true)
+    const text = topbar.text()
+    expect(text).toContain('DataAgent')
+    for (const tech of ['Vue', 'CopilotKit', 'DeepSeek', 'OpenCode', 'No Node Runtime', 'AG-UI']) {
+      expect(text, `顶栏不得出现技术栈文案「${tech}」`).not.toContain(tech)
+    }
+    w.unmount()
+  })
+})
+
 describe('P-b 快捷指令面板(App 集成)', () => {
   const flush = async (n = 10, ms = 20) => {
     for (let i = 0; i < n; i++) { await nextTick(); await new Promise((r) => setTimeout(r, ms)) }

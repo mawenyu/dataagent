@@ -472,7 +472,7 @@ async function exportThread(id: string, format: 'md' | 'json') {
         >☰</button>
         <div class="brand-text">
           <h1>DataAgent</h1>
-          <span class="subtitle">AG-UI Data Assistant</span>
+          <span class="subtitle">AI 数据分析助手</span>
         </div>
       </div>
       <div class="topbar-right">
@@ -513,7 +513,6 @@ async function exportThread(id: string, format: 'md' | 'json') {
           data-testid="tokens-badge"
           :title="tokenTitle"
         >{{ tokenLabel }}</span>
-        <span class="badge">Vue + CopilotKit · No Node Runtime · DeepSeek via OpenCode</span>
       </div>
     </header>
     <PromptTemplatePanel
