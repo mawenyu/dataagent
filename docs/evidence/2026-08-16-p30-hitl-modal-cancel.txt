@@ -1,0 +1,32 @@
+P30 复核：applySpreadsheetEdits 原生弹窗清零 + nginx 静态拦截 bug 修复（2026-08-16 17:25 CST）
+=================================================================================
+
+【复核结论】P1#7 已在 db7bc07 闭环，无代码债残留：
+- grep src/（*.ts/*.vue，排除测试）：window.alert/confirm/prompt 零命中
+  （唯一匹配是 App.vue:273 注释「替代 window.confirm」）
+- 接线链：spreadsheetEdits.ts deps.confirm（Promise<boolean>）← App.vue
+  askConfirm → confirmState → ConfirmDialog.vue（role=alertdialog，Esc/遮罩=取消，
+  danger 变体，与 F2 同款自绘 modal）
+- ConfirmDialog.test.ts + spreadsheetEdits.test.ts：17/17 绿
+
+【意外发现的生产 bug（本次验收暴露，已修）】
+公网 http://101.34.246.179 走 data-agent server block，其静态资源正则 location
+  location ~* \.(docx|md|...|csv|json|...|html)$
+无 /agui-api/ 排除 → GET/PUT /agui-api/files/xxx.csv 被静态化（root
+/var/www/blog try_files）→ 404，公网 HITL 链路读文件即断（modal 永不弹）。
+127.0.0.1 Host 落默认 blog block（其正则不含 csv/json）所以此前 P26 本地
+验收 PASS 掩盖了公网问题。
+修复：正则加负向前瞻 ^(?!/agui-api/)（/etc/nginx/sites-enabled/data-agent，
+备份 /tmp/data-agent.nginx.bak），nginx -t ✓ reload ✓。
+实测：公网 CSV GET 404→200，站点 index 200 无回归。
+
+【公网实测（playwright, http://101.34.246.179/agui/, 取消路径不污染数据）】
+- 新建会话 → 让 agent 调 applySpreadsheetEdits 改 sales-2026-08.csv 首行销售额为 888888
+- [data-testid="confirm-dialog"] 出现 ✓，role=alertdialog ✓
+- modal 文案：「agent 要修改 sales-2026-08.csv：1 处变更。将 sales-2026-08.csv
+  数据首行（2026-08-01 华东 平板）的销售额从 5198 改为 888888 确认应用？」
+- 点「取消」→ CSV 内容 hash 前后完全一致（4240 字节，未落盘）✓
+- 原生 dialog 事件（playwright dialog listener）：0 ✓
+- pageerror：0 ✓
+- 截图 /tmp/p30-modal.png
+- VERDICT: PASS

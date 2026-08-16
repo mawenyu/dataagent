@@ -15,7 +15,7 @@
 4. **agents/ 混入上游样例死代码**（会被 build-opencode.sh 部署到每个 .opencode/）：`agents/tool/github-*.ts`（硬编码上游 owner/repo、引用不存在的 env.d.ts）、`agents/agent/triage.md`/`duplicate-pr.md`（用未配置的 opencode/* 模型，实际不可用）、`agents/skills/*`（4 个样例）、`agents/command/*`（8 个上游命令）、`agents/plugins/tui-smoke.tsx`+`smoke-theme.json`（TUI-only）。移到 `agents/upstream-examples/`（不部署）并改 build 脚本排除。
 5. **a2ui-tools.ts 过时注释**：头注释"4 个 UI 工具"实为 5 个（漏 request_user_confirm）；build-opencode.sh:61 同样。
 6. **文档漂移**：DELIVERY-README 与现状 6 处矛盾（vendor 空目录 / DEEPSEEK_API_KEY 不存在 / scripts 清单 / 版本状态停滞 / example 空 provider）；`docs/spec/workspace-files.md` 仍写 5MB（实际 50MB）且缺 PUT/子目录/baseModified；`workspace-isolation.md` 缺 409 契约。
-7. **applySpreadsheetEdits 原生 confirm**（App.vue:97 区域，唯一残留原生弹窗）。
+7. ~~applySpreadsheetEdits 原生 confirm~~ ✅ db7bc07（Promise 化 askConfirm + 自绘 ConfirmDialog，全仓原生弹窗清零；P30 复核 2026-08-16：grep 零残留、ConfirmDialog/spreadsheetEdits 17 例绿、公网 HITL 取消路径实测 PASS，证据 docs/evidence/2026-08-16-p30-hitl-modal-cancel.txt）。
 
 ### P2（排入后续循环）
 
