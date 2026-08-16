@@ -611,6 +611,17 @@ const Button = createVueComponent(
     const pressed = state.pressed.value && !disabled;
 
     const palette = (() => {
+      // P28-B: 禁用态统一实心 muted 配色（任何 variant 都一样），替代
+      // opacity 0.5 —— 半透明在 primary 白字蓝底上对比度塌陷过不了 WCAG AA；
+      // textDisabled/surfaceDisabled 实测 6.1:1（catalogCardButton 有对比度
+      // 公式测试钉住 ≥4.5:1）。
+      if (disabled) {
+        return {
+          backgroundColor: A2UI_PALETTE.surfaceDisabled,
+          border: `1px solid ${A2UI_PALETTE.borderStrong}`,
+          color: A2UI_PALETTE.textDisabled,
+        };
+      }
       if (props.variant === "primary") {
         return {
           backgroundColor: pressed
@@ -649,7 +660,6 @@ const Button = createVueComponent(
       fontSize: "14px",
       fontWeight: "500",
       lineHeight: "1.25",
-      opacity: disabled ? "0.5" : "1",
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",

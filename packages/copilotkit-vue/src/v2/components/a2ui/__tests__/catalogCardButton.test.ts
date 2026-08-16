@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mountSurface } from "./helpers";
+import { A2UI_PALETTE } from "../utils";
 
 /**
  * P-VISION-POLISH B：Card 层级/悬浮抬升 + Button 三变体交互态。
@@ -100,15 +101,33 @@ describe("A2UI catalog polish — Button", () => {
     expect(b2.attributes("style")).toContain("rgba(17, 24, 39, 0.04)");
   });
 
-  it("禁用态（isValid=false）：disabled + 半透明 + not-allowed，hover 不再变化", async () => {
+  it("禁用态（isValid=false）：disabled + 实心弱化配色 + not-allowed，hover 不再变化", async () => {
     const { wrapper } = mountButton({ variant: "primary", isValid: false });
     const btn = wrapper.find("button");
     expect(btn.attributes("disabled")).toBeDefined();
     const before = btn.attributes("style") ?? "";
-    expect(before).toContain("opacity: 0.5");
+    // P28-B：弃用 opacity 0.5（真实对比度随底色塌陷，过不了 WCAG AA）——
+    // 改实心 muted 配色 #e5e7eb 底 + #4b5563 字，任何 variant 禁用后统一
+    expect(before).not.toContain("opacity");
     expect(before).toContain("cursor: not-allowed");
+    expect(before).toContain("background-color: rgb(229, 231, 235)");
+    expect(before).toContain("color: rgb(75, 85, 99)");
     await btn.trigger("mouseenter");
-    expect(btn.attributes("style")).toContain("opacity: 0.5");
-    expect(btn.attributes("style")).not.toContain("#1d4ed8");
+    expect(btn.attributes("style")).toBe(before);
+  });
+
+  it("禁用态文字/底色对比度满足 WCAG AA（≥4.5:1）", () => {
+    // WCAG 2.x 相对亮度与对比度公式，钉住禁用配色的可访问性底线
+    const luminance = (hex: string) => {
+      const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const lin = ch.map((v) =>
+        v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4),
+      );
+      return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+    };
+    const text = luminance(A2UI_PALETTE.textDisabled);
+    const bg = luminance(A2UI_PALETTE.surfaceDisabled);
+    const ratio = (bg + 0.05) / (text + 0.05);
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
   });
 });

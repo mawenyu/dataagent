@@ -143,6 +143,14 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     updateDataModel 不再被逐 op 容错永久丢弃）。Covered by
     `__tests__/A2UIBoundaryBatch2.test.ts` (10 cases，含 2MB 截断渲染)。
 
+21. `src/v2/components/a2ui/{catalog.ts,utils.ts}` (2026-08-16, P28-B,
+    architect-dispatched) — Button 禁用态弃用 `opacity: 0.5`（半透明在
+    primary 白字蓝底上对比度塌陷，过不了 WCAG AA），改为任何 variant
+    禁用后统一实心 muted 配色：新调色板 token `surfaceDisabled #e5e7eb`
+    + `textDisabled #4b5563`（实测 6.1:1）。cursor/disabled 属性/灭
+    hover 语义不变。Covered by `__tests__/catalogCardButton.test.ts`
+    （含 WCAG 对比度公式断言 ≥4.5:1）。
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 

@@ -1,6 +1,6 @@
-# DataAgent 项目状态总览（P28 遗留根治巡检 · 2026-08-16）
+# DataAgent 项目状态总览（P28 收口巡检 · 2026-08-16）
 
-> 本文每次回归巡检时更新。最近更新：P28（2026-08-16，fork 剩红清零 0 红 + capabilities 冷启动竞态根治 + A2UI 协议边界第一批）。
+> 本文每次回归巡检时更新。最近更新：P28（2026-08-16，fork 剩红清零 0 红 + capabilities 冷启动竞态根治 + A2UI 协议边界 + 主线 bundle 预算/懒加载 + Button disabled WCAG AA 收口）。
 
 ## 架构一句话
 
@@ -11,9 +11,9 @@ Vue 3 + @copilotkit/vue(fork) 前端 → nginx `/agui-api/` → Java gateway(809
 
 | 线 | 结果 | 说明 |
 |---|---|---|
-| 前端 vue-frontend vitest | **262/262 ✅** | 全量（+10：capabilities 面板 8 + App 接线 2 等） |
+| 前端 vue-frontend vitest | **273/273 ✅** | 全量（+11：capabilities 面板 8 + App 接线 2 + gallery 禁用态渲染 1 等） |
 | gateway mvn test | **213/213 ✅** | 全量（P28-B +3：空清单就绪重试 ×2 + plugins 空清单分类污染回归） |
-| fork packages/copilotkit-vue vitest | **1155/1155 ✅ 0 红** | 全量（P28-A：vitest inline @copilotkit/core 根治 /connect replay 挂起；FORK#18 +10 边界用例） |
+| fork packages/copilotkit-vue vitest | **1166/1166 ✅ 0 红** | 全量（P28-A inline @copilotkit/core + FORK#18 边界 + FORK#19 懒加载适配 + FORK#21 禁用态对比度） |
 
 fork 既有失败基线 10 → **0**（A 线 5 commit 修复 9 例 + P28-A 根治最后 1 例）：
 - agentId/threadId 解析与 clearOnFresh/connectingGate（5 例）—— getThreadClone toRaw 解包（FORK#15）+ 测试对齐 FORK#8 语义
@@ -69,6 +69,8 @@ fork 既有失败基线 10 → **0**（A 线 5 commit 修复 9 例 + P28-A 根�
 | P-I/P-J（并行会话） | 断线检测+离线徽章+自动续跑+5xx 结构化错误码 / 附件上传真实化+限制提示 |
 | P7 | ThreadSidebar 搜索过滤（子序列模糊）+ 置顶（localStorage） |
 | P9 | run 中输入禁用+停止按钮 + gateway 客户端断开即 abort session |
+| backlog-a/b | 会话导出（md/json 下载走 gateway 历史 API，ada1487）/ prompt 模板快捷指令面板（共享数据源 + 顶栏 ✨ 直接发送，7b13495） |
+| P28 主线收口 | A) bundle 预算断言（单入口初始 JS gzip <500KB，npm run budget 超线 exit 1）+ streamdown-vue 懒加载根治（FORK#19，index 481.4→287.3KB / gallery 429.9→235.8KB，afbcd47）；B) A2UI Button disabled 实心弱化配色收口（FORK#21：弃 opacity 0.5 → #e5e7eb 底 + #4b5563 字 6.1:1 过 WCAG AA，三变体统一，gallery form 批新增禁用演示） |
 
 ### task 主线（前期）
 
@@ -86,8 +88,8 @@ docs/spec/workspace-*.md。
 
 ## 已知边界（择要）
 
-- fork 既有失败测试 **0 红**（P28-A 根治，1155/1155）
+- fork 既有失败测试 **0 红**（P28-A 根治，1166/1166）
 - capabilities 冷启动竞态已根治（P28-B）：gateway 五路空清单退避重试，冷启动窗口直击 5.91s 返回完整正确数据（修复前即时空/错数据；原始投诉 23s 为空清单场景），热态 0.13s。剩余固有边界：opencode 自身插件注册完成前窗口约 boot+3.7~9.6s，重试预算 7.75s 覆盖
 - HITL 确认卡片无超时（设计：interrupt 后 run 即结束，卡片持久有效）
 - opencode 重启后 resume 走新 session（无旧上下文，A2UI_ACTION prompt 携带足够决策信息）
-- 欢迎页自绘输入框的附件走独立链路（P-J 已真实化）；gallery 页 Button disabled 无视觉弱化
+- 欢迎页自绘输入框的附件走独立链路（P-J 已真实化）

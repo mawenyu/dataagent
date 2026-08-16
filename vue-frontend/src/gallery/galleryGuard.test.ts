@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { mount } from '@vue/test-utils'
+import { h, nextTick } from 'vue'
+import { A2UISurfaceActivityRenderer, CopilotKitProvider } from '@copilotkit/vue'
+import { HttpAgent } from '@ag-ui/client'
 import { GALLERY_BATCHES } from './surfaces'
-import { DATA_AGENT_CUSTOM_COMPONENTS } from '../a2ui/dataAgentCatalog'
+import { DATA_AGENT_CATALOG_ID, DATA_AGENT_CUSTOM_COMPONENTS, dataAgentCatalog } from '../a2ui/dataAgentCatalog'
 
 /**
  * vision-P2 画廊守护：surface 里出现的每个组件必须落在白名单
@@ -54,5 +58,38 @@ describe('gallery surfaces (vision-P2)', () => {
       expect(covered.has(name), `组件 ${name} 未被任何批次覆盖`).toBe(true)
     }
     expect(covered.size).toBe(28)
+  })
+})
+
+/** 以真实 CopilotKitProvider + dataAgentCatalog 渲染一批 gallery operations。 */
+function mountBatch(operations: any[]) {
+  const agent = new HttpAgent({ url: '/unused-in-test' })
+  return mount(CopilotKitProvider as any, {
+    props: { directAgents: { default: agent }, a2ui: { catalog: dataAgentCatalog, includeSchema: true } },
+    slots: {
+      default: () =>
+        h(A2UISurfaceActivityRenderer as any, {
+          activityType: 'a2ui-surface',
+          content: { operations },
+          message: { id: 'a2ui-gallery-guard', role: 'activity', activityType: 'a2ui-surface', content: { operations } },
+          catalog: dataAgentCatalog, theme: {}, agent,
+        }),
+    },
+  })
+}
+
+describe('gallery form 批 Button 禁用态演示（P28-B）', () => {
+  it('三个禁用按钮真实渲染为 disabled + 实心弱化配色（无 opacity 塌陷）', async () => {
+    const wrapper = mountBatch(GALLERY_BATCHES.form.operations)
+    for (let i = 0; i < 5; i++) await nextTick()
+    const disabledBtns = wrapper.findAll('button[disabled]')
+    expect(disabledBtns.length, 'form 批应恰好有 3 个禁用演示按钮').toBe(3)
+    for (const b of disabledBtns) {
+      const s = b.attributes('style') ?? ''
+      expect(s).toContain('background-color: rgb(229, 231, 235)') // #e5e7eb
+      expect(s).toContain('color: rgb(75, 85, 99)') // #4b5563（对底 6.1:1，过 WCAG AA）
+      expect(s).toContain('cursor: not-allowed')
+      expect(s).not.toContain('opacity') // 禁用不再靠半透明塌陷
+    }
   })
 })

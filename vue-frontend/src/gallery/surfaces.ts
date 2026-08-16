@@ -69,7 +69,7 @@ const layout = ops('g-layout', [
 
 // ② 表单交互类：TextField CheckBox ChoicePicker Slider DateTimeInput Button
 const form = ops('g-form', [
-  { component: 'Column', id: 'root', children: ['f-title', 'f-kw', 'f-region', 'f-ret', 'f-slider', 'f-date', 'f-btn'] },
+  { component: 'Column', id: 'root', children: ['f-title', 'f-kw', 'f-region', 'f-ret', 'f-slider', 'f-date', 'f-btn', 'f-dis-cap', 'f-dis-row'] },
   { component: 'Text', id: 'f-title', text: '表单组件画廊', variant: 'h3' },
   { component: 'TextField', id: 'f-kw', label: '品类关键词', value: { path: 'keyword' } },
   {
@@ -85,7 +85,17 @@ const form = ops('g-form', [
   { component: 'DateTimeInput', id: 'f-date', label: '统计截止日期', enableDate: true, enableTime: false, value: { path: 'until' } },
   { component: 'Button', id: 'f-btn', child: 'f-btn-t', variant: 'primary', action: { event: { name: 'apply_filter', context: { regions: { path: 'regions' } } } } },
   { component: 'Text', id: 'f-btn-t', text: '应用筛选' },
-], { keyword: '钢笔', regions: ['华北', '华东'], includeReturns: true, threshold: 20, until: '2026-08-15' })
+  // P28-B：Button 禁用态演示 —— checks 绑空路径 → isValid=false → 实心弱化配色
+  //（#e5e7eb 底 + #4b5563 字，6.1:1 过 WCAG AA；禁指针 + not-allowed 光标）
+  { component: 'Text', id: 'f-dis-cap', text: 'Button 禁用态（isValid=false，三变体统一弱化）', variant: 'caption' },
+  { component: 'Row', id: 'f-dis-row', children: ['f-dis1', 'f-dis2', 'f-dis3'] },
+  { component: 'Button', id: 'f-dis1', child: 'f-dis1-t', variant: 'primary', checks: [{ call: 'required', args: { value: { path: 'disabledLocked' } }, message: '演示禁用' }], action: { event: { name: 'noop_disabled' } } },
+  { component: 'Text', id: 'f-dis1-t', text: '主要（禁用）' },
+  { component: 'Button', id: 'f-dis2', child: 'f-dis2-t', checks: [{ call: 'required', args: { value: { path: 'disabledLocked' } }, message: '演示禁用' }], action: { event: { name: 'noop_disabled' } } },
+  { component: 'Text', id: 'f-dis2-t', text: '默认（禁用）' },
+  { component: 'Button', id: 'f-dis3', child: 'f-dis3-t', variant: 'borderless', checks: [{ call: 'required', args: { value: { path: 'disabledLocked' } }, message: '演示禁用' }], action: { event: { name: 'noop_disabled' } } },
+  { component: 'Text', id: 'f-dis3-t', text: '无边框（禁用）' },
+], { keyword: '钢笔', regions: ['华北', '华东'], includeReturns: true, threshold: 20, until: '2026-08-15', disabledLocked: '' })
 
 // ③ 媒体展示类：Text Image Icon Video AudioPlayer
 const media = ops('g-media', [

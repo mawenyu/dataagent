@@ -39,6 +39,10 @@ export const A2UI_PALETTE = {
   surfaceSunken: "#f9fafb",
   /** Destructive / validation error. */
   danger: "#dc2626",
+  /** Disabled control background (solid muted — P28-B, replaces opacity). */
+  surfaceDisabled: "#e5e7eb",
+  /** Disabled control text — 6.1:1 on surfaceDisabled, WCAG AA. */
+  textDisabled: "#4b5563",
   /** Warning text. */
   warningText: "#b45309",
   /** Warning border. */
