@@ -17,6 +17,7 @@ import { buildThreadJson, buildThreadMarkdown, downloadJson, downloadMarkdown, e
 import { useRunErrorRecovery, isAbortError, parseRunError } from './composables/runErrorRecovery'
 import { useNetworkStatus } from './composables/networkStatus'
 import { useGlobalShortcuts } from './composables/useGlobalShortcuts'
+import { uuid } from './composables/uuid'
 import RunErrorCard from './components/RunErrorCard.vue'
 import BranchDialog from './components/BranchDialog.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
@@ -165,8 +166,11 @@ const frontendTools = [
 
 // 需求4: 侧边栏可折叠（移动端抽屉化）
 const sidebarOpen = ref(true)
-// task5-A: 侧边栏 Tab（会话 / 文件面板 / 能力面板）
-const sidebarTab = ref<'threads' | 'files' | 'caps'>('threads')
+// P29: 产品化布局 —— 最左导航 rail 切换主视图（对话 / 能力）；
+// 对话视图内才是 会话/文件 侧栏 + 聊天工作区（Linear/Notion 式 icon rail）
+const mainView = ref<'chat' | 'caps'>('chat')
+// task5-A: 侧边栏 Tab（会话 / 文件面板；能力面板已提升为 rail 主视图）
+const sidebarTab = ref<'threads' | 'files'>('threads')
 function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
 function closeSidebarOnMobile() {
   if (window.innerWidth <= 720) sidebarOpen.value = false
@@ -193,13 +197,15 @@ onMounted(() => { if (window.innerWidth <= 720) sidebarOpen.value = false })
 // Ctrl/Cmd+N 新建会话。Esc 关 modal 由各弹窗自身处理(焦点圈定内生效)
 useGlobalShortcuts({
   onFocusSearch: () => {
+    mainView.value = 'chat'
     sidebarOpen.value = true
     sidebarTab.value = 'threads'
     void nextTick(() => {
       document.querySelector<HTMLInputElement>('[data-testid="thread-search"]')?.focus()
     })
   },
-  onNewThread: () => { void threadsApi.createNew() },
+  // 新建会话同时确保落在对话视图（在能力视图按 Ctrl+N 也应看到新会话）
+  onNewThread: () => { mainView.value = 'chat'; void threadsApi.createNew() },
 })
 
 // P-D: 空会话欢迎页的场景模板卡 —— 点击填充输入框(可编辑后再发送,非直接提交)
@@ -246,7 +252,7 @@ function applyTemplate(t: PromptTemplate) {
     pushToast({ title: '运行中', message: '当前会话正在生成，结束后再使用快捷指令', type: 'info' })
     return
   }
-  agent.addMessage({ id: crypto.randomUUID(), role: 'user', content: t.prompt })
+  agent.addMessage({ id: uuid(), role: 'user', content: t.prompt })
   void agent.runAgent()
 }
 
@@ -319,7 +325,7 @@ async function branchFrom(messageId: string) {
   branchBusy.value = true
   try {
     const parentId = threadsApi.currentId.value
-    const newId = crypto.randomUUID()
+    const newId = uuid()
     const res = await fetch(`/agui-api/chat/threads/${encodeURIComponent(parentId)}/branch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -403,19 +409,57 @@ async function exportThread(id: string, format: 'md' | 'json') {
 </script>
 
 <template>
-  <div class="page">
+  <div class="app-shell">
+    <!-- P29: 主导航 rail（Linear/Notion 式窄 icon 栏）—— 对话 / 能力 双主视图 -->
+    <nav class="nav-rail" aria-label="主导航">
+      <div class="rail-logo" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="4" y1="20" x2="4" y2="12" />
+          <line x1="10" y1="20" x2="10" y2="6" />
+          <line x1="16" y1="20" x2="16" y2="14" />
+          <line x1="22" y1="20" x2="22" y2="9" />
+        </svg>
+      </div>
+      <button
+        class="rail-btn"
+        data-testid="rail-chat"
+        :aria-current="mainView === 'chat' ? 'page' : undefined"
+        title="对话"
+        @click="mainView = 'chat'"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+        <span>对话</span>
+      </button>
+      <button
+        class="rail-btn"
+        data-testid="rail-caps"
+        :aria-current="mainView === 'caps' ? 'page' : undefined"
+        title="能力"
+        @click="mainView = 'caps'"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        </svg>
+        <span>能力</span>
+      </button>
+    </nav>
+    <div class="page">
     <header class="topbar">
       <div class="brand">
-        <button class="sidebar-toggle" title="折叠/展开会话栏" @click="toggleSidebar">☰</button>
-        <div class="logo" aria-hidden="true">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="20" x2="4" y2="12" />
-            <line x1="10" y1="20" x2="10" y2="6" />
-            <line x1="16" y1="20" x2="16" y2="14" />
-            <line x1="22" y1="20" x2="22" y2="9" />
-          </svg>
-        </div>
+        <button
+          v-if="mainView === 'chat'"
+          class="sidebar-toggle"
+          title="折叠/展开会话栏"
+          @click="toggleSidebar"
+        >☰</button>
         <div class="brand-text">
           <h1>DataAgent</h1>
           <span class="subtitle">AG-UI Data Assistant</span>
@@ -468,7 +512,11 @@ async function exportThread(id: string, format: 'md' | 'json') {
       @select="applyTemplate"
     />
     <main class="chat-wrap">
-      <div class="chat-card">
+      <div
+        v-show="mainView === 'chat'"
+        class="chat-card"
+        data-testid="chat-view"
+      >
         <CopilotKitProvider
           :direct-agents="agents"
           :frontend-tools="frontendTools"
@@ -490,11 +538,6 @@ async function exportThread(id: string, format: 'md' | 'json') {
                     data-testid="tab-files"
                     @click="sidebarTab = 'files'"
                   >文件</button>
-                  <button
-                    :class="{ on: sidebarTab === 'caps' }"
-                    data-testid="tab-caps"
-                    @click="sidebarTab = 'caps'"
-                  >能力</button>
                 </div>
                 <ThreadSidebar
                   v-if="sidebarTab === 'threads'"
@@ -506,11 +549,8 @@ async function exportThread(id: string, format: 'md' | 'json') {
                   @rename="(id: string, title: string) => threadsApi.rename(id, title)"
                   @export="(id: string, format: 'md' | 'json') => exportThread(id, format)"
                 />
-                <aside v-else-if="sidebarTab === 'files'" class="sidebar">
-                  <FilesPanel :thread-id="threadsApi.currentId.value" />
-                </aside>
                 <aside v-else class="sidebar">
-                  <CapabilitiesPanel :frontend-tools="frontendTools" />
+                  <FilesPanel :thread-id="threadsApi.currentId.value" />
                 </aside>
               </div>
             </Transition>
@@ -649,6 +689,14 @@ async function exportThread(id: string, format: 'md' | 'json') {
           </div>
         </CopilotKitProvider>
       </div>
+      <!-- P29: 能力主视图（rail 切换；v-show 保活，返回对话不丢状态） -->
+      <div
+        v-show="mainView === 'caps'"
+        class="caps-card"
+        data-testid="caps-view"
+      >
+        <CapabilitiesPanel :frontend-tools="frontendTools" />
+      </div>
     </main>
     <!-- P1: HITL 确认弹窗(spreadsheet 编辑等) -->
     <ConfirmDialog
@@ -673,6 +721,7 @@ async function exportThread(id: string, format: 'md' | 'json') {
         <strong>{{ t.title }}</strong>
         <p>{{ t.message }}</p>
       </div>
+    </div>
     </div>
   </div>
 </template>
@@ -730,7 +779,54 @@ body {
   color: var(--foreground);
 }
 
-.page { display: flex; flex-direction: column; height: 100%; }
+.app-shell { display: flex; height: 100%; }
+.page { display: flex; flex-direction: column; height: 100%; flex: 1; min-width: 0; }
+
+/* ---- P29: 主导航 rail（窄 icon 栏） ---- */
+.nav-rail {
+  width: 60px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 0;
+  background: #ffffff;
+  border-right: 1px solid var(--border);
+}
+.rail-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.35);
+  margin-bottom: 10px;
+}
+.rail-btn {
+  width: 44px;
+  padding: 7px 0 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.rail-btn:hover { background: var(--muted); color: #374151; }
+.rail-btn[aria-current='page'] {
+  background: #eef2ff;
+  color: #4338ca;
+  font-weight: 600;
+}
 
 /* ---- Header ---- */
 .topbar {
@@ -834,6 +930,20 @@ body {
   overflow: hidden;
 }
 .chat { flex: 1; min-height: 0; min-width: 0; }
+/* P29: 能力主视图 —— 比聊天列更宽的工作画布 */
+.caps-card {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 72rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.04);
+  overflow: auto;
+}
 .chat-layout { flex: 1; min-height: 0; display: flex; }
 /* P-R: 切换会话骨架屏 */
 .thread-skeleton {

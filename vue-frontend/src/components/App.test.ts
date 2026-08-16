@@ -527,20 +527,49 @@ describe('P27 提示词契约(源码守卫)', () => {
   })
 })
 
-describe('能力面板接线(侧栏第三个 tab)', () => {
-  it('点「能力」tab → CapabilitiesPanel 渲染, 前端工具经 props 传入(不发网络请求)', async () => {
-    const w = mount(App)
+describe('能力主视图（导航 rail）', () => {
+  it('点 rail「能力」→ CapabilitiesPanel 主视图显示、聊天工作区隐藏；点「对话」切回', async () => {
+    // 必须 attachTo：jsdom 对 detached 树不做 style 缓存失效（invalidateStyleCache
+    // 要求 _attached），pre-click 的 isVisible() 会把 display:none 缓存住导致误判
+    const w = mount(App, { attachTo: document.body })
     for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
-    const tab = w.find('[data-testid="tab-caps"]')
-    expect(tab.exists(), '侧栏 tabs 里有「能力」入口').toBe(true)
-    await tab.trigger('click')
+    const railCaps = w.find('[data-testid="rail-caps"]')
+    expect(railCaps.exists(), '导航 rail 里有「能力」入口').toBe(true)
+    expect(w.find('[data-testid="rail-chat"]').exists(), '导航 rail 里有「对话」入口').toBe(true)
+
+    // 默认对话视图：聊天区可见、能力面板隐藏
+    expect(w.find('[data-testid="chat-view"]').isVisible(), '默认聊天工作区可见').toBe(true)
+    expect(w.find('[data-testid="caps-view"]').isVisible(), '默认能力面板隐藏').toBe(false)
+
+    await railCaps.trigger('click')
     await nextTick()
     const panel = w.find('[data-testid="capabilities-panel"]')
     expect(panel.exists(), 'CapabilitiesPanel 已挂载').toBe(true)
+    expect(w.find('[data-testid="caps-view"]').isVisible(), '能力主视图显示').toBe(true)
+    expect(w.find('[data-testid="chat-view"]').isVisible(), '聊天工作区隐藏').toBe(false)
     // frontend tools 来自 App.vue 既有 frontendTools 数组(props), 与网络无关
-    const text = panel.text()
-    expect(text).toContain('showNotification')
-    expect(text).toContain('applySpreadsheetEdits')
+    expect(panel.text()).toContain('showNotification')
+    expect(panel.text()).toContain('applySpreadsheetEdits')
+
+    // rail 高亮跟随主视图
+    expect(w.find('[data-testid="rail-caps"]').attributes('aria-current')).toBe('page')
+    expect(w.find('[data-testid="rail-chat"]').attributes('aria-current')).toBeUndefined()
+
+    await w.find('[data-testid="rail-chat"]').trigger('click')
+    await nextTick()
+    expect(w.find('[data-testid="chat-view"]').isVisible(), '切回对话视图').toBe(true)
+    expect(w.find('[data-testid="caps-view"]').isVisible()).toBe(false)
+    // v-show 保活：CopilotChat 未卸载重挂（消息流状态保留）
+    expect(w.find('[data-testid="welcome-screen"]').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('侧栏 tabs 只剩会话/文件（能力已提升为 rail 主视图）', async () => {
+    const w = mount(App)
+    for (let i = 0; i < 6; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 10)) }
+    expect(w.find('[data-testid="tab-threads"]').exists()).toBe(true)
+    expect(w.find('[data-testid="tab-files"]').exists()).toBe(true)
+    expect(w.find('[data-testid="tab-caps"]').exists(), '侧栏不再有能力 tab').toBe(false)
   })
 })
 
