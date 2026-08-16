@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import App from '../App.vue'
+import { templatesByGroup } from '../composables/promptTemplates'
 import { readFileSync } from 'node:fs'
 
 /**
@@ -17,14 +18,15 @@ describe('App UI (需求4)', () => {
     })))
   })
 
-  it('空会话显示品牌欢迎页与 4 个场景模板卡', async () => {
+  it('空会话显示品牌欢迎页与场景模板卡(开场组全量)', async () => {
     const w = mount(App)
     for (let i = 0; i < 10; i++) { await nextTick(); await new Promise((r) => setTimeout(r, 20)) }
     const welcome = w.find('[data-testid="welcome-screen"]')
     expect(welcome.exists()).toBe(true)
     expect(welcome.text()).toContain('DataAgent 数据分析助手')
     const cards = w.findAll('.welcome-card')
-    expect(cards).toHaveLength(4)
+    // 卡数与开场组数据源同涨同落(模板库新增场景自动纳入),防硬编码漂移
+    expect(cards).toHaveLength(templatesByGroup('开场').length)
     expect(cards[0].text()).toContain('销售分析')
     expect(welcome.text()).toContain('周报生成')
     expect(welcome.text()).toContain('数据清洗')
@@ -614,7 +616,7 @@ describe('P-b 快捷指令面板(App 集成)', () => {
     vi.stubGlobal('fetch', fetchMock)
     const w = mount(App)
     await flush()
-    expect(w.findAll('.welcome-card').length, '欢迎页四卡不漂移').toBe(4)
+    expect(w.findAll('.welcome-card').length, '欢迎页模板卡与开场组同源不漂移').toBe(templatesByGroup('开场').length)
 
     expect(document.querySelector('[data-testid="template-panel"]')).toBeNull()
     await w.find('[data-testid="template-open"]').trigger('click')

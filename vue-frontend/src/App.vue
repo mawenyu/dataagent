@@ -13,6 +13,7 @@ import { buildAttachmentsConfig, ATTACH_ACCEPT } from './composables/chatAttachm
 import { useWelcomeAttachments } from './composables/welcomeAttachments'
 import { PROMPT_TEMPLATES, templatesByGroup, type PromptTemplate } from './composables/promptTemplates'
 import PromptTemplatePanel from './components/PromptTemplatePanel.vue'
+import TemplateSidebarPanel from './components/TemplateSidebarPanel.vue'
 import { applySpreadsheetEdits } from './composables/spreadsheetEdits'
 import { buildThreadJson, buildThreadMarkdown, downloadJson, downloadMarkdown, exportFilename } from './composables/exportThread'
 import { useRunErrorRecovery, isAbortError, parseRunError } from './composables/runErrorRecovery'
@@ -315,6 +316,19 @@ function clearWelcome(onUpdate: (v: string) => void) {
       el.focus()
     }
   })
+}
+
+// 模板库: 主输入框共享值 —— 经 CopilotChat inputValue prop 注入,fork 内部 watch 同步,
+// 欢迎页 textarea 与主输入框同源(槽 modelValue 即 resolvedInputValue),故 fillMainInput 一处处双生效
+const mainInputText = ref('')
+function fillMainInput(t: PromptTemplate) {
+  mainInputText.value = t.prompt
+  activeTemplate.value = null
+}
+/** fork 提交时只清内部值、不发 input-change —— 这里同步清 mainInputText 防残留。 */
+function onChatSubmit() {
+  errorRecovery.clear()
+  mainInputText.value = ''
 }
 
 // P1: Promise 化自绘确认(替代 window.confirm —— applySpreadsheetEdits HITL)
@@ -635,6 +649,8 @@ async function exportThread(id: string, format: 'md' | 'json') {
                   @rename="(id: string, title: string) => threadsApi.rename(id, title)"
                   @export="(id: string, format: 'md' | 'json') => exportThread(id, format)"
                 />
+                <!-- 模板库: 侧栏底部模板面板 —— 场景卡填入输入框,支持保存自定义模板 -->
+                <TemplateSidebarPanel :draft-prompt="mainInputText" @fill="fillMainInput" />
               </div>
             </Transition>
             <div v-if="sidebarOpen" class="drawer-backdrop" @click="toggleSidebar"></div>
@@ -653,8 +669,10 @@ async function exportThread(id: string, format: 'md' | 'json') {
                 class="chat"
                 :thread-id="threadsApi.currentId.value"
                 :attachments="chatAttachments"
+                :input-value="mainInputText"
                 :on-error="handleChatError"
-                @submit-message="errorRecovery.clear()"
+                @input-change="(v: string) => (mainInputText = v)"
+                @submit-message="onChatSubmit"
               >
               <!-- 布局分栏：A2UI surface 在对话流里只留引用卡（宽屏）；窄屏内联渲染 -->
               <template #activity-a2ui-surface="{ content, message, agent }">
