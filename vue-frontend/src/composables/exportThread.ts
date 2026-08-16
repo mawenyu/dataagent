@@ -85,6 +85,39 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max)}…(截断, 共 ${text.length} 字符)`
 }
 
+/** 服务端 A2UI 工具（生成式 UI 产物在导出里渲染为引用小节，而非原始 JSON）。 */
+const A2UI_TOOL_NAMES = new Set(['render_a2ui', 'render_report'])
+
+export interface A2uiRef {
+  surfaceId: string
+  componentTypes: string[]
+  componentCount: number
+  dataKeys: number
+}
+
+/** 解析 render_a2ui/render_report 的参数 JSON → 结构化引用；非法输入返回 null（回退普通渲染）。 */
+export function parseA2uiRef(argsJson: string | undefined): A2uiRef | null {
+  if (!argsJson) return null
+  try {
+    const args = JSON.parse(argsJson) as {
+      surfaceId?: unknown
+      components?: unknown
+      data?: unknown
+    }
+    if (typeof args.surfaceId !== 'string' || !args.surfaceId) return null
+    const comps = Array.isArray(args.components) ? args.components : []
+    const componentTypes = comps
+      .map((c) => (c && typeof c === 'object' ? (c as { component?: unknown }).component : undefined))
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    const dataKeys = args.data && typeof args.data === 'object' && !Array.isArray(args.data)
+      ? Object.keys(args.data).length
+      : 0
+    return { surfaceId: args.surfaceId, componentTypes, componentCount: comps.length, dataKeys }
+  } catch {
+    return null
+  }
+}
+
 /** 用户消息 content 兼容多模态 parts：拼接文本 + 附件文件名标注。 */
 function userContentText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -112,6 +145,24 @@ function renderToolCalls(
   const lines: string[] = ['', '**工具调用**', '']
   for (const tc of toolCalls) {
     const name = tc.function?.name || 'unknown'
+    // A2UI 生成式 UI 工具：渲染引用小节而非原始 JSON 参数
+    if (A2UI_TOOL_NAMES.has(name)) {
+      const ref = parseA2uiRef(tc.function?.arguments)
+      if (ref) {
+        let result: string | undefined
+        if (tc.id && resultsByCallId.has(tc.id)) {
+          result = resultsByCallId.get(tc.id)
+          consumedToolCallIds.add(tc.id)
+        }
+        const compList = ref.componentTypes.length ? `（${ref.componentTypes.join('、')}）` : ''
+        lines.push(
+          `- 🎨 **A2UI 看板** \`${ref.surfaceId}\` · ${ref.componentCount} 个组件${compList}` +
+            `${ref.dataKeys ? ` · ${ref.dataKeys} 项数据绑定` : ''}`,
+        )
+        lines.push(`  - ${result !== undefined ? `结果：${truncate(result, TOOL_RESULT_MAX)}` : '结果：无结果'}`)
+        continue
+      }
+    }
     const args = truncate(tc.function?.arguments ?? '{}', TOOL_ARGS_MAX)
     let result: string | undefined
     if (tc.id && resultsByCallId.has(tc.id)) {
@@ -226,6 +277,8 @@ export interface NormalizedToolCall {
   status?: string
   /** 按 toolCallId 配对的结果文本(未配对则缺省) */
   result?: string
+  /** render_a2ui/render_report 的结构化引用(参数可解析时) */
+  a2uiRef?: A2uiRef
 }
 
 export interface NormalizedMessage {
@@ -269,6 +322,10 @@ export function buildThreadJson(
         if (typeof tc.durationMs === 'number') n.durationMs = tc.durationMs
         if (tc.status) n.status = tc.status
         if (tc.id && resultsByCallId.has(tc.id)) n.result = resultsByCallId.get(tc.id)
+        if (A2UI_TOOL_NAMES.has(n.name)) {
+          const ref = parseA2uiRef(tc.function?.arguments)
+          if (ref) n.a2uiRef = ref
+        }
         return n
       })
     }

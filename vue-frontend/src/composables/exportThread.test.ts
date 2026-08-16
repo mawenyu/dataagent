@@ -252,3 +252,71 @@ describe('P-M: 导出增强(时间/耗时/状态/附件清单/JSON)', () => {
     clickSpy.mockRestore()
   })
 })
+
+describe('A2UI 引用导出（布局分栏配套）', () => {
+  const thread = { id: 't-a2ui', title: '看板会话' }
+  const exportedAt = new Date('2026-08-17T01:00:00Z')
+  const a2uiArgs = JSON.stringify({
+    surfaceId: 'dash-1',
+    components: [
+      { component: 'MetricCard', id: 'm1' },
+      { component: 'BarChart', id: 'b1' },
+    ],
+    data: { revenue: 100, rows: [1, 2, 3] },
+  })
+
+  it('MD：render_a2ui 工具调用渲染为 A2UI 看板小节（surfaceId + 组件清单），不倾倒原始 JSON', () => {
+    const md = buildThreadMarkdown(thread, [
+      { id: 'u1', role: 'user', content: '画看板' },
+      { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 'tc1', function: { name: 'render_a2ui', arguments: a2uiArgs } }] },
+      { id: 'tr1', role: 'tool', toolCallId: 'tc1', content: '已渲染 surface dash-1' },
+    ], exportedAt)
+    expect(md).toContain('🎨')
+    expect(md).toContain('dash-1')
+    expect(md).toContain('MetricCard')
+    expect(md).toContain('BarChart')
+    expect(md).toContain('2 个组件')
+    expect(md).not.toContain('"surfaceId"') // 不倒原始 JSON
+  })
+
+  it('MD：render_report 同样识别为 A2UI 引用', () => {
+    const md = buildThreadMarkdown(thread, [
+      { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 'tc1', function: { name: 'render_report', arguments: a2uiArgs } }] },
+    ], exportedAt)
+    expect(md).toContain('🎨 **A2UI 看板** `dash-1`')
+    expect(md).not.toContain('"surfaceId"') // 引用形态而非原始 JSON
+  })
+
+  it('MD：render_a2ui 参数非法 JSON → 回退普通工具调用渲染，不炸', () => {
+    const md = buildThreadMarkdown(thread, [
+      { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 'tc1', function: { name: 'render_a2ui', arguments: '{bad json' } }] },
+    ], exportedAt)
+    expect(md).toContain('render_a2ui')
+    expect(md).toContain('{bad json')
+  })
+
+  it('JSON：a2uiRef 结构化字段（surfaceId/组件类型/数据键数）', () => {
+    const json = buildThreadJson(thread, [
+      { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 'tc1', function: { name: 'render_a2ui', arguments: a2uiArgs } }] },
+    ], exportedAt)
+    const tc = json.messages[0].toolCalls![0]
+    expect(tc.name).toBe('render_a2ui')
+    expect(tc.a2uiRef).toEqual({
+      surfaceId: 'dash-1',
+      componentTypes: ['MetricCard', 'BarChart'],
+      componentCount: 2,
+      dataKeys: 2,
+    })
+  })
+
+  it('JSON：非 A2UI 工具调用不带 a2uiRef；非法参数也不带', () => {
+    const json = buildThreadJson(thread, [
+      { id: 'a1', role: 'assistant', content: '', toolCalls: [
+        { id: 't1', function: { name: 'bash', arguments: '{"c":1}' } },
+        { id: 't2', function: { name: 'render_a2ui', arguments: '{bad' } },
+      ] },
+    ], exportedAt)
+    expect(json.messages[0].toolCalls![0].a2uiRef).toBeUndefined()
+    expect(json.messages[0].toolCalls![1].a2uiRef).toBeUndefined()
+  })
+})
