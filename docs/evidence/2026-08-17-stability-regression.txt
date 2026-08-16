@@ -1,0 +1,78 @@
+# 收尾① 现有功能稳定性验证（2026-08-17，HEAD 972dfdb）
+
+## 前端 vitest 全量
+Test Files 47 passed (47) / Tests 337 passed (337)，1 error = 既有已知噪音（App.test.ts getReader unhandled rejection，STATUS 已记录，非产品问题）
+
+## 前端 typecheck
+tsc --noEmit exit=0（前置修复：fork#26 source 判别联合类型，commit 972dfdb —— vite 构建不查类型掩盖了 vue-tsc 声明构建失败，致 .d.mts/.d.cts 缺失）
+
+## gateway mvn test
+Tests run: 217, Failures: 0, Errors: 0, Skipped: 0 —— BUILD SUCCESS
+
+## 真链路 5 轮回归 scripts/test-multi-turn.sh（真 gateway :8090 + opencode :4096 + DeepSeek）
+== thread: multi-turn-1786910866 ==
+TERMINAL=RUN_FINISHED
+TOOLS=3
+CTX=7083
+TEXT=.csv` | 5 行 | 区域汇总结果（销售额 + 订单数） |
+
+**非数据文件（产物/配置）：**
+- `dashboard-sales-2026-08.a2ui.json`（看板配置）
+- `e2e-chart.png`、`e2e-report.pdf`（图表与报告产物）
+- `e2e-up.txt`（文本记录）
+
+另外说明：上述文件在**数据工作目录**（`workspace/threads/multi-turn-1786910866/`）和**公共数据目录**（`workspace/`）下各有一份副本，公共目录是只读参考数据；你的产出应写到数据工作目录。
+
+需要我对哪份数据做分析？
+PASS: turn1 正常结束
+TERMINAL=RUN_FINISHED
+TOOLS=2
+CTX=8268
+TEXT=ales-2026-08.csv 全部 137 条记录汇总）：
+
+| 区域 | 销售额（元） |
+|---|---|
+| **华北** | **388,082** |
+| 华东 | 366,096 |
+| 华中 | 285,225 |
+| 西南 | 171,346 |
+| 华南 | 149,951 |
+
+**合计**：1,360,700 元
+
+说明：华北（388,082）与第二名华东（366,096）差距约 2.2 万元，领先约 6%；该结果与工作目录中已有的 `region-sales-2026-08-result.csv` 汇总一致。需要我进一步分析华北领先的原因（如品类结构、订单量）吗？
+PASS: turn2 正常结束
+PASS: turn2 用了工具
+TERMINAL=RUN_FINISHED
+TOOLS=1
+CTX=8830
+TEXT=售额（按 sales-2026-08.csv 汇总）：
+
+| 品类 | 销售额（元） | 占比 |
+|---|---|---|
+| **笔记本** | **615,912** | 45.3% |
+| 手机 | 347,913 | 25.6% |
+| 平板 | 228,712 | 16.8% |
+| 智能手表 | 112,425 | 8.3% |
+| 耳机 | 55,738 | 4.1% |
+
+**合计**：1,360,700 元
+
+笔记本一款品类就贡献了近半的销售额（45.3%），是绝对的销售主力；耳机体量最小，仅占 4.1%。要不要看下笔记本在各区域的表现，或者分析品类 × 区域的交叉结构？
+PASS: turn3 正常结束
+TERMINAL=RUN_FINISHED
+TOOLS=0
+CTX=9121
+TEXT=一句话总结：
+
+**8 月销售额最高的区域是华北（388,082 元），销售额最高的品类是笔记本（615,912 元，占全月 45.3%），笔记本是拉动华北登顶的核心品类。**
+PASS: turn4 正常结束
+TERMINAL=RUN_FINISHED
+TOOLS=0
+CTX=9303
+TEXT=我们约定的暗号是：**蓝鲸42** 🐋
+
+（已在本会话中记录，随时可以验证。）
+PASS: turn5 正常结束
+PASS: turn5 记得暗号(上下文正确)
+== RESULT: 7 passed, 0 failed ==
