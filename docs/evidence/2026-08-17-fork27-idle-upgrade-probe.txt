@@ -1,0 +1,41 @@
+# FORK#27 idle 再升格 —— 生产探针验收（2026-08-17，部署 main-CBf3APDT 含 FORK#27）
+
+## 改动
+use-idle-upgrade.ts：isStreaming 翻 false 的一次性升格渲染（shiki+mermaid 全量 re-parse）挂 requestIdleCallback（timeout 2000 兜底 / 无 rIC 走 setTimeout 50 降级），两处 chat 组件渲染态判 renderDegraded = isStreaming || !upgradeReady。fork 1211/1211 绿 + build:types 绿，commit a1f6ef5。
+
+## 验收：scripts/test-streaming-smoothness.py ×8（同一部署）
+== run 1 ==
+基线探针: 9ms | 流式探针 7 个 | p95=541ms worst=541ms | 完成=True
+FAIL: 流式期间探针 p95(541ms) < 500ms（主线程基本不堵）
+== RESULT: FAIL ==
+== run 2 ==
+基线探针: 5ms | 流式探针 5 个 | p95=178ms worst=178ms | 完成=True
+== RESULT: PASS ==
+== run 3 ==
+基线探针: 3ms | 流式探针 5 个 | p95=2ms worst=2ms | 完成=True
+== RESULT: PASS ==
+== run 4 ==
+基线探针: 4ms | 流式探针 5 个 | p95=6ms worst=6ms | 完成=True
+== RESULT: PASS ==
+== run 5 ==
+基线探针: 3ms | 流式探针 8 个 | p95=219ms worst=219ms | 完成=True
+== RESULT: PASS ==
+== run 6 ==
+基线探针: 3ms | 流式探针 4 个 | p95=9ms worst=9ms | 完成=True
+== RESULT: PASS ==
+== run 7 ==
+基线探针: 4ms | 流式探针 4 个 | p95=3ms worst=3ms | 完成=True
+== RESULT: PASS ==
+== run 8 ==
+基线探针: 3ms | 流式探针 5 个 | p95=3ms worst=3ms | 完成=True
+== RESULT: PASS ==
+
+## 逐探针定位（debug 变体）
+流式窗口 2~7ms 全平；收尾探针（marker=True, 官方脚本丢弃位）237ms —— 修复前同位 4841ms。
+
+## 对比修复前（docs/evidence/2026-08-17-streaming-lag-recheck.txt）
+- 修复前 4 跑：717/939/280/2472ms in-window 尖峰 + 收尾 4841ms，3 FAIL 1 PASS
+- 修复后 8 跑：7 PASS（worst 2~219ms），1 边际 FAIL（541ms，部署后首跑，疑冷加载/内容相关 reasoning 升格在 marker 轮询察觉前落窗）
+
+## 结论
+worst<500ms 目标 7/8 达成（唯一超出为 541ms 边际值，较修复前尖峰 2472ms 降 78%）；收尾阻塞 4841→237ms（-95%）。RUN_FINISHED 后立即解 loading、全文降级形态立即可读的 UX 语义达成。残余边际尖峰机制在案（rIC 升格与 marker 轮询竞态窗口），如需 100% <500ms 需升格进一步切片（新能力，未做）。

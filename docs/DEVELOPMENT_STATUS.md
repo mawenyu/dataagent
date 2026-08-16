@@ -82,6 +82,8 @@
 
 - [x] **收尾复核三件套（监工指令 2026-08-17，停新能力）**：**① 稳定性验证** —— 前置修复 972dfdb（fork#26 source 判别联合类型：vite 构建不查类型掩盖 vue-tsc 声明构建失败 → .d.mts/.d.cts 缺失炸 app typecheck）；其后前端 337/337 + typecheck 绿、gateway 217/217、真链路 multi-turn 7/7（证据 docs/evidence/2026-08-17-stability-regression.txt）。**② 长思考卡顿复核** —— 生产实测（部署含 FORK#23/24/25）：**原问题（流式期间秒级连续冻结，最差 9687ms）已解决**，delta 流式窗口探针 2~15ms；残余 = 边界一次性升格渲染（reasoning 收尾 0.5~2.5s 偶落探针窗口致官方脚本 4 跑 1 PASS / answer 收尾 mermaid+shiki 本轮 4.8s，即 FORK#25 在案残余类）。idle 再升格/mermaid 异步化属新能力，按监工指令不做，留架构师决策（证据 docs/evidence/2026-08-17-streaming-lag-recheck.txt）。**③ 干净 clone 可重建复核** —— 当前 HEAD 按 DELIVERY-README §0-§3 从零重建全通：GitHub clone（fork 重试 1 次）→ bun install → 扩展部署 → mvn package 217/217 → 前端 build（含 build:types .d.mts/.d.cts 产出，972dfdb 修复在干净环境验证）+ vitest 337/337 → 干净 opencode :4196 + gateway :8190 起服 → up.sh 幂等识别在跑三件套 → multi-turn 打 :8190 **7/7 PASS**；文档步骤无新漂移（证据 docs/evidence/2026-08-17-clean-rebuild-recheck.txt）。
 
+- [x] **FORK#27 idle 再升格 —— 收尾一次性真渲染挂 requestIdleCallback**（2026-08-17，架构师决策收口 FORK#25 残余，a1f6ef5）：新 lib `use-idle-upgrade.ts`（流式中 upgradeReady=false；active 翻 false 挂 rIC（timeout 2000 兜底，无 rIC 走 setTimeout(50) 降级）idle 才升格；再入流式复位、卸载后迟到回调不写值、历史回放直通），两处 chat 组件渲染态改判 `renderDegraded = isStreaming || !upgradeReady`。TDD：lib 8 新例（rIC 打桩 + 降级 + 卸载取消 + 复位 + 直通），两个 throttle 测试各加"翻 false 同一 tick 仍降级、idle flush 后升格"断言；fork 1211/1211 + build:types 绿。已部署（main-CBf3APDT），**探针验收 ×8：7 PASS（worst 2~219ms），1 边际 541ms**（对比修复前 in-window 尖峰 717~2472ms + 收尾 4841ms → 现收尾探针 237ms，-95%）；worst<500ms 目标 7/8 达成，唯一超出机制在案（rIC 升格与 marker 轮询竞态，100% 达标需升格切片，属新能力未做）。证据 docs/evidence/2026-08-17-fork27-idle-upgrade-probe.txt。
+
 ## 下一步（修完 P0/P1 后）
 
 剩余：
