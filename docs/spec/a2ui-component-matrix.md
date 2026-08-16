@@ -93,6 +93,8 @@
 | 非法组件类型（null/数字/对象） | 双修：fork 渲染器 updateComponents **拆到单组件粒度容错**（一条 op 混入坏组件不再拖垮整 op）+ gateway 白名单 | 坏组件跳过+warn，正常组件照渲染 | 同上（先红后绿） |
 | 深嵌套 | **gateway 新增 MAX_DEPTH=48**（BFS 分层）+ 前端 50 层实测正常 | 超限整体拒绝，回执带深度原因 | bridge 2 例 + 2026-08-16-p13-depth-reject.sse（61 层被拒 → 模型自纠 10 层成功） |
 | 超长字符串 | gateway 64KB payload 上限 + 前端 100KB 实测不崩 | 上限内正常，超限拒绝 | maliciousPayload.test.ts + P5 规模测试 |
+| 超大 props（300KB 单 prop） | 前端 | 正常渲染不卡死不白屏 | A2UIBoundaryPayloads.test.ts |
+| 畸形 payload：非对象条目混入 / a2ui_operations 为 JSONL 字符串（含坏行） | 前端（fork `sanitizeA2uiOperations` 边界消毒，FORK#18） | 坏条目/坏行丢弃 + console.warn，有效 op 照常渲染；0 条可用 op → `a2ui-payload-error` 警示 chip（不再永久 loading 骨架） | A2UIBoundaryPayloads.test.ts ×6 |
 | javascript:/data: URL（Image/Video） | 浏览器语义（img/video src 的 javascript: 不可执行） | 页面存活 | maliciousPayload.test.ts |
 | cycle 引用 | P4 双层（gateway 环检测 + 前端祖先链占位） | 拒绝/占位 | 见附录 A |
 

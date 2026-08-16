@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { VueActivityMessageRenderer } from "../types";
 import type { A2UITheme } from "../types";
 import A2UISurfaceActivityRenderer from "./A2UISurfaceActivityRenderer.vue";
+import { sanitizeA2uiOperations } from "./a2ui";
+import { getWarningChipStyle } from "./a2ui/utils";
 
 const A2UI_OPERATIONS_KEY = "a2ui_operations";
 
@@ -96,13 +98,33 @@ export function createA2UIMessageRenderer(
         },
       },
       setup(props) {
-        const operations = computed(() =>
-          Array.isArray(props.content?.[A2UI_OPERATIONS_KEY])
-            ? props.content[A2UI_OPERATIONS_KEY]
-            : [],
-        );
+        // dataagent fork (2026-08-16, 协议边界降级): sanitize at the entry
+        // boundary — malformed entries drop with console.warn, a JSONL string
+        // payload is parsed tolerantly. A payload that is present but yields
+        // zero usable ops is a degraded error (chip), NOT an infinite loading
+        // skeleton; an absent/empty payload stays the loading state.
+        const raw = computed(() => props.content?.[A2UI_OPERATIONS_KEY]);
+        const operations = computed(() => sanitizeA2uiOperations(raw.value));
+        const payloadBroken = computed(() => {
+          const r = raw.value;
+          const present =
+            (Array.isArray(r) && r.length > 0) ||
+            (typeof r === "string" && r.trim().length > 0);
+          return present && operations.value.length === 0;
+        });
 
         return () => {
+          if (payloadBroken.value) {
+            return h(
+              "div",
+              {
+                style: getWarningChipStyle(),
+                "data-testid": "a2ui-payload-error",
+              },
+              "A2UI payload could not be parsed — no usable operations",
+            );
+          }
+
           if (operations.value.length === 0) {
             if (options.loadingComponent) {
               return h(options.loadingComponent as any);

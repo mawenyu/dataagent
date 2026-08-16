@@ -11,7 +11,7 @@ import {
 import type { ActivityMessage } from "@ag-ui/core";
 import type { A2UITheme } from "../types";
 import type { A2UIOperation } from "./a2ui";
-import { getOperationSurfaceId } from "./a2ui";
+import { getOperationSurfaceId, sanitizeA2uiOperations } from "./a2ui";
 import { useCopilotKit } from "../providers";
 import { MessageProcessor, type SurfaceModel } from "@a2ui/web_core/v0_9";
 import {
@@ -71,7 +71,11 @@ async function handleAction(message: unknown) {
   }
 }
 
-function processOperations(operations: A2UIOperation[]) {
+function processOperations(rawOperations: A2UIOperation[]) {
+  // dataagent fork (2026-08-16): sanitize before grouping — a null/malformed
+  // entry previously threw in getOperationSurfaceId outside any try, taking
+  // down the whole batch (and the render pass via surfaceEntries).
+  const operations = sanitizeA2uiOperations(rawOperations);
   if (!operations?.length) return;
 
   const hash = JSON.stringify(operations);
@@ -162,7 +166,7 @@ const surfaceEntries = computed(() => {
 
   // Group operations by surface to know which surfaces we expect
   const grouped = new Map<string, A2UIOperation[]>();
-  for (const op of props.content.operations ?? []) {
+  for (const op of sanitizeA2uiOperations(props.content.operations)) {
     const surfaceId = getOperationSurfaceId(op) ?? DEFAULT_SURFACE_ID;
     if (!grouped.has(surfaceId)) grouped.set(surfaceId, []);
     grouped.get(surfaceId)!.push(op);

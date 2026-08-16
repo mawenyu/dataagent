@@ -107,6 +107,22 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     blocks (same as upstream-without-memo); streaming deltas stay memoized
     per message via the content/tool signature.
 
+18. `src/v2/components/a2ui.ts` + `A2UIMessageRenderer.ts` +
+    `A2UISurfaceActivityRenderer.vue` (2026-08-16, 协议边界降级) — new
+    `sanitizeA2uiOperations()` boundary helper: malformed `a2ui_operations`
+    entries (null/string/number/array) are dropped with console.warn instead
+    of throwing in `getOperationSurfaceId` during grouping (one bad entry
+    previously killed the whole batch AND the render pass); a string payload
+    is parsed tolerantly as JSONL (bad lines skipped, good lines rendered).
+    `A2UIMessageRenderer` renders a payload-error warning chip
+    (`data-testid="a2ui-payload-error"`, same warning-chip family as the
+    unknown-component/cycle placeholders) when a payload is present but
+    yields zero usable ops — replacing the previous infinite
+    "Generating UI..." skeleton. Absent/empty payload still means loading.
+    `A2UISurfaceActivityRenderer` sanitizes defensively in both
+    `processOperations` and the `surfaceEntries` render path. Covered by
+    `__tests__/A2UIBoundaryPayloads.test.ts` (10 cases incl. 300KB props).
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 
