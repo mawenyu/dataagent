@@ -50,7 +50,8 @@ AG-UI 的 HITL 模式（interrupt → 用户决策 → resume 为新 run）落�
 
 ### 既有的另一种 HITL：frontend tool 确认
 `applySpreadsheetEdits`（task5-B4）走的是另一条官方路径 —— frontend tool 调用
-中断 run，浏览器 handler 弹 confirm，结果作为 tool result 消息续跑。
+中断 run，浏览器 handler 弹**自绘确认 modal**（App.vue ConfirmDialog，Promise 化；
+P1 已弃原生 window.confirm），结果作为 tool result 消息续跑。
 两条路径互补：A2UI action 适合渲染式确认卡片；frontend tool 适合需要浏览器
 上下文（读写本地状态）的操作。
 

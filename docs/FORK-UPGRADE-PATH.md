@@ -46,7 +46,7 @@
 - 新增测试 `use-agent-thread-isolation.test.ts` / `use-agent-thread-pinning.test.ts`
   （thread 隔离/钉住成为上游一等能力）。
 - 上游同时改了 `clearOnFresh` / `slots` / `CopilotChat.test` / `ActivityRendering` 测试 ——
-  与 fork 当前 5 个在途失败测试同区域，**上游 1.68.1 很可能已修复这批行为**。
+  与 fork 当前既有失败基线（修复在途，计数以实跑为准）同区域，**上游 1.68.1 很可能已修复这批行为**。
 - 依赖联动：`@copilotkit/core|shared|web-components|web-inspector` 1.67.1 → 1.68.1（升级须同步 pin）。
 
 ## 4. 交集结论（冲突面）
@@ -62,7 +62,7 @@
 
 1. **维持现状（推荐，当前）**：pin `1.67.1-fork.1`。上游领先的两个小版本主题（thread-scoped
    agent / pinning / isolation）恰是 fork 用 `getThreadClone` 自解决的问题域——等并行会话在途的
-   threadId 特性（5 个失败测试）闭环后再评估，避免双线同时动同一区域。
+   threadId 特性（既有失败测试基线，修复在途）闭环后再评估，避免双线同时动同一区域。
 2. **升级时（到 ≥1.68.1）顺序**：
    a. 先迁应用侧：`App.vue`/`useThreads.ts` 的 `getThreadClone` 历史写入 → 上游
       `UseAgentThreadScopedProps` 机制（React 侧已有对应实现可对照）；
