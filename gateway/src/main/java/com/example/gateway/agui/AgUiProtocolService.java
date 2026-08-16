@@ -317,8 +317,7 @@ public class AgUiProtocolService {
             }
             // task6 补齐：action 续跑也要带会话级数据工作目录提示（隔离后模型
             // 不知道 CSV 在 threads/<threadId> 下，实测出现不查数据直接回答）
-            p.append("<environment>\n数据工作目录: ").append(threadWorkspace)
-                    .append("\n用户的数据文件（如销售 CSV）放在该目录；分析数据问题时先在此目录查找，回答用中文。\n</environment>\n\n");
+            p.append(environmentSection(threadWorkspace));
             p.append(actionHandler.buildAgentPrompt(rawAction));
             var runStream = runAgent(input, uid, threadId, runId, p.toString());
             // P21: hitl_* 裁决 → 先把确认卡原位更新为结果徽章（approved/rejected
@@ -363,8 +362,7 @@ public class AgUiProtocolService {
             // finds real data instead of wandering the repo (and hitting
             // external_directory permission asks that hang headless).
             // task6: 数据工作目录按会话隔离（workspace/threads/<threadId>）。
-            p.append("<environment>\n数据工作目录: ").append(threadWorkspace)
-                    .append("\n用户的数据文件（如销售 CSV）放在该目录；分析数据问题时先在此目录查找，回答用中文。\n</environment>\n\n");
+            p.append(environmentSection(threadWorkspace));
             // task6: 附件文件名写入 prompt —— 文件已落盘到会话工作目录，agent 直接读
             if (userContent != null && !userContent.attachments().isEmpty()) {
                 p.append("<attachments>\n用户随消息上传了文件: ")
@@ -383,6 +381,17 @@ public class AgUiProtocolService {
             log.info("fork context injected for thread {} (first run after branch)", threadId);
         }
         return runAgent(input, uid, threadId, runId, promptText);
+    }
+
+    /**
+     * <environment> 段落（普通 run 与 action 续跑同口径，P33 收敛为单点）：
+     * 数据工作目录 = 会话隔离目录（可写）；公共数据目录 = 共享根（只读，
+     * 所有会话共享的参考数据；写操作由 workspace-guard 插件在 opencode 侧拒绝）。
+     */
+    private String environmentSection(String threadWorkspace) {
+        return "<environment>\n数据工作目录: " + threadWorkspace
+                + "\n公共数据目录: " + dataWorkspace + "（所有会话共享的参考数据，只读——不要在该目录创建/修改/删除文件；你的产出写到数据工作目录）"
+                + "\n用户的数据文件（如销售 CSV）放在数据工作目录；分析数据问题时先在此目录查找，回答用中文。\n</environment>\n\n";
     }
 
     /** Shared agent-run path: resolve session, send prompt, stream translated events. */

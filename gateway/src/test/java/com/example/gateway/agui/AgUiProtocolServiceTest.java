@@ -779,6 +779,36 @@ class AgUiProtocolServiceTest {
                 "不同会话工作目录不同");
     }
 
+    // ---- P33 二期：shared 公共区 —— prompt 注入公共数据目录（只读语义）----
+
+    /** 普通 run：prompt 同时含会话工作目录（可写）与公共数据目录（只读）。 */
+    @Test
+    void promptIncludesSharedAreaReadOnly() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        run(userMsg("t-shared-1", "分析数据"));
+        String prompt = stub.prompts.get(0);
+        assertTrue(prompt.contains("数据工作目录: workspace/threads/t-shared-1"),
+                "会话工作目录保留, got: " + prompt);
+        assertTrue(prompt.contains("公共数据目录: workspace"), "公共区路径注入 prompt");
+        assertTrue(prompt.contains("只读"), "公共区标注只读语义");
+    }
+
+    /** action 续跑：同样带公共数据目录提示（P33 与 task6 同口径）。 */
+    @Test
+    void actionRunPromptIncludesSharedArea() {
+        stub.eventStreams.add(textStep("m1", "ok"));
+        RunAgentInput input = new RunAgentInput("t-shared-act", "run-" + System.nanoTime(), null,
+                List.of(Map.of("role", "user", "content", "点按钮")),
+                null, null, Map.of("a2uiAction", Map.of("version", "v0.9", "action", Map.of(
+                        "name", "drilldown", "surfaceId", "s1",
+                        "sourceComponentId", "btn", "timestamp", "t", "context", Map.of()))));
+        run(input);
+        String prompt = stub.prompts.get(0);
+        assertTrue(prompt.contains("数据工作目录: workspace/threads/t-shared-act"),
+                "action 续跑保留会话工作目录, got: " + prompt);
+        assertTrue(prompt.contains("公共数据目录: workspace"), "action 续跑注入公共区路径");
+    }
+
     /** 多模态用户消息（text + document parts）→ 文本拼接 + 附件名写入 prompt。 */
     @Test
     void multimodalMessageWithAttachmentsInPrompt() {
