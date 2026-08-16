@@ -1,0 +1,36 @@
+收尾3 干净机器可重建验证 —— 2026-08-16（HEAD 4c1be21）
+按 DELIVERY-README「重建与运行」逐节在干净 clone（/tmp/dataagent-clean，git clone 自 GitHub）实测：
+
+§0 clone: git clone https://github.com/mawenyu/dataagent.git /tmp/dataagent-clean
+  → HEAD = 4c1be21（与 origin/main 一致）
+
+§1 opencode 扩展部署:
+  bash agents/build-opencode.sh --target . --skip-build
+  → .opencode/plugins/ = a2ui-tools.ts + workspace-guard.ts（P33-B 护栏随部署）
+  → .opencode/opencode.jsonc 从 example 拷贝（clean 机器需自行填 deepseek key，文档已述）
+  tsconfig.json 按 README 一行命令创建 ✓
+  （opencode fork 本体 bun install 步骤：本机 $HOME/opencode-fork 既有安装复用，
+    README 默认路径约定 OPENCODE_FORK_DIR 生效；新机器按 §1 照做即可）
+
+§2/§3 前端:
+  cd vue-frontend && npm install  → OK（file:../packages/copilotkit-vue fork 安装成功）
+  npm run build → ✓ built in 56.22s（prebuild 钩子自动构建 fork，含 FORK#23/#24）
+  dist/index.html + assets 产物齐全
+
+§2 gateway:
+  mvn -f gateway/pom.xml -DskipTests package
+  → gateway/target/opencode-agui-gateway-1.0.0.jar (37MB)
+
+运行验证（不占用生产 :8090，clone 构建的 jar 副本起在 :8091）:
+  java -jar /tmp/agui-gateway-clean.jar --server.port=8091
+  （cwd=/tmp/dataagent-clean，密码经既有 .env.opencode 注入）
+  → GET :8091/actuator/health = {"status":"UP"}
+
+§5 验证:
+  bash scripts/test-multi-turn.sh http://127.0.0.1:8091
+  → 7 passed, 0 failed（与 README §5 声称一致；turn5 记得暗号，上下文正确；
+    真实链路 = clean-gateway:8091 → 既有 opencode:4096 → DeepSeek）
+
+收尾: :8091 已停；生产 :8090 全程未动（health UP）；/tmp/dataagent-clean 保留可复查。
+已知小瑕疵（不阻断重建）: build-opencode.sh 结尾提示语仍印 `opencode2 serve`
+（该命令不存在，agents/README 已更正为 bun run fork 路径；脚本自身 echo 待后续顺手修）。

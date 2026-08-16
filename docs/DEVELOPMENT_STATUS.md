@@ -73,6 +73,8 @@
 
 - [x] **收尾2 长 reasoning 流式渲染卡顿修复**（2026-08-16，72b45ea/27710a1/f971a25/0418a6e/fd01597，FORK#23+#24）：实测长思考（多轮深入逐步思考 + CSV 分析）主线程探针最差 **9687ms** 冻结。两层根因，各修一层——**FORK#23 限频渲染**：`use-throttled-content.ts`（leading 立即 + 120ms 窗口合并 + trailing 对齐），reasoning/assistant 两处 StreamMarkdown content 改限频副本（slot 契约仍拿实时内容），fork 测试实锤 200 delta 全量 re-parse 196/201 次 → ≤12 次。**FORK#24 zod 校验记忆化**：CDP Profiler 栈归因实锤真热点 = 流式期间每个 delta 触发消息列表重渲 → 每条 activity 消息对大 discriminated union 全量 `safeParse` + GC 抖动（单 RunTask 6.5s）；`activity-parse-cache.ts` 按 (message, content引用) WeakMap 记忆化，接入 MessageView + use-render-activity-message 两处 call site（content 引用变即重 parse，不丢 ACTIVITY_SNAPSHOT 更新）。验收 = 真浏览器探针法 `scripts/test-streaming-smoothness.py`（headless_shell 的 longtask/rAF 指标不可信，改用 Python 侧 page.evaluate 往返延迟）：部署后实测 **8 流式探针，p95=50ms / worst=50ms（阈值 500/2000ms）PASS**，证据 docs/evidence/2026-08-16-streaming-smoothness-probe.txt。
 
+- [x] **收尾3 代码-文档一致性 + 干净机器可重建**（2026-08-16，b09e551 + 本次）：一致性 —— 依据代码实读逐项核对修漂移 12 处（gateway 30 类/~5800 行、composables 全量、28 组件白名单、ThreadRepository 重构、.opencode 实部署、scripts/ 17 文件等，详见 b09e551）。可重建 —— DELIVERY-README「重建与运行」逐节在干净 clone（GitHub 直拉 /tmp/dataagent-clean，HEAD 4c1be21）实测跑通：build-opencode.sh 部署 .opencode（含 workspace-guard.ts）→ npm install+build（fork prebuild 含 FORK#23/24）→ mvn package → clone 构建 jar 起 :8091 health UP → **test-multi-turn 7/7 PASS**（与 README §5 声称一致），生产 :8090 全程未动。证据 docs/evidence/2026-08-16-clean-rebuild.txt。**收尾三件套（稳定性/流式卡顿/文档一致性+可重建）全部闭环**。
+
 ## 下一步（修完 P0/P1 后）
 
 剩余：
