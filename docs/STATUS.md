@@ -1,6 +1,6 @@
 # DataAgent 项目状态总览（P24 交付前最终巡检 · 2026-08-16）
 
-> 本文每次回归巡检时更新。最近更新：P25（2026-08-16，抛光收尾：README 实拍图 + fork 升级路径抽查）。
+> 本文每次回归巡检时更新。最近更新：P26（2026-08-16，spreadsheetEdits modal 不弹二次根因修复 + 真实链路复跑 PASS）。
 
 ## 架构一句话
 
@@ -11,8 +11,8 @@ Vue 3 + @copilotkit/vue(fork) 前端 → nginx `/agui-api/` → Java gateway(809
 
 | 线 | 结果 | 说明 |
 |---|---|---|
-| 前端 vue-frontend vitest | **250/250 ✅** | 全量（较 P23 的 179 增至 250，新特性测试随提交进入） |
-| gateway mvn test | **202/202 ✅** | 干净 worktree @ HEAD(8002a27) 全量绿；主工作树编译红系并行会话在途 TDD（JsonThreadRepository 红阶段→已闭环，当前在途为 AguiEventTranslator 改动），非回归 |
+| 前端 vue-frontend vitest | **252/252 ✅** | 全量（+2：frontendToolExec 客户端回归钉板） |
+| gateway mvn test | **199/199 ✅** | 全量（+3：ThreadMessagesService 标记→toolCalls） |
 | fork packages/copilotkit-vue vitest | **1100/1110**（10 失败逐名核对 = 既有基线，0 新增） | 全量 |
 
 fork 10 个既有失败（与 P 系列改动零交集，P11 已用"失败集 diff 基线"法证明 0 新增）：
@@ -56,6 +56,7 @@ fork 10 个既有失败（与 P 系列改动零交集，P11 已用"失败集 dif
 | vision-P23 | 错误恢复 UI 取证页（错误卡/离线徽章/恢复 toast 三态同框） | docs/evidence/2026-08-16-p23-error-recovery-ui.txt + READY-VISION-p23-error-recovery.png |
 | P24 | 交付前最终巡检：三线复核 + 部署一致性（前端/gateway 两处陈旧已修复上线）+ READY 抽查 24% 全过 + 真链路冒烟 | docs/STATUS.md ①②③ |
 | P25 | 抛光收尾：README 公网实拍图（真实 run → A2UI 看板）+ fork 可升级性抽查（上游 1.68.1 删除 getThreadClone = 升级硬阻塞，路径已立项） | docs/screenshots/p25-home.png、docs/FORK-UPGRADE-PATH.md |
+| P26 | spreadsheetEdits modal 不弹二次根因修复：MESSAGES_SNAPSHOT 裸标记冲刷流式工具调用 → 历史转换还原 toolCalls（ffe2e3c）+ 客户端钉板测试（fed6ce6）；真实链路复跑 PASS（modal→confirm→CSV 999999），gateway 已上生产，multi-turn 7/7 | /tmp/p26-modal.png、frontendToolExec.test.ts、DEVELOPMENT_STATUS 下一步 1/2 闭环 |
 
 ### READY-FRONTEND（前端 UX 线）
 

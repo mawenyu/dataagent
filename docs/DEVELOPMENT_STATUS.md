@@ -51,11 +51,13 @@
 - [x] P3：`.opencode/opencode.jsonc` $schema 空键修复、demo.ts root 属主、agents/ 空壳目录清理
 - [x] TARGET_ARCHITECTURE 差距三项（并行子代理，194 绿）：RUN_ERROR 结构化 code（ebfb4aa，UPSTREAM_ERROR/RUN_TIMEOUT，前端 parseRunError 直接消费）/ ThreadRepository 接口抽取（23f4397，JsonThreadRepository 为实现）/ MDC traceId=runId 全链路（8002a27）
 - [x] **spreadsheetEdits 真实链路阻断 bug 根因修复**（本线）：DeepSeek 先流引导文字再以伪 `<tool_call>` 文本调 frontend tool 时，`dispatchToolCall` 截断分支只关 step 不关文本消息 → RUN_FINISHED 先于 TEXT_MESSAGE_END，AG-UI 客户端拒收（"Cannot send 'RUN_FINISHED' while text messages are still active"）。TDD：新增 2 回归用例精确复现线上事件序（红：序列无 TEXT_MESSAGE_END）→ 修复（截断前先补 END）→ `AguiEventTranslatorTest` 33/33 绿（gateway/target/surefire-reports 实测）。全量套件收尾时截断，其余文件本轮零改动，194 基线不受影响面。
+- [x] **spreadsheetEdits modal 不弹二次根因修复**（2026-08-16 P26 续，ffe2e3c + fed6ce6）：d992ab5 部署后真实链路复跑仍不弹 modal —— 四场景隔离实验（真实 HttpAgent + CopilotChat + 打桩 fetch 逐字节复现 gateway SSE，`vue-frontend/src/components/frontendToolExec.test.ts`）定位唯一致因：**RUN_FINISHED 前插的 MESSAGES_SNAPSHOT 以 opencode 历史为权威冲刷客户端消息流，而历史里伪 `<tool_call>` 是纯文本** → 流式 TOOL_CALL_* 被抹掉 → handler 永不执行（悬空 parentMessageId、TEXT_MESSAGE 包裹均非致因）。修复：`ThreadMessagesService` 历史转换把标记还原成 `toolCalls`（复用 `FrontendToolBridge.parseToolCall`，含 DSML 伪尾巴容错；确定性 id `histcall-*`；标记前引导文本保留、标记后余文按截断语义丢弃），顺带消除快照/回放把裸标记渲染成可见文本的 UX 泄漏。TDD：gateway `ThreadMessagesServiceTest` +3 → 全量 199/199 绿；前端 252/252 绿。**真实链路复跑 PASS**：modal 弹出 → 确认 → CSV 落盘含 999999（/tmp/p26-diag.py + /tmp/p26-modal.png）；gateway 已重启上生产；`test-multi-turn.sh` 7/7 回归通过。
 
 ## 下一步（修完 P0/P1 后）
 
 剩余：
-1. gateway 重启上生产（本循环共 4 commit 未部署：ebfb4aa/23f4397/8002a27 + 本次截断修复）→ `test-multi-turn.sh` 回归。
-2. spreadsheetEdits 真实链路复跑（`/tmp/spreadsheet-e2e.py`：modal → confirm → CSV 落盘校验）—— 阻断 bug 已修，待验证。
+1. ~~gateway 重启上生产（4 commit 未部署）→ test-multi-turn 回归~~ ✅ 2026-08-16 已完成两轮（d992ab5 一轮 + ffe2e3c 一轮），multi-turn 7/7。
+2. ~~spreadsheetEdits 真实链路复跑~~ ✅ 2026-08-16 PASS（modal → confirm → CSV 999999 落盘）。
 3. fork 既有 2 失败（`use-frontend-tool.e2e.test.ts` Agent Scoping，并行线在途）。
-4. DeepSeek 伪 `<tool_call>` 文本输出习性：已确认双路径（native + 文本 marker）都会触发，bridge 均兜住；记录为模型行为基线。
+4. DeepSeek 伪 `<tool_call>` 文本输出习性：已确认双路径（native + 文本 marker）都会触发，bridge 均兜住；记录为模型行为基线（本条为观察记录，长期有效）。
+5. 观察项（非阻断，记录在案）：模型偶发拒用 frontend tool 改用原生 edit 工具绕过 HITL 直接改 CSV（提示词契约约束力的边界）。
