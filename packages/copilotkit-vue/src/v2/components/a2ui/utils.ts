@@ -183,8 +183,13 @@ export function ensureA2uiCatalogStyles(): void {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes a2ui-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 .a2ui-modal-backdrop { animation: a2ui-fade-in 0.15s ease-out; }
 .a2ui-modal-panel { animation: a2ui-pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+.a2ui-shimmer { animation: a2ui-shimmer 1.5s ease-in-out infinite; }
 `;
   document.head.appendChild(style);
 }

@@ -22,7 +22,11 @@ import {
   type ComponentModel,
 } from "@a2ui/web_core/v0_9";
 import type { VueComponentImplementation } from "./adapter";
-import { getWarningChipStyle } from "./utils";
+import { getWarningChipStyle, ensureA2uiCatalogStyles } from "./utils";
+
+// Idempotent: ensures shimmer keyframes exist even when A2uiSurface is used
+// with a custom catalog that never imports the basic catalog module.
+ensureA2uiCatalogStyles();
 
 /**
  * DeferredChild — Vue equivalent of the React DeferredChild.
@@ -106,18 +110,18 @@ const DeferredChild = defineComponent({
       const componentModel = props.surface.componentsModel.get(props.id);
 
       if (!componentModel) {
-        // Shimmer placeholder while component isn't yet available
+        // Shimmer placeholder while component isn't yet available.
+        // Keyframes live in the shared static stylesheet (no innerHTML).
         return h("div", {
+          class: "a2ui-shimmer",
           style: {
             padding: "12px 16px",
             borderRadius: "8px",
             background:
               "linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%)",
             backgroundSize: "200% 100%",
-            animation: "a2ui-shimmer 1.5s ease-in-out infinite",
             minHeight: "2rem",
           },
-          innerHTML: `<style>@keyframes a2ui-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }</style>`,
         });
       }
 
