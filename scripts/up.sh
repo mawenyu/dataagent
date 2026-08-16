@@ -8,6 +8,8 @@
 #   opencode :4096 (bun 源码运行, cwd=仓库根, .env.opencode 注入 serve 密码)
 #   gateway  :8090 (java, 从 /tmp/agui-gateway-run.jar 副本运行 —— 见 restart-gateway.sh)
 #   vite dev :3001 (npm run dev, predev 自动先构建 fork)
+#
+# fork 位置: OPENCODE_FORK_DIR 环境变量(或写进 .env.opencode), 默认 $HOME/opencode-fork
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -29,8 +31,13 @@ if curl -s -m 2 -o /dev/null http://127.0.0.1:4096/api/session; then
 else
   echo "== 启动 opencode :4096 =="
   [[ -f .env.opencode ]] || { echo "!! 缺 .env.opencode(见 DELIVERY-README §1)" >&2; exit 1; }
+  # fork 路径: OPENCODE_FORK_DIR(环境或 .env.opencode) > $HOME/opencode-fork
+  set -a; . ./.env.opencode; set +a
+  FORK_DIR="${OPENCODE_FORK_DIR:-$HOME/opencode-fork}"
+  [[ -f "$FORK_DIR/packages/cli/src/index.ts" ]] \
+    || { echo "!! 找不到 opencode fork: $FORK_DIR(设 OPENCODE_FORK_DIR 或按 DELIVERY-README §1 clone)" >&2; exit 1; }
   setsid nohup bash -c 'unset OPENCODE_MODELS_PATH && set -a && . ./.env.opencode && set +a \
-    && bun run --conditions=browser /home/ubuntu/opencode-fork/packages/cli/src/index.ts \
+    && bun run --conditions=browser "'"$FORK_DIR"'/packages/cli/src/index.ts" \
          serve --port 4096 --hostname 127.0.0.1' > /tmp/opencode2.log 2>&1 < /dev/null &
   for i in $(seq 1 40); do
     curl -s -m 2 -o /dev/null http://127.0.0.1:4096/api/session && break
