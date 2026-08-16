@@ -1,0 +1,34 @@
+# 收尾1 稳定性全量回归 —— 2026-08-16
+
+## 套件
+| 套件 | 结果 |
+|---|---|
+| 前端 vitest | 291/291（40 文件）+ typecheck 干净 |
+| gateway mvn | 225/225，0 failures/0 errors |
+| fork copilotkit-vue | 1177/1177（112 文件）0 红 |
+
+## 真实链路验收脚本（真 gateway :8090 + opencode :4096，无 mock）
+| 脚本 | 结果 |
+|---|---|
+| test-multi-turn.sh | 7/7 |
+| test-sales-trend-e2e.sh | 8/8 |
+| test-context-followup.sh | 5/5 |
+| test-drilldown-why.sh | 5/5（首跑软断言"因果连接词"未中，复跑 5/5 —— 模型措辞抖动，断言本身为软） |
+| test-datasource-missing.sh | 5/5 |
+| test-tool-failure-recovery.sh | 5/5（脚本随 P33 更新：失败检测扩展到 shell 内 Traceback/FileNotFoundError；实测 agent 从公共只读区按 md5 校验恢复同名 CSV → RECOVERED，P33 设计内行为） |
+| test-frontend-tool.sh | 5/5 |
+| test-attachment-e2e.sh | 8/8（补 +x 执行位，此前被管道吞掉 Permission denied） |
+| test-a2ui-form.sh | 8/8 |
+| test-a2ui-all-components.sh | 31/31 |
+| test-workspace-guard.sh | 5/5（本日 P33-B 验收，证据 2026-08-16-p33b-workspace-guard.txt） |
+
+## 公网冒烟（http://101.34.246.179）
+- 页面 /agui/ → 200
+- 真实 agent run（POST /agui-api/agent/run，"用一句话介绍你自己"）：
+  RUN_STARTED → STEP_STARTED/FINISHED → REASONING/TEXT 流式 → STATE_SNAPSHOT →
+  RUN_FINISHED 完整事件序收尾。
+
+## 已知噪音（非产品问题，不修）
+- App.test.ts 末尾 1 个 unhandled rejection：@ag-ui/client http-request 的
+  getReader 对打桩 Response 报错（"点击追问指令"用例触发后异步抛出），
+  测试全绿不受影响；属测试桩对 SSE 流的模拟缺口，既有基线。

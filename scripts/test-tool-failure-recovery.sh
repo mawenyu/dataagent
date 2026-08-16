@@ -4,9 +4,13 @@
 # 触发方式（与 Test 4 同属数据源不可用族，但断言不同）：会话内删掉 CSV 后
 # 发起必须动工具的分析请求，观察失败后行为：
 #   1) r2 run 仍 RUN_FINISHED（失败不拖垮 run）
-#   2) 确有工具级失败（TOOL_CALL_RESULT「工具执行失败: 」前缀契约）
+#   2) 确有失败发生（两种形态都认：
+#      a) 工具级失败 —— TOOL_CALL_RESULT「工具执行失败: 」前缀契约（read 等工具直接报错）
+#      b) shell 内失败 —— agent 用 shell/python 读缺失文件，Traceback/FileNotFoundError
+#         作为工具结果内容返回（shell 本身执行成功，不触发前缀契约））
 #   3) 恢复或明确错误 二选一（协议契约）：
-#      a) RECOVERED —— 首次失败后仍有成功的 TOOL_CALL_RESULT（agent 换路径重试）
+#      a) RECOVERED —— 首次失败后仍有成功的 TOOL_CALL_RESULT（agent 换路径重试。
+#         P33 二期起典型恢复路径 = 读公共只读区同名参考数据，属预期行为）
 #      b) EXPLICIT  —— 最终文本答复明确承认数据不可用/失败
 # 用法: scripts/test-tool-failure-recovery.sh [gateway-base-url]
 set -u
@@ -25,6 +29,10 @@ run_turn() {
 import json, sys
 texts=[]; terminal=None
 failed_seen=False; recovered=False; toolfail=None
+# 失败两形态: 工具级前缀契约 / shell 内 python 失败(traceback 作为结果内容)
+SHELL_FAIL_MARKS=('Traceback (most recent call last)','FileNotFoundError','No such file or directory')
+def is_failure(c):
+    return c.startswith('工具执行失败: ') or any(m in c for m in SHELL_FAIL_MARKS)
 for line in open(sys.argv[1]):
     if not line.startswith('data:'): continue
     try: e=json.loads(line[5:])
@@ -33,7 +41,7 @@ for line in open(sys.argv[1]):
     if t=='TEXT_MESSAGE_CONTENT': texts.append(e['delta'])
     elif t=='TOOL_CALL_RESULT':
         c=e.get('content','')
-        if c.startswith('工具执行失败: '):
+        if is_failure(c):
             failed_seen=True; toolfail=toolfail or c[:120]
         elif failed_seen:
             recovered=True
@@ -64,7 +72,7 @@ else echo "FAIL: 删除会话内 $CSV → $DEL (expected 204)"; FAIL=$((FAIL+1))
 R2=$(run_turn r2 "用 $CSV 算每个区域的销售额占比，并画成图表")
 echo "$R2"
 check "r2 run 正常收尾(工具失败不拖垮 run)" "TERMINAL=RUN_FINISHED" "$R2"
-check "r2 确有工具级失败(工具执行失败前缀契约)" "FAILED=True" "$R2"
+check "r2 确有失败发生(工具级前缀 或 shell 内 Traceback/FileNotFound)" "FAILED=True" "$R2"
 if echo "$R2" | grep -q "RECOVERED=True"; then
   echo "PASS: 失败后 agent 换路径重试并成功(RECOVERED)"
   PASS=$((PASS+1))

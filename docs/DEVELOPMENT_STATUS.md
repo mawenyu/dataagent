@@ -79,3 +79,4 @@
 3. ~~fork 既有失败（use-frontend-tool.e2e Agent Scoping 等）~~ ✅ 2026-08-16 清零（9→0，P28-A 根治最后 1 例，fork 1155/1155 全绿，见 P2-12）。
 4. DeepSeek 伪 `<tool_call>` 文本输出习性：已确认双路径（native + 文本 marker）都会触发，bridge 均兜住；记录为模型行为基线（本条为观察记录，长期有效）。
 5. ~~观察项：模型偶发拒用 frontend tool 改用原生 edit 绕过 HITL 直改 CSV~~ ✅ P27 已加固（2026-08-16）：提示词层 client_tools 段落 + 工具描述双重显式禁止；gateway 对原生 edit/write/multiedit 直改 CSV/TSV/XLS 追加警告回执（观测模式不阻断，log.warn 可检索）。长期效果待线上观测。
+6. 已知测试噪音（非产品问题）：App.test.ts 末尾 1 个 unhandled rejection（@ag-ui/client getReader 对打桩 Response 的 SSE 模拟缺口），套件全绿不受影响。
