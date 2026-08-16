@@ -82,6 +82,19 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     `core.getAgent(id)`'s reactive proxy back into `getThreadClone` always
     missed (returned `undefined`). `toRaw` is a no-op on raw instances.
 
+16. `src/v2/components/a2ui/{catalog.ts, utils.ts, VueSurface.ts}` + new
+    `__tests__/` (5 files, 29 cases) (2026-08-16, vision line) — A2UI Vue
+    catalog visual polish & missing-state fill: utils.ts gains design tokens
+    (A2UI_PALETTE/A2UI_PRIMARY*/A2UI_FOCUS_RING), shared form style helpers
+    (getA2uiInputStyle/getA2uiLabelStyle/getA2uiErrorTextStyle/
+    getWarningChipStyle) and ensureA2uiCatalogStyles (idempotent one-shot
+    static keyframes injection). All 18 basic-catalog components polished:
+    Text type ramp, Card/Button/Tabs/Modal/form controls/Image hover/pressed/
+    disabled/focus/error/empty states + aria; Modal ESC-to-close. VueSurface:
+    unknown-component/cycle placeholders unified into warning chip (replacing
+    bare red text); shimmer keyframes moved out of innerHTML (no innerHTML
+    use remains on the render path).
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 

@@ -88,7 +88,7 @@
 
 | 向量 | 防护层 | 行为 | 测试/证据 |
 |---|---|---|---|
-| XSS（Text/Markdown 含 script/iframe/img-onerror） | 前端（构造性免疫：全部经 h() 文本节点转义，无 v-html；唯一 innerHTML 是静态 shimmer 样式） | 字面文本渲染，无可执行节点 | maliciousPayload.test.ts ×3 |
+| XSS（Text/Markdown 含 script/iframe/img-onerror） | 前端（构造性免疫：全部经 h() 文本节点转义，无 v-html；渲染路径已无 innerHTML —— shimmer keyframes 2026-08-16 移入共享静态样式表） | 字面文本渲染，无可执行节点 | maliciousPayload.test.ts ×3 |
 | 组件名/action 名/图标名带 HTML | 前端 + gateway 白名单 | 按数据处理，无 on* 属性泄漏 | 同上 |
 | 非法组件类型（null/数字/对象） | 双修：fork 渲染器 updateComponents **拆到单组件粒度容错**（一条 op 混入坏组件不再拖垮整 op）+ gateway 白名单 | 坏组件跳过+warn，正常组件照渲染 | 同上（先红后绿） |
 | 深嵌套 | **gateway 新增 MAX_DEPTH=48**（BFS 分层）+ 前端 50 层实测正常 | 超限整体拒绝，回执带深度原因 | bridge 2 例 + 2026-08-16-p13-depth-reject.sse（61 层被拒 → 模型自纠 10 层成功） |
