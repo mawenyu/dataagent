@@ -58,3 +58,10 @@ management:
     health:
       probes:
         enabled: true
+
+logging:
+  pattern:
+    # TARGET_ARCH §5: %X{traceId} 消费 MDC traceId（gateway 侧 = runId，
+    # 由 AgUiProtocolService.withTraceId 在 run 生命周期同步段/终端回调注入）；
+    # 无 MDC 的日志（启动/路由等）该槽位为空
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p --- [%15.15t] [traceId=%X{traceId}] %-40.40logger{39} : %m%n"

@@ -355,6 +355,8 @@ public class AguiEventTranslator {
 
     /** session.tool.called —— 不流式工具输入的兜底；frontend/server 工具在此分流。 */
     private Flux<ServerSentEvent<String>> toolCalledEvent(RunState rs, JsonNode data) {
+        // TARGET_ARCH §5: 工具桥接日志带 MDC traceId=runId（同步段 try/finally）
+        return AgUiProtocolService.withTraceId(rs.runId, () -> {
         // fallback for models that don't stream tool input
         String callId = data.path("id").asText();
         if (callId.isBlank()) return Flux.empty();
@@ -408,6 +410,7 @@ public class AguiEventTranslator {
             executeServerTool(name, rs.runId, rs.threadId, data.path("input")).ifPresent(out::add);
         }
         return Flux.fromIterable(out);
+        });
     }
 
     /** session.tool.success/.failed —— TOOL_CALL_RESULT 结果镜像。 */
@@ -881,6 +884,8 @@ public class AguiEventTranslator {
                                   Set<String> activeSteps,
                                   MsgState st, String rawBlock, List<ServerSentEvent<String>> out,
                                   Runnable onEarlyTerminate) {
+        // TARGET_ARCH §5: 工具桥接日志带 MDC traceId=runId（同步段 try/finally）
+        AgUiProtocolService.withTraceId(runId, () -> {
         var parsed = toolBridge.parseToolCall(rawBlock);
         if (parsed.isEmpty()) {
             log.warn("unparseable tool_call block; emitting as text");
@@ -925,6 +930,7 @@ public class AguiEventTranslator {
             out.add(sse(base("RUN_FINISHED", runId, threadId)));
             fireEarlyTerminate(onEarlyTerminate);
         }
+        });
     }
 
     /** 服务端工具路由：render_a2ui 走 A2UiBridge，其余走确定性展开器。 */

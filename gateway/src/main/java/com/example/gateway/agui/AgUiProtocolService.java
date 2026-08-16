@@ -188,6 +188,29 @@ public class AgUiProtocolService {
         }
     }
 
+    /**
+     * TARGET_ARCH §5: MDC {@code traceId=runId} 进日志（pattern %X{traceId}）。
+     *
+     * <p>MDC 是 ThreadLocal，reactive 链路跨线程不传播 —— 只包同步段
+     * （prepareRun/doRun 组装、逐事件副作用）与终端回调（subscribe/error/cancel/
+     * 超时兜底）内的打日志动作，try/finally 立即清除；不假装全链路。</p>
+     */
+    static void withTraceId(String runId, Runnable action) {
+        withTraceId(runId, () -> {
+            action.run();
+            return null;
+        });
+    }
+
+    static <T> T withTraceId(String runId, java.util.function.Supplier<T> action) {
+        org.slf4j.MDC.put("traceId", runId);
+        try {
+            return action.get();
+        } finally {
+            org.slf4j.MDC.remove("traceId");
+        }
+    }
+
     public Flux<ServerSentEvent<String>> run(RunAgentInput input) {
         return run(input, "anonymous");
     }
@@ -214,15 +237,15 @@ public class AgUiProtocolService {
         // P2-9b: 建档/标题/touch（ChatThreadStore 同步磁盘 IO）与会话 workspace
         // 懒建+播种（mkdir/拷贝）全部移到 boundedElastic；run 的组装不再在
         // event loop 上做阻塞 IO。响应流契约不变。
-        return Mono.fromCallable(() -> prepareRun(input, threadId, runId))
+        return Mono.fromCallable(() -> withTraceId(runId, () -> prepareRun(input, threadId, runId)))
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMapMany(threadWorkspace -> doRun(input, uid, threadId, runId, threadWorkspace)
+                .flatMapMany(threadWorkspace -> withTraceId(runId, () -> doRun(input, uid, threadId, runId, threadWorkspace))
                         // 逐事件副作用（surface 快照落盘 + 指标 JSON 行追加写）
                         // 也是同步文件 IO —— 经 boundedElastic 下移，保持事件顺序
-                        .concatMap(e -> Mono.fromRunnable(() -> {
+                        .concatMap(e -> Mono.fromRunnable(() -> withTraceId(runId, () -> {
                             persistSurfaceSnapshot(threadId, e);
                             tapMetrics(runId, threadId, e);
-                        }).subscribeOn(Schedulers.boundedElastic()).thenReturn(e)));
+                        })).subscribeOn(Schedulers.boundedElastic()).thenReturn(e)));
     }
 
     /** P2-9b: run 的阻塞前置（store 建档/标题/touch + 会话 workspace 懒建）—— boundedElastic 上执行。 */
@@ -420,7 +443,7 @@ public class AgUiProtocolService {
                                 // with a retryable RUN_ERROR, and the lingering OpenCode
                                 // session run is aborted so it stops burning tokens.
                                 .timeout(runIdleTimeout)
-                                .onErrorResume(e -> {
+                                .onErrorResume(e -> withTraceId(finalRunId, () -> {
                                     boolean timeout = e instanceof TimeoutException;
                                     String msg = timeout
                                             ? "运行超时（" + runIdleTimeout.getSeconds() + "s 无响应），agent 可能已挂起，请重试"
@@ -431,15 +454,15 @@ public class AgUiProtocolService {
                                             .thenMany(Flux.just(sseRaw(timeout
                                                     ? runErrorJson(msg, ERROR_CODE_RUN_TIMEOUT)
                                                     : runErrorJson(msg))));
-                                })
-                                .doOnSubscribe(s -> log.info("AG-UI run started thread={} run={} session={} user={}", finalThreadId, finalRunId, sessionId, userId))
-                                .doOnError(e -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage()))
+                                }))
+                                .doOnSubscribe(s -> withTraceId(finalRunId, () -> log.info("AG-UI run started thread={} run={} session={} user={}", finalThreadId, finalRunId, sessionId, userId)))
+                                .doOnError(e -> withTraceId(finalRunId, () -> log.error("AG-UI run failed thread={}: {}", finalThreadId, e.getMessage())))
                                 // P9-①: 客户端停止（浏览器 abort → SSE 取消）→ 主动中断
                                 // OpenCode session，不再白烧 token（此前只在超时路径 abort）
-                                .doOnCancel(() -> {
+                                .doOnCancel(() -> withTraceId(finalRunId, () -> {
                                     log.info("AG-UI run cancelled by client thread={} session={} — aborting", finalThreadId, sessionId);
                                     abortSession(sessionId).subscribe();
-                                });
+                                }));
                 })
                 .onErrorResume(e -> Flux.just(sseRaw(runErrorJson(String.valueOf(e.getMessage())))));
     }

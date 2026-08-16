@@ -397,6 +397,30 @@ class AgUiProtocolServiceTest {
     }
 
     @Test
+    void runLifecycleLogsCarryTraceId() {
+        // TARGET_ARCH §5: run 生命周期日志带 MDC traceId=runId（logback pattern %X{traceId} 消费）；
+        // MDC 是 ThreadLocal —— 只断言同步段/终端回调处打点，且 try/finally 清除不泄漏
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger)
+                org.slf4j.LoggerFactory.getLogger(AgUiProtocolService.class);
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            stub.eventStreams.add(textStep("m1", "ok"));
+            run(new RunAgentInput("t-mdc", "run-mdc-1", null,
+                    List.of(Map.of("role", "user", "content", "hi")), null, null, null));
+        } finally {
+            logger.detachAppender(appender);
+        }
+        var started = appender.list.stream()
+                .filter(e -> e.getFormattedMessage().contains("AG-UI run started"))
+                .findFirst().orElseThrow(() -> new AssertionError("run started log not found"));
+        assertEquals("run-mdc-1", started.getMDCPropertyMap().get("traceId"),
+                "run 开始日志必须带 MDC traceId=runId");
+        assertNull(org.slf4j.MDC.get("traceId"), "MDC 必须 try/finally 清除，不得泄漏到调用线程");
+    }
+
+    @Test
     void runErrorJsonEscapesBackslashQuoteNewline() throws Exception {
         // P0: 手写 escape 不转义反斜杠且把引号变异为单引号 —— 改 Jackson 序列化后
         // 内容必须逐字符往返(含 \ " 换行)
