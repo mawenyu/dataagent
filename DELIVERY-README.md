@@ -20,11 +20,11 @@ OpenCode server (:4096, bun)  →  DeepSeek LLM
 |---|---|
 | `gateway/` | Java Spring Boot 网关（AG-UI 协议端点 + A2UI 桥），Java 17 + Maven |
 | `vue-frontend/` | **现行前端**（Vue 3 + Vite），部署到 `/agui/` |
-| `agents/` | **OpenCode2 定制层**：plugins/tool/skills/command/agent + `build-opencode.sh` 一键构建部署（上游样例隔离在 `upstream-examples/`，不部署；配合 fork [`mawenyu/opencode@dataagent-v2`](https://github.com/mawenyu/opencode/tree/dataagent-v2)） |
+| `agents/` | **OpenCode2 定制层**：`plugins/a2ui-tools.ts`（5 个服务端裁决工具，唯一业务必需插件）+ `e2e-demo/`（部署样例）+ `build-opencode.sh` 一键构建部署；上游样例（agent/command/plugins/skills/tool 五类）隔离在 `upstream-examples/`，不部署（配合 fork [`mawenyu/opencode@dataagent-v2`](https://github.com/mawenyu/opencode/tree/dataagent-v2)） |
 | `packages/copilotkit-vue` | @copilotkit/vue 1.67.1 内部 fork（`directAgents` 支持），详见其 `FORK.md` 与 `patches/copilotkit-vue-fork.patch` |
 | `vendor/copilotkit-src` | CopilotKit 上游 monorepo 的 submodule 指针（gitlink @ bee3913，内容未入库、本地未检出）；fork 溯源以 `patches/copilotkit-vue-fork.patch` + 上游 tag v1.67.1 为准 |
 | `ref/` | 参考源码（CopilotKit adk-dashboard 官方示例、ag-ui 上游），不参与构建 |
-| `scripts/` | 运维与实测脚本：`up.sh`（opencode+gateway+vite 三件套幂等拉起）、`restart-gateway.sh`（gateway 重启纪律）、`test-multi-turn.sh`（5 轮连续对话）、`test-attachment-e2e.sh`（附件全链路）、`test-frontend-tool.sh`、`test-a2ui-form.sh`、`test-a2ui-all-components.sh`、`test-event-order-e2e.py`（乱序重排）、`test-ui-req7.py`（需求7 UI 事件） |
+| `scripts/` | 运维与实测脚本：`up.sh`（opencode+gateway+vite 三件套幂等拉起）、`restart-gateway.sh`（gateway 重启纪律）、`test-multi-turn.sh`（5 轮连续对话）、`test-attachment-e2e.sh`（附件全链路）、`test-frontend-tool.sh`、`test-a2ui-form.sh`、`test-a2ui-all-components.sh`、`test-datasource-missing.sh`（数据源缺失友好错误契约）、`test-event-order-e2e.py`（乱序重排）、`test-ui-req7.py`（需求7 UI 事件） |
 | `docs/` | 权威文档（PRODUCT_REQUIREMENTS / CURRENT_ARCHITECTURE / TARGET_ARCHITECTURE / DEVELOPMENT_STATUS / ACCEPTANCE_TESTS）+ design.md / ARCHITECTURE.md / VERSIONS.md / spec/ 与实测证据 evidence/·screenshots/ |
 | `opencode.json` | OpenCode server 项目配置（模型 = deepseek/deepseek-chat） |
 
@@ -121,34 +121,39 @@ bash scripts/test-multi-turn.sh http://127.0.0.1:8090        # 连续对话 5 �
 
 唯一修改过的开源组件是 **@copilotkit/vue**：
 
-- 基线：上游 `CopilotKit/CopilotKit` **tag v1.67.1**；`vendor/copilotkit-src` 仅为 submodule 指针（gitlink，内容未入库），逐行溯源以下方的 `patches/copilotkit-vue-fork.patch` 为准（patch 即完整 unified diff）
+- 基线：上游 `CopilotKit/CopilotKit` **tag v1.67.1**；`vendor/copilotkit-src` 仅为 submodule 指针（gitlink，内容未入库）。逐行溯源的权威清单是 `packages/copilotkit-vue/FORK.md`（14 个编号条目）+ `docs/FORK-UPGRADE-PATH.md` §2（fork vs 上游 1.67.1 实测 diff：修改 16 文件 + 新增 4 文件）；下方的 `patches/copilotkit-vue-fork.patch` 覆盖其中 directAgents 基础改动（条目 1-9，18 个文件 diff）
 - fork 产物：`packages/copilotkit-vue`（前端以 `file:` 依赖）
 - 上游 MIT License 已保留
 
 ### 如何查看 fork 改动（逐行可见）
 
-1. **patch 文件**：`patches/copilotkit-vue-fork.patch` —— 上游 v1.67.1 `packages/vue` → 本 fork 的完整 unified diff（src 全部修改 + 新增文件 + package.json/tsconfig.json/package-lock.json 变动），git 生成、含 `a/` `b/` 前缀。
-2. **复现 fork**：
+1. **patch 文件**：`patches/copilotkit-vue-fork.patch` —— 上游 v1.67.1 `packages/vue` → 本 fork 的 unified diff，覆盖 directAgents 基础改动（FORK.md 条目 1-9：src 修改 + 新增文件 + package.json/tsconfig.json/package-lock.json 变动），git 生成、含 `a/` `b/` 前缀。**注意**：条目 10-14（mainline UI 打磨，P24 前陆续落地）尚未回写进该 patch，其逐行内容以 fork 工作树 + `docs/FORK-UPGRADE-PATH.md` §2 实测 diff 清单为准。
+2. **复现 fork（条目 1-9 部分）**：
    ```bash
    # 在任意干净目录：
    git clone --depth 1 --branch v1.67.1 https://github.com/CopilotKit/CopilotKit.git
    cd CopilotKit && mv packages/vue packages/copilotkit-vue   # patch 的目标路径
    git init -q . && git add -A && git commit -qm base          # git apply 需要索引
    git apply /path/to/patches/copilotkit-vue-fork.patch
-   # 得到的 packages/copilotkit-vue 与本仓库内的 fork 完全一致（已实测 diff -rq 无差异）
+   # 得到条目 1-9 形态的 fork；条目 10-14 见 FORK.md 逐条描述
    ```
-3. **改动摘要（9 项）**：
-   1. `CopilotKitProvider` 新增 `directAgents` prop（业务代码不碰 `agents__unsafe_dev_only`）
-   2. `mergeAgents.ts`（新文件，directAgents 合并优先级）
-   3. directAgents 单测（新文件）
-   4. `v2/index.ts` 显式导出 a2ui adapter 的 `createVueComponent`/`createBinderlessVueComponent`（上游 barrel 遮蔽）
-   5. `use-agent.ts` `toRaw` 修复：core 注册表的 reactive 代理导致 clone() 的 structuredClone 炸 DataCloneError
-   6. `hooks/index.ts` 导出 `getThreadClone`（多会话历史写入 per-thread clone）
-   7. `CopilotChatView.vue` welcome 屏去掉 `!hasExplicitThreadId` 门控（direct-agent 下显式 threadId 也是新会话）
-   8. `java-wire-contract.test.ts`（新文件，AG-UI 事件契约回归）
-   9. 打包：`package.json`（file: 依赖钉版）/ `tsconfig.json` / `package-lock.json`、新增 `FORK.md`/`LICENSE`
-   
-   逐条原因见 `packages/copilotkit-vue/FORK.md`。
+3. **改动摘要（14 项，与 FORK.md 编号一一对应）**：
+   1. `CopilotKitProvider.types.ts` 新增 `directAgents` prop（业务代码不碰 `agents__unsafe_dev_only`）
+   2. `CopilotKitProvider.vue` 接入 directAgents（合并委托给 mergeAgents）
+   3. `mergeAgents.ts`（新文件，directAgents 合并优先级）
+   4. directAgents 单测（新文件）
+   5. `v2/index.ts` 显式导出 a2ui adapter 的 `createVueComponent`/`createBinderlessVueComponent`（上游 barrel 遮蔽）
+   6. `use-agent.ts` `toRaw` 修复：core 注册表的 reactive 代理导致 clone() 的 structuredClone 炸 DataCloneError
+   7. `hooks/index.ts` 导出 `getThreadClone`（多会话历史写入 per-thread clone）
+   8. `CopilotChatView.vue` welcome 屏去掉 `!hasExplicitThreadId` 门控（direct-agent 下显式 threadId 也是新会话）
+   9. 打包：`package.json`（file: 依赖钉版）/ `tsconfig.json` / `package-lock.json`、新增 `FORK.md`/`LICENSE`（同批另有 `java-wire-contract.test.ts` AG-UI 事件契约回归新文件，见 patch）
+   10. `use-default-render-tool.ts`（F3）默认工具卡：耗时统计 + 状态图标（spinner/✓/✗）+ 失败/中断标记
+   11. `CopilotChatInput.vue`（P-F）`maxRows` 默认 5 → 3（`FORK-PATCH(P-F)` 行内标记）
+   12. `CopilotChatMessageView.vue` + `CopilotChatAssistantMessage.vue`（P-S）消息级操作：重新生成/时间戳/hover 工具栏
+   13. `use-default-render-tool.ts`（F3 补全）工具级失败检测：gateway `工具执行失败: ` 前缀 → ✗失败态
+   14. `CopilotChatAssistantMessage.vue`（touch-safe）图片下载按钮 hover-only 在触屏拦截点击 → pointer-events 修复
+
+   逐条原因见 `packages/copilotkit-vue/FORK.md`；升级冲突面评估见 `docs/FORK-UPGRADE-PATH.md`。
 
 其余组件（ag-ui client、A2UI、OpenCode、Spring）均为未修改的上游版本，按版本号从官方渠道获取。
 
