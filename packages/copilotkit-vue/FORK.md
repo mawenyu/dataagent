@@ -76,6 +76,12 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     `group-hover:pointer-events-auto` (marked `FORK-PATCH(touch-safe)`).
     Covered by a class-guard case in `CopilotChatAssistantMessage.test.ts`.
 
+15. `src/v2/hooks/use-agent.ts` — `getThreadClone` unwraps the registry agent
+    with `toRaw()` before the `globalThreadCloneMap` WeakMap lookup. Entry 6
+    made `resolveAgent` key the map by the raw instance, so callers passing
+    `core.getAgent(id)`'s reactive proxy back into `getThreadClone` always
+    missed (returned `undefined`). `toRaw` is a no-op on raw instances.
+
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
 

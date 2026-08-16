@@ -87,7 +87,12 @@ export function getThreadClone(
   threadId: string | undefined | null,
 ): AbstractAgent | undefined {
   if (!registryAgent || !threadId) return undefined;
-  return globalThreadCloneMap.get(registryAgent)?.get(threadId);
+  // FORK FIX: `getOrCreateThreadClone` keys `globalThreadCloneMap` by the
+  // toRaw()-unwrapped registry agent (see `resolveAgent`), but callers
+  // typically pass `core.getAgent(id)`'s reactive proxy straight back in.
+  // Unwrap here too so the WeakMap lookup hits; `toRaw` is a no-op on raw
+  // instances.
+  return globalThreadCloneMap.get(toRaw(registryAgent))?.get(threadId);
 }
 
 function getOrCreateThreadClone(
