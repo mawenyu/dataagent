@@ -17,6 +17,7 @@ const StreamMarkdown = defineAsyncComponent(() =>
   import("streamdown-vue").then((m) => m.StreamMarkdown),
 );
 import { useCopilotChatConfiguration } from "../../providers/useCopilotChatConfiguration";
+import { useThrottledContent } from "../../lib/use-throttled-content";
 import { CopilotChatDefaultLabels } from "../../providers/types";
 import {
   IconCheck,
@@ -664,6 +665,16 @@ const hasRegenerate = computed(() => hasListener("onRegenerate"));
 const isLatestAssistantMessage = computed(
   () => props.messages[props.messages.length - 1]?.id === props.message.id,
 );
+// FORK-PATCH(23 stream-throttle): 喂给 StreamMarkdown 的内容限频 ——
+// 流式期间每个 SSE delta 触发全量 markdown re-parse(含 shiki) 是长回答卡顿根因。
+// slot 契约仍拿 normalizedContent(实时);仅默认渲染器用限频副本。
+const isStreamingContent = computed(
+  () => !!(props.isRunning && isLatestAssistantMessage.value),
+);
+const { content: markdownContent } = useThrottledContent(
+  normalizedContent,
+  isStreamingContent,
+);
 const shouldShowToolbar = computed(
   () =>
     props.toolbarVisible &&
@@ -761,7 +772,7 @@ onBeforeUnmount(() => {
         <StreamMarkdown
           v-if="hasContent"
           class="copilot-chat-assistant-markdown"
-          :content="normalizedContent"
+          :content="markdownContent"
           :components="markdownComponents"
           :code-block-actions="[CodeBlockDownloadAction, CodeBlockCopyAction]"
           :code-block-show-line-numbers="false"
