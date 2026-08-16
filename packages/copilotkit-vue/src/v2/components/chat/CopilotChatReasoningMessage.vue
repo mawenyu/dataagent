@@ -9,6 +9,7 @@ const StreamMarkdown = defineAsyncComponent(() =>
 );
 import { IconChevronRight } from "../icons";
 import { useThrottledContent } from "../../lib/use-throttled-content";
+import { PlainCodeBlock } from "./plain-code-block";
 
 const props = withDefaults(
   defineProps<{
@@ -92,6 +93,13 @@ const isStreaming = computed(() => !!(props.isRunning && isLatest.value));
 // 流式期间每个 SSE delta 触发全量 markdown re-parse(含 shiki) 是长思考卡顿根因。
 // slot 契约仍拿 normalizedContent(实时);仅默认渲染器用限频副本。
 const { content: markdownContent } = useThrottledContent(normalizedContent, isStreaming);
+
+// FORK-PATCH(25 stream-plain-codeblock): 流式期间 codeblock 降级为纯 pre>code
+// （streamdown-vue components map 的 codeblock 键覆盖），规避 shiki 高亮分配
+// 风暴；流式结束回到默认 shiki CodeBlock（一次性高亮 + 复制/下载按钮）。
+const streamdownComponents = computed(() =>
+  isStreaming.value ? { codeblock: PlainCodeBlock } : undefined,
+);
 
 const elapsed = ref(0);
 const isOpen = ref(isStreaming.value);
@@ -238,7 +246,7 @@ function toggleOpen() {
             >
               <div v-if="hasContent || isStreaming" class="cpk:pb-2 cpk:pt-1">
                 <div class="cpk:text-sm cpk:text-muted-foreground">
-                  <StreamMarkdown :content="markdownContent" />
+                  <StreamMarkdown :content="markdownContent" :components="streamdownComponents" />
                   <span
                     v-if="isStreaming && hasContent"
                     class="cpk:inline-flex cpk:items-center cpk:ml-1 cpk:align-middle"

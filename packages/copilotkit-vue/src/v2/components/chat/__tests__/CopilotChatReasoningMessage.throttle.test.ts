@@ -10,14 +10,23 @@ import CopilotChatReasoningMessage from "../CopilotChatReasoningMessage.vue";
  * mock streamdown-vue 记录 content prop 实际收到的更新次数。
  */
 const mdUpdates: string[] = [];
+const mdComponents: unknown[] = [];
 vi.mock("streamdown-vue", () => ({
   StreamMarkdown: defineComponent({
     name: "StreamMarkdown",
-    props: { content: { type: String, default: "" } },
+    props: {
+      content: { type: String, default: "" },
+      components: { type: Object, default: undefined },
+    },
     setup(props) {
       watch(
         () => props.content,
         (v) => mdUpdates.push(v),
+        { immediate: true },
+      );
+      watch(
+        () => props.components,
+        (v) => mdComponents.push(v),
         { immediate: true },
       );
       return () => h("div", { "data-testid": "md-stub" }, props.content);
@@ -67,5 +76,26 @@ describe("CopilotChatReasoningMessage 流式限频（FORK#23）", () => {
     });
     await flushPromises(); // async StreamMarkdown 解析
     expect(mdUpdates[mdUpdates.length - 1]).toBe("done-content");
+  });
+
+  it("FORK#25：流式期间喂 codeblock 降级渲染器，结束后回到默认 shiki", async () => {
+    const { PlainCodeBlock } = await import("../plain-code-block");
+    mdComponents.length = 0;
+    const message = createReasoningMessage("```js\nconst a=1;\n```");
+    const wrapper = mount(CopilotChatReasoningMessage, {
+      props: { message, messages: [message] as Message[], isRunning: true },
+    });
+    await flushPromises();
+    const streamingMap = mdComponents[mdComponents.length - 1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(streamingMap?.codeblock).toBe(PlainCodeBlock); // 流式：降级无 shiki
+
+    await wrapper.setProps({ isRunning: false });
+    await nextTick();
+    const doneMap = mdComponents[mdComponents.length - 1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(doneMap?.codeblock).toBeUndefined(); // 结束：回默认高亮渲染
   });
 });
