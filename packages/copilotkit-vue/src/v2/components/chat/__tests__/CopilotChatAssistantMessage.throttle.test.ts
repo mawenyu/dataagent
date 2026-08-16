@@ -11,14 +11,23 @@ import CopilotChatAssistantMessage from "../CopilotChatAssistantMessage.vue";
  * mock streamdown-vue 记录 content prop 实际收到的更新次数。
  */
 const mdUpdates: string[] = [];
+const mdComponents: unknown[] = [];
 vi.mock("streamdown-vue", () => ({
   StreamMarkdown: defineComponent({
     name: "StreamMarkdown",
-    props: { content: { type: String, default: "" } },
+    props: {
+      content: { type: String, default: "" },
+      components: { type: Object, default: undefined },
+    },
     setup(props) {
       watch(
         () => props.content,
         (v) => mdUpdates.push(v),
+        { immediate: true },
+      );
+      watch(
+        () => props.components,
+        (v) => mdComponents.push(v),
         { immediate: true },
       );
       return () => h("div", { "data-testid": "md-stub" }, props.content);
@@ -87,5 +96,24 @@ describe("CopilotChatAssistantMessage 流式限频（FORK#23）", () => {
     msg.value = createAssistantMessage("done-content");
     await flushPromises();
     expect(mdUpdates[mdUpdates.length - 1]).toBe("done-content");
+  });
+
+  it("FORK#25：流式期间喂 codeblock 降级渲染器，结束后回到默认 shiki", async () => {
+    const { PlainCodeBlock } = await import("../plain-code-block");
+    mdComponents.length = 0;
+    const { msg, running } = mountAssistant();
+    msg.value = createAssistantMessage("```js\nconst a=1;\n```");
+    await flushPromises();
+    const streamingMap = mdComponents[mdComponents.length - 1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(streamingMap?.codeblock).toBe(PlainCodeBlock); // 流式：降级无 shiki
+
+    running.value = false;
+    await nextTick();
+    const doneMap = mdComponents[mdComponents.length - 1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(doneMap?.codeblock).toBeUndefined(); // 结束：回默认高亮渲染
   });
 });

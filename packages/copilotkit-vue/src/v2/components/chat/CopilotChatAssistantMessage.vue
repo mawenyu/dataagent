@@ -18,6 +18,7 @@ const StreamMarkdown = defineAsyncComponent(() =>
 );
 import { useCopilotChatConfiguration } from "../../providers/useCopilotChatConfiguration";
 import { useThrottledContent } from "../../lib/use-throttled-content";
+import { PlainCodeBlock } from "./plain-code-block";
 import { CopilotChatDefaultLabels } from "../../providers/types";
 import {
   IconCheck,
@@ -610,7 +611,7 @@ const CodeBlockDownloadAction = defineComponent({
   },
 });
 
-const markdownComponents = {
+const markdownComponentsBase = {
   img: MarkdownImage,
   table: MarkdownTable,
 };
@@ -674,6 +675,14 @@ const isStreamingContent = computed(
 const { content: markdownContent } = useThrottledContent(
   normalizedContent,
   isStreamingContent,
+);
+// FORK-PATCH(25 stream-plain-codeblock): 流式期间 codeblock 降级为纯 pre>code
+// （streamdown-vue components map 的 codeblock 键覆盖），规避 shiki 高亮分配
+// 风暴；流式结束回到默认 shiki CodeBlock（一次性高亮 + 复制/下载按钮）。
+const markdownComponents = computed(() =>
+  isStreamingContent.value
+    ? { ...markdownComponentsBase, codeblock: PlainCodeBlock }
+    : markdownComponentsBase,
 );
 const shouldShowToolbar = computed(
   () =>
