@@ -129,6 +129,41 @@ describe('FilePreviewModal P32（图片预览）', () => {
   })
 })
 
+describe('FilePreviewModal 多模态预览（PDF）', () => {
+  it('pdfUrl 分支: <iframe> 内嵌渲染(浏览器原生分页/缩放),附下载兜底链接', async () => {
+    const w = mount(FilePreviewModal, {
+      props: { name: 'report.pdf', pdfUrl: '/agui-api/files/report.pdf' },
+      attachTo: document.body,
+    })
+    await nextTick()
+    const dlg = modal()!
+    const frame = dlg.querySelector('[data-testid="file-preview-pdf"]') as HTMLIFrameElement
+    expect(frame, 'PDF 预览应有 <iframe>').toBeTruthy()
+    expect(frame.src).toContain('/agui-api/files/report.pdf')
+    // 不渲染文本/表格/图片区
+    expect(dlg.querySelector('[data-testid="file-preview-table"]')).toBeNull()
+    expect(dlg.querySelector('[data-testid="file-preview-text"]')).toBeNull()
+    expect(dlg.querySelector('[data-testid="file-preview-image"]')).toBeNull()
+    // 浏览器不支持内嵌时的下载兜底
+    const dl = dlg.querySelector('[data-testid="file-preview-download"]') as HTMLAnchorElement
+    expect(dl, 'PDF 分支应有下载兜底链接').toBeTruthy()
+    expect(dl.href).toContain('/agui-api/files/report.pdf')
+    w.unmount()
+  })
+
+  it('PDF 分支仍可 ESC 关闭', async () => {
+    const w = mount(FilePreviewModal, {
+      props: { name: 'r.pdf', pdfUrl: '/x/r.pdf' },
+      attachTo: document.body,
+    })
+    await nextTick()
+    const overlay = document.body.querySelector('[data-testid="file-preview-overlay"]') as HTMLElement
+    overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(w.emitted('close')).toBeTruthy()
+    w.unmount()
+  })
+})
+
 describe('FilePreviewModal P-O（可达性）', () => {
   it('role/aria-modal/aria-label 齐全;Tab 圈定', async () => {
     const w = mount(FilePreviewModal, {

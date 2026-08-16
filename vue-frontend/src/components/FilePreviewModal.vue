@@ -9,6 +9,7 @@ import { trapTabKey } from '../composables/focusTrap'
  * txt/log → 等宽原文。
  * P32: 图片(png/jpg/gif/webp/svg/bmp/avif/ico) → imageUrl 分支 <img> 直渲
  *      （URL 即下载端点,gateway 按扩展名给 Content-Type,浏览器流式解码）。
+ * 多模态预览: pdf → pdfUrl 分支 <iframe> 内嵌（浏览器原生分页/缩放）+ 下载兜底。
  */
 const props = withDefaults(defineProps<{
   name: string
@@ -16,6 +17,8 @@ const props = withDefaults(defineProps<{
   truncated?: boolean
   /** P32: 图片预览 —— 传下载 URL,组件渲 <img> 而非文本内容 */
   imageUrl?: string
+  /** 多模态预览: PDF —— 传下载 URL,组件渲 <iframe> 内嵌(浏览器原生分页/缩放) */
+  pdfUrl?: string
   /** P-N: 大文件(>1MB)替代预览 —— 展示下载入口而非内容 */
   oversize?: boolean
   sizeLabel?: string
@@ -96,6 +99,14 @@ const markdownHtml = computed(() => (ext.value === 'md' ? renderMarkdownLite(pro
           <!-- P32: 图片直渲 -->
           <div v-else-if="imageUrl" class="fpv-image-wrap" data-testid="file-preview-image-wrap">
             <img :src="imageUrl" :alt="name" data-testid="file-preview-image" />
+          </div>
+          <!-- 多模态预览: PDF 内嵌(浏览器原生分页/缩放) + 下载兜底 -->
+          <div v-else-if="pdfUrl" class="fpv-pdf-wrap" data-testid="file-preview-pdf-wrap">
+            <iframe :src="pdfUrl" :title="`预览 ${name}`" class="fpv-pdf-frame" data-testid="file-preview-pdf"></iframe>
+            <p class="fpv-note fpv-pdf-fallback">
+              浏览器不支持内嵌 PDF？
+              <a :href="pdfUrl" :download="name" data-testid="file-preview-download">⬇ 下载查看</a>
+            </p>
           </div>
           <!-- csv/tsv: 表格 -->
           <template v-else>
@@ -225,6 +236,15 @@ const markdownHtml = computed(() => (ext.value === 'md' ? renderMarkdownLite(pro
   object-fit: contain; border-radius: 8px;
   background: repeating-conic-gradient(#f1f5f9 0% 25%, #ffffff 0% 50%) 0 0 / 16px 16px;
 }
+/* 多模态预览: PDF 内嵌 */
+.fpv-pdf-wrap { display: flex; flex-direction: column; height: 100%; min-height: 320px; }
+.fpv-pdf-frame {
+  flex: 1; width: 100%; min-height: min(60vh, 560px);
+  border: 1px solid #e5e7eb; border-radius: 8px; background: #525659;
+}
+.fpv-pdf-fallback { margin-top: 8px; }
+.fpv-pdf-fallback a { color: #4f46e5; text-decoration: none; }
+.fpv-pdf-fallback a:hover { text-decoration: underline; }
 /* P-N: 大文件下载提示 */
 .fpv-oversize { display: flex; flex-direction: column; align-items: center; padding: 32px 0; gap: 6px; }
 .fpv-oversize-icon { font-size: 34px; }

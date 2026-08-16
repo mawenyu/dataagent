@@ -22,8 +22,26 @@ export function isImage(name: string): boolean {
   return IMAGE_EXTS.has(extOf(name))
 }
 
+/** 多模态预览: PDF —— 预览走 <iframe src=blobURL> 内嵌（浏览器原生分页/缩放，不按文本拉内容）。 */
+export function isPdf(name: string): boolean {
+  return extOf(name) === 'pdf'
+}
+
+/**
+ * 多模态预览: 拉取 PDF 字节 → blob: URL(带 application/pdf 类型)。
+ * 网关下载端点固定 Content-Disposition: attachment + octet-stream 兜底,
+ * 直接塞 iframe 会触发下载而非内嵌;经 Blob 重包装后浏览器原生 PDF viewer
+ * 正常内嵌渲染(分页/缩放)。调用方负责 URL.revokeObjectURL。
+ */
+export async function fetchPdfPreviewUrl(url: string): Promise<string> {
+  const resp = await fetch(url)
+  if (!resp.ok) throw new Error(`PDF 预览拉取失败: HTTP ${resp.status}`)
+  const buf = await resp.arrayBuffer()
+  return URL.createObjectURL(new Blob([buf], { type: 'application/pdf' }))
+}
+
 export function isPreviewable(name: string): boolean {
-  return PREVIEWABLE.has(extOf(name)) || isImage(name)
+  return PREVIEWABLE.has(extOf(name)) || isImage(name) || isPdf(name)
 }
 
 /** 引号感知 CSV 解析：支持 ".." 内含逗号/换行、"" 转义、CRLF 归一、空行忽略。 */

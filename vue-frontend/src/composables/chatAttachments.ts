@@ -30,7 +30,9 @@ export interface AttachmentsConfigLike {
 }
 
 /** 数据分析场景常见类型；与 gateway 文件名白名单（扩展名部分）兼容。 */
-export const ATTACH_ACCEPT = '.csv,.json,.txt,.md,.tsv,.log,.xlsx,.png,.jpg,.jpeg,.webp'
+/** 数据分析场景常见类型；与 gateway 文件名白名单（字符白名单,扩展名不限）兼容。
+ *  多模态预览: 纳入 .pdf(文件面板/对话附件区均可 iframe 预览)。 */
+export const ATTACH_ACCEPT = '.csv,.json,.txt,.md,.tsv,.log,.xlsx,.png,.jpg,.jpeg,.webp,.pdf'
 
 /** 与 gateway agui.files.max-upload-size 一致（2026-08-15 同步 5MB → 50MB）。 */
 export const ATTACH_MAX_SIZE = 50 * 1024 * 1024

@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  fetchPdfPreviewUrl,
   isImage,
+  isPdf,
   isPreviewable,
   parseCsvPreview,
   prettyJson,
@@ -25,6 +27,47 @@ describe('isPreviewable', () => {
     expect(isPreviewable('p.png')).toBe(true)
     expect(isPreviewable('photo.JPG')).toBe(true)
     expect(isPreviewable('icon.svg')).toBe(true)
+  })
+
+  it('多模态预览: pdf 可预览(iframe 直渲,不走文本拉取)', () => {
+    expect(isPreviewable('report.pdf')).toBe(true)
+    expect(isPreviewable('Report.PDF')).toBe(true)
+  })
+})
+
+describe('isPdf (多模态预览)', () => {
+  it('pdf 判定(大小写不敏感);csv/png/xlsx 不是 pdf', () => {
+    expect(isPdf('a.pdf')).toBe(true)
+    expect(isPdf('B.PDF')).toBe(true)
+    expect(isPdf('a.csv')).toBe(false)
+    expect(isPdf('a.png')).toBe(false)
+    expect(isPdf('a.xlsx')).toBe(false)
+    expect(isPdf('noext')).toBe(false)
+  })
+})
+
+describe('fetchPdfPreviewUrl (多模态预览)', () => {
+  it('拉取字节 → blob: URL(application/pdf 类型,绕过 attachment disposition)', async () => {
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]) // %PDF
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      arrayBuffer: async () => bytes.buffer,
+    })))
+    const createObjectURL = vi.fn(() => 'blob:pdf-mock')
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL }))
+
+    const url = await fetchPdfPreviewUrl('/agui-api/files/r.pdf')
+    expect(url).toBe('blob:pdf-mock')
+    const blob = createObjectURL.mock.calls[0][0] as Blob
+    expect(blob.type).toBe('application/pdf')
+    expect(blob.size).toBe(4)
+    vi.unstubAllGlobals()
+  })
+
+  it('HTTP 失败抛错(调用方降级为提示)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })))
+    await expect(fetchPdfPreviewUrl('/x/missing.pdf')).rejects.toThrow('404')
+    vi.unstubAllGlobals()
   })
 })
 

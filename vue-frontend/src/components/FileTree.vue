@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, toRef, watch } from 'vue'
 import { formatSize, useWorkspaceFiles, type WorkspaceFile } from '../composables/useWorkspaceFiles'
-import { isImage, isPreviewable } from '../composables/filePreview'
+import { fetchPdfPreviewUrl, isImage, isPdf, isPreviewable } from '../composables/filePreview'
 import SpreadsheetEditor from './SpreadsheetEditor.vue'
 import FilePreviewModal from './FilePreviewModal.vue'
 
@@ -128,6 +128,26 @@ async function onPick(e: Event) {
 const oversizePreview = ref<{ name: string; size: number; url: string } | null>(null)
 /** P32: 图片预览态 —— 不拉文本内容,直接用下载 URL 渲 <img>。 */
 const imagePreview = ref<{ name: string; url: string } | null>(null)
+/** 多模态预览: PDF 预览态 —— blob: URL(iframe 内嵌渲染)。 */
+const pdfPreview = ref<{ name: string; url: string } | null>(null)
+const pdfLoading = ref(false)
+
+async function openPdfPreview(row: { name: string; rel: string }) {
+  pdfLoading.value = true
+  try {
+    const url = await fetchPdfPreviewUrl(api.downloadUrl(row.rel))
+    pdfPreview.value = { name: row.rel, url }
+  } catch {
+    notice.value = `「${row.name}」预览加载失败，请下载查看`
+  } finally {
+    pdfLoading.value = false
+  }
+}
+
+function closePdfPreview() {
+  if (pdfPreview.value) URL.revokeObjectURL(pdfPreview.value.url)
+  pdfPreview.value = null
+}
 
 function onNameClick(row: { name: string; rel: string; file?: WorkspaceFile }) {
   notice.value = ''
@@ -146,6 +166,19 @@ function onNameClick(row: { name: string; rel: string; file?: WorkspaceFile }) {
       return
     }
     imagePreview.value = { name: row.rel, url: api.downloadUrl(row.rel) }
+    return
+  }
+  // 多模态预览: PDF 拉字节转 blob URL(下载端点是 attachment disposition,直链 iframe 会变下载)
+  if (isPdf(row.name)) {
+    if (row.file && row.file.size > OVERSIZE_IMAGE_BYTES) {
+      oversizePreview.value = {
+        name: row.rel,
+        size: row.file.size,
+        url: api.downloadUrl(row.rel),
+      }
+      return
+    }
+    void openPdfPreview(row)
     return
   }
   // P-N: 大文件不拉内容,直接给下载提示
@@ -223,6 +256,7 @@ function formatTime(iso: string) {
     </div>
     <div v-if="api.error.value" class="error">{{ api.error.value }}</div>
     <div v-if="notice" class="error" data-testid="files-notice">{{ notice }}</div>
+    <div v-if="pdfLoading" class="pdf-loading" data-testid="files-pdf-loading">PDF 加载中…</div>
     <div class="file-list">
       <div
         v-for="row in visibleRows"
@@ -290,6 +324,13 @@ function formatTime(iso: string) {
       :image-url="imagePreview.url"
       @close="imagePreview = null"
     />
+    <!-- 多模态预览: PDF 预览 modal(<iframe> 内嵌 blob URL) -->
+    <FilePreviewModal
+      v-if="pdfPreview"
+      :name="pdfPreview.name"
+      :pdf-url="pdfPreview.url"
+      @close="closePdfPreview"
+    />
     <!-- P-N: 大文件下载提示 modal -->
     <FilePreviewModal
       v-if="oversizePreview"
@@ -333,6 +374,7 @@ function formatTime(iso: string) {
 .crumb.current:hover { background: transparent; }
 .crumb-sep { font-size: 11px; color: #cbd5e1; }
 .error { font-size: 12px; color: #b91c1c; margin: 0 14px 6px; }
+.pdf-loading { font-size: 12px; color: #6366f1; margin: 0 14px 6px; }
 .file-list { padding: 0 8px 12px; }
 .file-item {
   display: flex; align-items: center; gap: 6px;
