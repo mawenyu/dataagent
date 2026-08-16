@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref, nextTick, watch, computed } from 'vue'
+import { onMounted, onBeforeUnmount, ref, nextTick, watch, computed } from 'vue'
 import { z } from 'zod'
-import { CopilotKitProvider, CopilotChat, getThreadClone } from '@copilotkit/vue'
+import { CopilotKitProvider, CopilotChat, getThreadClone, createA2UIMessageRenderer } from '@copilotkit/vue'
 import { dataAgent } from './agents/dataAgent'
 import { dataAgentCatalog } from './a2ui/dataAgentCatalog'
+import { isA2uiSurfaceMessage, scanA2uiOps } from './utils/a2uiOps'
 import { useContextUsage } from './composables/useContextUsage'
 import { useAgentState } from './composables/useAgentState'
 import { useThreads } from './composables/useThreads'
@@ -26,6 +27,8 @@ import RenderA2uiToolCall from './components/RenderA2uiToolCall.vue'
 import FilesPanel from './components/FilesPanel.vue'
 import CapabilitiesPanel from './components/CapabilitiesPanel.vue'
 import ThreadSidebar from './components/ThreadSidebar.vue'
+import A2uiWorkspace from './components/A2uiWorkspace.vue'
+import A2uiRefCard from './components/A2uiRefCard.vue'
 
 // Registered via the fork's `directAgents` prop (see packages/copilotkit-vue/FORK.md).
 // Business code never touches agents__unsafe_dev_only / selfManagedAgents.
@@ -303,6 +306,45 @@ const branchMessages = computed(() => {
     .filter((m) => m.text.trim().length > 0)
 })
 
+// 布局分栏：宽屏 = 右侧窄对话栏 + 中央 A2UI 工作区；窄屏(<1024px)退化单栏。
+// A2UI 产物（a2ui-surface activity 消息）挪到中央区渲染，对话栏只留引用卡。
+const isNarrowLayout = ref(false)
+let layoutMql: MediaQueryList | null = null
+const syncLayoutMq = () => { isNarrowLayout.value = layoutMql?.matches ?? false }
+onMounted(() => {
+  if (typeof window.matchMedia === 'function') {
+    layoutMql = window.matchMedia('(max-width: 1023px)')
+    syncLayoutMq()
+    layoutMql.addEventListener('change', syncLayoutMq)
+  }
+})
+onBeforeUnmount(() => layoutMql?.removeEventListener('change', syncLayoutMq))
+
+/** 当前会话的 A2UI 产物消息（按时间序）。 */
+const a2uiEntries = computed(() => {
+  void messagesTick.value
+  void threadsApi.currentId.value
+  const target = (getThreadClone(dataAgent, threadsApi.currentId.value) ?? dataAgent) as any
+  return ((target?.messages ?? []) as any[])
+    .filter(isA2uiSurfaceMessage)
+    .map((m) => ({ message: m }))
+})
+/** 有产物且宽屏 → 显示中央工作区；否则对话栏占满（含窄屏退化）。 */
+const showA2uiWorkspace = computed(() => !isNarrowLayout.value && a2uiEntries.value.length > 0)
+/** 窄屏内联渲染回退用（与 provider 内建同一渲染管线）。 */
+const a2uiInlineRenderer = createA2UIMessageRenderer({ theme: {}, catalog: dataAgentCatalog })
+const a2uiWorkspaceRef = ref<InstanceType<typeof A2uiWorkspace> | null>(null)
+const a2uiThreadAgent = computed(() => {
+  void threadsApi.currentId.value
+  return (getThreadClone(dataAgent, threadsApi.currentId.value) ?? dataAgent) as unknown as object
+})
+function locateA2uiBlock(messageId: string) {
+  a2uiWorkspaceRef.value?.locate(messageId)
+}
+function a2uiCardScan(content: unknown) {
+  return scanA2uiOps((content as { a2ui_operations?: unknown } | undefined)?.a2ui_operations)
+}
+
 function messageText(content: unknown): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
@@ -549,7 +591,16 @@ async function exportThread(id: string, format: 'md' | 'json') {
               </div>
             </Transition>
             <div v-if="sidebarOpen" class="drawer-backdrop" @click="toggleSidebar"></div>
-            <div class="chat-col">
+            <!-- 布局分栏：宽屏有 A2UI 产物时中央工作区，对话栏收窄到右侧 -->
+            <div v-if="showA2uiWorkspace" class="a2ui-workspace-shell" data-testid="a2ui-workspace-shell">
+              <A2uiWorkspace
+                ref="a2uiWorkspaceRef"
+                :entries="a2uiEntries"
+                :agent="a2uiThreadAgent"
+                :catalog="dataAgentCatalog"
+              />
+            </div>
+            <div class="chat-col" :class="{ 'chat-col-narrow': showA2uiWorkspace }">
               <CopilotChat
                 agent-id="default"
                 class="chat"
@@ -558,6 +609,24 @@ async function exportThread(id: string, format: 'md' | 'json') {
                 :on-error="handleChatError"
                 @submit-message="errorRecovery.clear()"
               >
+              <!-- 布局分栏：A2UI surface 在对话流里只留引用卡（宽屏）；窄屏内联渲染 -->
+              <template #activity-a2ui-surface="{ content, message, agent }">
+                <A2uiRefCard
+                  v-if="showA2uiWorkspace"
+                  :message-id="String(message.id)"
+                  :surface-ids="a2uiCardScan(content).surfaceIds"
+                  :component-count="a2uiCardScan(content).componentCount"
+                  @locate="locateA2uiBlock"
+                />
+                <component
+                  :is="a2uiInlineRenderer.render"
+                  v-else
+                  activity-type="a2ui-surface"
+                  :content="content"
+                  :message="message"
+                  :agent="agent"
+                />
+              </template>
               <template #welcome-screen="{ modelValue, isRunning, onUpdateModelValue, onSubmitMessage }">
                 <div class="welcome" data-testid="welcome-screen">
                   <div class="welcome-logo" aria-hidden="true">
@@ -947,6 +1016,15 @@ body {
   overflow: auto;
 }
 .chat-layout { flex: 1; min-height: 0; display: flex; }
+/* 布局分栏：中央 A2UI 工作区 + 右侧窄对话栏（仅宽屏出现；窄屏不渲染，天然单栏） */
+.a2ui-workspace-shell {
+  flex: 1; min-width: 0; min-height: 0;
+  border-right: 1px solid var(--border);
+  background: #f8fafc;
+  border-radius: calc(var(--radius) + 4px) 0 0 calc(var(--radius) + 4px);
+  overflow: hidden;
+}
+.chat-col-narrow { flex: 0 1 400px; min-width: 340px; }
 /* P-R: 切换会话骨架屏 */
 .thread-skeleton {
   position: absolute;
