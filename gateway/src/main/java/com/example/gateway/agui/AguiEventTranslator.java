@@ -926,6 +926,13 @@ public class AguiEventTranslator {
         // frontend tool: end the run so the browser executes it
         log.info("frontend tool call: {} id={}", call.name(), toolCallId);
         if (terminalEmitted.compareAndSet(false, true)) {
+            // 2026-08-16 实测回归：引导文字已流出时本消息仍 open —— 必须先补
+            // TEXT_MESSAGE_END 再发 RUN_FINISHED，否则 AG-UI 客户端状态机拒绝
+            // （"Cannot send 'RUN_FINISHED' while text messages are still active"）。
+            if (st.textStarted) {
+                emitTextEnd(runId, threadId, st, out);
+                st.textStarted = false;
+            }
             closeAllActiveSteps(runId, threadId, activeSteps, out);
             out.add(sse(base("RUN_FINISHED", runId, threadId)));
             fireEarlyTerminate(onEarlyTerminate);

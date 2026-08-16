@@ -49,7 +49,13 @@
   - 证据截图 docs/screenshots/2026-08-16-mobile-*.png；前端 248 绿
 - [x] P2-9 错误映射 + 阻塞 IO（c209fa0/393319f，189 绿）+ gateway 重启上生产 + test-multi-turn 7/7 真链路回归
 - [x] P3：`.opencode/opencode.jsonc` $schema 空键修复、demo.ts root 属主、agents/ 空壳目录清理
+- [x] TARGET_ARCHITECTURE 差距三项（并行子代理，194 绿）：RUN_ERROR 结构化 code（ebfb4aa，UPSTREAM_ERROR/RUN_TIMEOUT，前端 parseRunError 直接消费）/ ThreadRepository 接口抽取（23f4397，JsonThreadRepository 为实现）/ MDC traceId=runId 全链路（8002a27）
+- [x] **spreadsheetEdits 真实链路阻断 bug 根因修复**（本线）：DeepSeek 先流引导文字再以伪 `<tool_call>` 文本调 frontend tool 时，`dispatchToolCall` 截断分支只关 step 不关文本消息 → RUN_FINISHED 先于 TEXT_MESSAGE_END，AG-UI 客户端拒收（"Cannot send 'RUN_FINISHED' while text messages are still active"）。TDD：新增 2 回归用例精确复现线上事件序（红：序列无 TEXT_MESSAGE_END）→ 修复（截断前先补 END）→ `AguiEventTranslatorTest` 33/33 绿（gateway/target/surefire-reports 实测）。全量套件收尾时截断，其余文件本轮零改动，194 基线不受影响面。
 
 ## 下一步（修完 P0/P1 后）
 
-P2 清零。剩余：fork 既有失败（随并行线收敛）→ spreadsheetEdits 真实链路手动确认 → TARGET_ARCHITECTURE 差距项（见该文档）。
+剩余：
+1. gateway 重启上生产（本循环共 4 commit 未部署：ebfb4aa/23f4397/8002a27 + 本次截断修复）→ `test-multi-turn.sh` 回归。
+2. spreadsheetEdits 真实链路复跑（`/tmp/spreadsheet-e2e.py`：modal → confirm → CSV 落盘校验）—— 阻断 bug 已修，待验证。
+3. fork 既有 2 失败（`use-frontend-tool.e2e.test.ts` Agent Scoping，并行线在途）。
+4. DeepSeek 伪 `<tool_call>` 文本输出习性：已确认双路径（native + 文本 marker）都会触发，bridge 均兜住；记录为模型行为基线。

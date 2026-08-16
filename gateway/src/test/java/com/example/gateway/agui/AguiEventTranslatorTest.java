@@ -650,6 +650,57 @@ class AguiEventTranslatorTest {
         assertEquals(0, aborts.get(), "natural completion: execution already settled, no abort");
     }
 
+    /** 2026-08-16 实测回归（spreadsheetEdits e2e）：DeepSeek 先输出引导文字、
+        再以伪 <tool_call> 文本调 frontend tool —— 截断分支只关 step 不关文本消息，
+        RUN_FINISHED 先于 TEXT_MESSAGE_END 到达，AG-UI 客户端状态机报错
+        "Cannot send 'RUN_FINISHED' while text messages are still active"。 */
+    @Test
+    void frontendToolEarlyTerminateClosesOpenTextMessageBeforeRunFinished() {
+        List<JsonNode> events = translator.translate("thread", "run", Set.of("applySpreadsheetEdits"), Flux.just(
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"好的，我来修改表格 \"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"<tool_call>{\\\"name\\\":\\\"applySpreadsheetEdits\\\",\\\"arguments\\\":{\\\"file\\\":\\\"sales.csv\\\"}}</tool_call>\"}"),
+                oc("session.text.ended", "{\"assistantMessageID\":\"m1\"}")))
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        List<String> types = types(events);
+        assertEquals("RUN_FINISHED", types.get(types.size() - 1), "run ends at the frontend-tool handoff: " + types);
+        int textStart = types.indexOf("TEXT_MESSAGE_START");
+        int textEnd = types.indexOf("TEXT_MESSAGE_END");
+        int runFinished = types.indexOf("RUN_FINISHED");
+        assertTrue(textStart >= 0, "引导文字必须流出: " + types);
+        assertTrue(textEnd >= 0, "open text message must be closed: " + types);
+        assertTrue(textEnd < runFinished, "TEXT_MESSAGE_END must precede RUN_FINISHED: " + types);
+        assertFalse(types.subList(runFinished + 1, types.size()).stream()
+                        .anyMatch(t -> t.startsWith("TEXT_MESSAGE_")),
+                "no text events after RUN_FINISHED: " + types);
+    }
+
+    /** 同上回归的姊妹路径：流式中段（END_MARKER 在 delta 内即闭合）截断后，
+        marker 尾巴的残余文本不得排在 RUN_FINISHED 之后。 */
+    @Test
+    void frontendToolEarlyTerminateDropsRemainderTextAfterRunFinished() {
+        String block = "<tool_call>{\"name\":\"applySpreadsheetEdits\",\"arguments\":{\"file\":\"sales.csv\"}}</tool_call>收尾叙述不应出现";
+        List<JsonNode> events = translator.translate("thread", "run", Set.of("applySpreadsheetEdits"), Flux.just(
+                oc("session.text.started", "{\"assistantMessageID\":\"m1\"}"),
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"先流出这句话 " + json(block).substring(1) + "}"),
+                // 需要一个后续 delta 触发 TOOL_CALL 模式的 scanToolCall 派发
+                oc("session.text.delta", "{\"assistantMessageID\":\"m1\",\"delta\":\"。\"}")))
+                .map(ServerSentEvent::data)
+                .map(d -> { try { return MAPPER.readTree(d); } catch (Exception e) { throw new RuntimeException(e); } })
+                .collectList().block(java.time.Duration.ofSeconds(5));
+        List<String> types = types(events);
+        int runFinished = types.indexOf("RUN_FINISHED");
+        assertTrue(runFinished >= 0, "frontend tool handoff must finish the run: " + types);
+        assertFalse(types.subList(runFinished + 1, types.size()).stream()
+                        .anyMatch(t -> t.startsWith("TEXT_MESSAGE_")),
+                "remainder text must not leak after RUN_FINISHED: " + types);
+        String allText = events.stream().filter(e -> "TEXT_MESSAGE_CONTENT".equals(e.path("type").asText()))
+                .map(e -> e.path("delta").asText()).reduce("", String::concat);
+        assertFalse(allText.contains("收尾叙述"), "post-truncation remainder must be dropped: " + allText);
+    }
+
     private static String json(String s) {        try {
             return MAPPER.writeValueAsString(s);
         } catch (Exception e) {
