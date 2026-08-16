@@ -1,0 +1,30 @@
+# P33 验收 —— 真实链路 multi-turn 回归（2026-08-16）
+
+命令：scripts/test-multi-turn.sh（真 gateway :8090 + opencode :4096，5 轮对话 7 断言）
+运行时点：P33-A prompt（公共数据目录只读段）已上生产 gateway；
+opencode 已装载 dataagent.a2ui-tools + dataagent.workspace-guard 双插件；
+前端 P33-C 两区 build 部署 /var/www/blog/agui（本地 /agui/ 200）。
+
+脚本输出尾部（完整 7 断言）：
+
+```
+PASS: turn3 正常结束
+TERMINAL=RUN_FINISHED
+TOOLS=0
+CTX=9144
+TEXT=**一句话总结**：8 月销售额最高的区域是**华北**（388,082 元），销售额最高的品类是**笔记本**（615,912 元）——即华北区域卖得最好、笔记本单品贡献最大。
+
+需要的话我可以进一步看看**华北 + 笔记本**这个组合的表现（是否为整体销售额的最大来源）。
+PASS: turn4 正常结束
+TERMINAL=RUN_FINISHED
+TOOLS=0
+CTX=9345
+TEXT=我们约定的暗号是：**蓝鲸42**。
+PASS: turn5 正常结束
+PASS: turn5 记得暗号(上下文正确)
+== RESULT: 7 passed, 0 failed ==
+```
+
+结论：P33 二期三件（A prompt 公共区只读 / B workspace-guard 插件硬拦 / C 面板两区）
+上线后真实链路回归 7/7 PASS，无回归。
+配套证据：docs/evidence/2026-08-16-p33b-workspace-guard.txt（插件级 5/5）。

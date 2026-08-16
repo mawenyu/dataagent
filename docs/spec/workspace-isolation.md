@@ -123,7 +123,69 @@ CopilotChat :attachments="{
 
 - 欢迎页（空会话）自绘输入框不支持附件 —— 附件入口在主聊天输入框；首条消息
   发出后欢迎页即消失。
-- agent 侧跨目录遍历不做硬隔离（OpenCode `external_directory: allow` 本就放开；
-  隔离是组织性而非安全边界；HTTP API 层有白名单+canonical 校验）。
+- ~~agent 侧跨目录遍历不做硬隔离~~ → 二期（P33-B）起**写操作已硬隔离**（见下）；
+  读操作仍不做硬隔离（OpenCode `external_directory: allow` 本就放开；读共享是
+  公共区参考数据的正常用法；HTTP API 层有白名单+canonical 校验）。
 - 附件内容不进 LLM context（文件落盘，agent 用工具读 —— 与 ChatGPT 的
   "文件进 workspace" 语义一致；图片 base64 直传不在本期）。
+
+---
+
+## 二期（P33，2026-08-16）：公共区 + agent 写权限白名单 + 面板两区
+
+> 状态：已实现并验收（gateway 225 绿 / 前端 291 绿 / guard e2e 5/5）。
+> 一期把会话目录隔开了，但共享根仍是"谁都能写"：agent 会把产出写进公共区、
+> 甚至覆盖示例 CSV。二期把共享根升格为**公共数据区**——对用户可写、对 agent 只读。
+
+### A. prompt 层约定（P33-A，gateway 9f224d3）
+
+`<environment>` 段由 `AgUiProtocolService.environmentSection()` 单点组装（run 与
+a2uiAction 续跑两个 call site 共用），新增一行：
+
+```
+公共数据目录: workspace（所有会话共享的参考数据，只读——不要在该目录创建/修改/删除文件；你的产出写到数据工作目录）
+```
+
+实测效果：agent 在 prompt 层即礼貌拒绝往公共区写（不触发工具调用）。
+
+### B. 插件层硬拦（P33-B，agents/plugins/workspace-guard.ts，1cfbdb0）
+
+opencode effect 插件（fork `Plugin.define` + `effect` 入口，与内置 plan 模式同款），
+注册 `execute.before` 钩子（全插件体系唯一可失败钩子），对写类工具
+`write/edit/patch` 实施白名单：
+
+| 目标路径 | 判定 |
+|---|---|
+| `workspace/threads/<本会话 threadId>/` 内 | 放行 |
+| `os.tmpdir()` 内 | 放行（中间计算 scratch） |
+| 其余（公共区根 / 别人会话目录 / 仓库代码…） | 返回 `Tool.Error` 拒绝，消息给出合规路径，模型可自我纠正改写 |
+
+- sessionID→threadId 反查：读 gateway 落盘的 `data/threads.json`（mtime 缓存，
+  `AGUI_THREADS_STORE` 可覆盖）。
+- 查不到映射的 session（非 gateway 链路）：`workspace/` 树一律拒写，其余路径放行。
+- patch 工具目标从 `patchText` 的 `*** Add/Delete/Update File:` / `*** Move to:` 头提取。
+- **读不限**：read/glob/grep/bash 等不拦 —— 隔离是组织性写边界。
+
+e2e 实证（`scripts/test-workspace-guard.sh`，直连 opencode :4096 绕过 prompt 自觉，
+5/5 PASS，证据 `docs/evidence/2026-08-16-p33b-workspace-guard.txt`）：
+未知 session 写公共区根→拒+文件未落盘；/tmp→放行；绑定 session 写自己目录→放行；
+写别人目录→拒；覆盖公共区 CSV→拒。
+
+### C. 文件面板两区（P33-C，前端 2d0a109）
+
+FilesPanel 拆为 **会话文件 / 公共数据** 两区（树交互抽为 `FileTree.vue`，
+两区各一实例互不串状态）：
+
+- 会话文件：`/chat/threads/{threadId}/files`（一期契约不变），badge「仅本会话」；
+  未选会话显示空态引导、不发请求。
+- 公共数据：legacy `/agui-api/files` 共享根，badge「所有会话共享 · agent 只读」；
+  用户可正常上传/预览/编辑/删除（走 gateway REST，不经 opencode 插件）。
+  用户由此上传的参考数据对所有会话的 agent 可读（读不隔离），
+  同时仍是一期会话目录的 seed 源（A.3 播种语义不变）。
+
+### 二期验收记录
+
+1. gateway 225/225 绿（P33-A 新增 prompt 段 2 例红→绿）。
+2. 前端 291/291 绿 + typecheck 干净（P33-C 新增两区 3 例 + task6 用例改 URL 感知桩）。
+3. workspace-guard e2e 5/5（插件级 Tool.Error 实证，见上）。
+4. 真实链路回归：`scripts/test-multi-turn.sh`（结果见 DEVELOPMENT_STATUS 执行记录）。

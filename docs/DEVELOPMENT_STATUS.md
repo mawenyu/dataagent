@@ -69,6 +69,8 @@
 
 - [x] **P32 多模态文件预览 —— 图片直渲弹层**（786b534）：体验价值点（P 清单清零后按架构师路线）。缺口 = 图片扩展名不在 PREVIEWABLE，二进制图按文本拉会乱码；修复 = isImage() 判定 + FilePreviewModal imageUrl 分支 `<img>` 直渲下载 URL（gateway 按扩展名给 Content-Type，前端零二进制处理），阈值 5MB 超大图走下载提示。TDD 6 新例先红后绿，前端 288/288 + typecheck 绿；已部署，**公网实测 6/6 PASS**（真实 PNG 上传→点击→naturalWidth=64 真解码，CSV 表格回归，证据 docs/evidence/2026-08-16-p32-image-preview.txt）。**至此 P0/P1/P2 清单全部清零**（P3 为既定接受项）。
 
+- [x] **P33 workspace 隔离二期 —— 公共区只读 + 写权限白名单插件 + 面板两区**（2026-08-16，9f224d3 / 1cfbdb0+d0e4d91 / 2d0a109）：一期隔开会话目录后共享根仍是"谁都能写"，二期把共享根升格为**公共数据区**（用户可写、agent 只读），三层落地——**A prompt 层**：`AgUiProtocolService.environmentSection()` 单点组装，新增"公共数据目录 workspace 只读"段（run + a2uiAction 续跑共用），gateway +2 测试红→绿；**B 插件层硬拦**：`agents/plugins/workspace-guard.ts`（opencode effect 插件，`execute.before` 钩子返回 `Tool.Error`），write/edit/patch 白名单 = 本会话目录 + /tmp，sessionID→threadId 反查 data/threads.json（mtime 缓存），未知 session 护 workspace 树；patch 目标从 patchText 头提取。直连 opencode e2e `scripts/test-workspace-guard.sh` **5/5 PASS**（公共区根/跨会话/覆盖 CSV 三拒 + 会话目录与 /tmp 两放，证据 2026-08-16-p33b-workspace-guard.txt）；**C 面板两区**：树交互抽 `FileTree.vue`，FilesPanel = 会话文件（仅本会话，无会话显空态）+ 公共数据（共享根，badge「所有会话共享 · agent 只读」，用户可传参考数据），前端 +3 两区用例。验收：gateway 225 绿 / 前端 291 绿 + typecheck / multi-turn 真链路 7/7（证据 2026-08-16-p33-acceptance-multiturn.txt）；前端已部署 /var/www/blog/agui。spec：docs/spec/workspace-isolation.md 二期附录。
+
 ## 下一步（修完 P0/P1 后）
 
 剩余：
