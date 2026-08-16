@@ -69,16 +69,22 @@ cd dataagent
 # 2) opencode2 后端（fork 源码）
 git clone --depth 50 --branch dataagent-v2 https://github.com/mawenyu/opencode.git ../opencode-fork
 cd ../opencode-fork && bun install && cd ../dataagent
+#    （fork 默认取 $HOME/opencode-fork；clone 到别处需 export OPENCODE_FORK_DIR=<路径>）
 
 # 3) 部署 opencode 扩展到本工程 .opencode/
 bash agents/build-opencode.sh --target . --skip-build
 
-# 4) 配置（密钥不入库）
+# 4) 前端依赖（up.sh 的 vite 步骤需要 node_modules；只需一次）
+(cd vue-frontend && npm install)
+
+# 5) 配置（密钥不入库）
 #    - .opencode/opencode.jsonc 里填 provider.deepseek.apiKey（参考 agents/opencode.jsonc.example）
 #    - echo 'OPENCODE_SERVER_PASSWORD=<自定义>' > .env.opencode && chmod 600 .env.opencode
 #      （gateway 经环境变量读取，application.yml 内无明文）
+#    - echo '{"compilerOptions":{"jsx":"preserve","jsxImportSource":"@opentui/solid"}}' > tsconfig.json
+#      （bun 转译 fork 内 tsx 需要；gitignore 不入库，每台机器要建）
 
-# 5) 一键拉起三件套（幂等；opencode :4096 / gateway :8090 / vite :3001）
+# 6) 一键拉起三件套（幂等；opencode :4096 / gateway :8090 / vite :3001）
 scripts/up.sh
 ```
 

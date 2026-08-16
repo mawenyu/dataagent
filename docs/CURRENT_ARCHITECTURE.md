@@ -9,7 +9,7 @@
   └─ Vue3 + @copilotkit/vue(fork 1.67.1-fork.1, directAgents)
        │  /agui-api/* (vite proxy 或 nginx → :8090)
        ▼
-Java gateway :8090 (Spring WebFlux, 28 类 ~5500 行)
+Java gateway :8090 (Spring WebFlux, 30 类 ~5800 行)
   ├─ POST /agent/run (SSE)          → AgUiProtocolService 编排
   ├─ /chat/threads*(CRUD/messages/branch) → ThreadRepository/JsonThreadRepository(data/threads.json 原子写)
   ├─ /files, /chat/threads/{id}/files → WorkspaceFileService(白名单/50MB/子目录)
@@ -34,7 +34,7 @@ DeepSeek (deepseek-reasoner 主 / deepseek-chat 备)
 
 ## 前端结构（vue-frontend）
 
-- 无 pinia；组合式 composables：useThreads / useWorkspaceFiles / useContextUsage(累计分桶) / useAgentState / useNetworkStatus / useRunErrorRecovery / chatAttachments / welcomeAttachments / exportThread / filePreview / spreadsheetEdits / focusTrap / useGlobalShortcuts
+- 无 pinia；组合式 composables：useThreads / useWorkspaceFiles / useContextUsage(累计分桶) / useAgentState / useNetworkStatus / useRunErrorRecovery / useCapabilities / chatAttachments / welcomeAttachments / exportThread / filePreview / promptTemplates / spreadsheetEdits / focusTrap / useGlobalShortcuts
 - 组件：App / ThreadSidebar(搜索/置顶/归档/多选/导出/分叉标记/modal) / FilesPanel(目录树/预览/编辑) / FilePreviewModal / RunErrorCard / BranchDialog / ConfirmDialog(自绘确认,applySpreadsheetEdits HITL) / DefaultToolRender / RenderA2uiToolCall / SpreadsheetEditor
 - fork 定制（FORK.md 条目 1-14）：directAgents、thread clone toRaw 修复、welcome gating、工具卡(F3 耗时/状态/失败态、P-L 长文本折叠)、maxRows=3、消息级操作(P-S)、touch-safe 触屏修复
 - A2UI 渲染面（vision 线）：packages/copilotkit-vue/src/v2/components/a2ui/* + vue-frontend/src/a2ui/dataAgentCatalog

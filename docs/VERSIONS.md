@@ -29,6 +29,8 @@ React 18.3.1 + Vite 5，已被 vue-frontend 取代，不再演进。
 
 ## 现状要点
 
+> ⚠️ 本节是 2026-08-12 第一节基线的当时快照（端点/接入方式此后已变更）：现行 endpoint 是 `POST /agent/run`（SSE 协议，无 `/opencode/ag-ui`），前端走 fork `directAgents`。现行事实见 `docs/CURRENT_ARCHITECTURE.md`。
+
 - `POST /opencode/ag-ui`（AgUiController → AgUiProtocolService → AguiEventTranslator）已存在，
   走 OpenCode /api/session + /api/event，threadId→sessionId 映射在 AguiEventTranslator 内存 Map。
 - 旧端点：`POST /agent/run`（AguiController，{message} 简单协议）；任务书提到的

@@ -3,6 +3,12 @@
 > 来源：架构分析（基于 CopilotKit main 分支、Vue Provider、A2UI Renderer、AG-UI Java SDK，CopilotKit v1.67.x / 2026-08-10）
 > 结论：**完全不需要 Node Runtime**。
 
+> ⚠️ **时效注记（2026-08-16 补）**：本文是 2026-08-10 的*决策记录*，其中两处计划与最终实现不同，勿按本文接入：
+> 1. 文中 `POST /opencode/ag-ui` 计划端点未采用 —— 现行实现是 gateway **`POST /agent/run`**（前端经 `/agui-api/agent/run` 代理）。
+> 2. 文中「当前阶段用 `agents__unsafe_dev_only`」已被 fork 新增的 **`directAgents`** prop 取代（业务代码不碰 `agents__unsafe_dev_only`，见 `packages/copilotkit-vue/FORK.md` 条目 1）。
+>
+> 现行事实以 `docs/CURRENT_ARCHITECTURE.md` 为准。
+
 ## 最终架构
 
 ```

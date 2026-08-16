@@ -70,8 +70,8 @@ append 追加）。a2uiAction（如 approve_section）→ agent 续跑更新 can
 前端"文件"面板增强：CSV 文件可"表格编辑"打开 —— 可编辑网格（contenteditable
 单元格，失焦同步内部状态；加行/加列；脏标记），保存经 PUT /files/{name}（新增
 gateway 端点，raw body 覆盖写，同白名单防护）。agent 侧：frontend tool
-`applySpreadsheetEdits {file, cells:[{row,col,value}], summary?}` → 浏览器
-confirm 确认框（HITL v1：显示文件 + 变更数 + summary，确认/取消）→ 确认后 PUT
+`applySpreadsheetEdits {file, cells:[{row,col,value}], summary?}` → 自绘
+ConfirmDialog 确认框（HITL：显示文件 + 变更数 + summary，确认/取消；P1 起弃用原生 window.confirm，见 a2ui-agui-extensions.md）→ 确认后 PUT
 落盘并回传 "已应用 N 处变更"；取消则回传 "用户取消了变更"，文件不动。
 
 ### 接口契约
@@ -80,7 +80,7 @@ confirm 确认框（HITL v1：显示文件 + 变更数 + summary，确认/取消
 - frontend tool `applySpreadsheetEdits`：parameters {file: string, cells:
   [{row:number, col:number, value:string}], summary?: string}；row/col 从 0 开始
   （第 0 行是表头）。handler：读当前内容 → applyEdits 纯函数应用变更（越界行追加、
-  越界列补空、负数/非整数坐标拒绝）→ window.confirm HITL 确认 → PUT 保存 →
+  越界列补空、负数/非整数坐标拒绝）→ 自绘 ConfirmDialog HITL 确认 → PUT 保存 →
   返回 "已应用 N 处变更到 {file}"
 
 ### 验收

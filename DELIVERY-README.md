@@ -24,7 +24,7 @@ OpenCode server (:4096, bun)  →  DeepSeek LLM
 | `packages/copilotkit-vue` | @copilotkit/vue 1.67.1 内部 fork（`directAgents` 支持），详见其 `FORK.md` 与 `patches/copilotkit-vue-fork.patch` |
 | `vendor/copilotkit-src` | CopilotKit 上游 monorepo 的 submodule 指针（gitlink @ bee3913，内容未入库、本地未检出）；fork 溯源以 `patches/copilotkit-vue-fork.patch` + 上游 tag v1.67.1 为准 |
 | `ref/` | 参考源码（CopilotKit adk-dashboard 官方示例、ag-ui 上游），不参与构建 |
-| `scripts/` | 运维与实测脚本：`up.sh`（opencode+gateway+vite 三件套幂等拉起）、`restart-gateway.sh`（gateway 重启纪律）、`test-multi-turn.sh`（5 轮连续对话）、`test-attachment-e2e.sh`（附件全链路）、`test-frontend-tool.sh`、`test-a2ui-form.sh`、`test-a2ui-all-components.sh`、`test-datasource-missing.sh`（数据源缺失友好错误契约）、`test-event-order-e2e.py`（乱序重排）、`test-ui-req7.py`（需求7 UI 事件） |
+| `scripts/` | 运维与实测脚本：`up.sh`（opencode+gateway+vite 三件套幂等拉起）、`restart-gateway.sh`（gateway 重启纪律）、`deploy-frontend.sh`（前端产物部署）、`test-multi-turn.sh`（5 轮连续对话）、`test-attachment-e2e.sh`（附件全链路）、`test-frontend-tool.sh`、`test-a2ui-form.sh`、`test-a2ui-all-components.sh`、`test-datasource-missing.sh`（数据源缺失友好错误契约）、`test-context-followup.sh`、`test-drilldown-why.sh`、`test-sales-trend-e2e.sh`、`test-tool-failure-recovery.sh`、`test-workspace-guard.sh`（P33-B 写护栏）、`test-event-order-e2e.py`（乱序重排）、`test-export-evidence.py`、`test-ui-req7.py`（需求7 UI 事件） |
 | `docs/` | 权威文档（PRODUCT_REQUIREMENTS / CURRENT_ARCHITECTURE / TARGET_ARCHITECTURE / DEVELOPMENT_STATUS / ACCEPTANCE_TESTS）+ design.md / ARCHITECTURE.md / VERSIONS.md / spec/ 与实测证据 evidence/·screenshots/ |
 | `opencode.json` | OpenCode server 项目配置（模型 = deepseek/deepseek-chat） |
 
@@ -37,26 +37,36 @@ OpenCode server (:4096, bun)  →  DeepSeek LLM
 
 ## 重建与运行
 
+> 实测基准：本节步骤在干净 clone 上完整跑通过（2026-08-16，证据 `docs/evidence/2026-08-16-clean-rebuild.txt`）。
+
+### 0. 主仓库
+
+```bash
+git clone https://github.com/mawenyu/dataagent.git
+cd dataagent
+```
+
 ### 1. OpenCode server（agent 后端）
 
 OpenCode 源码：**fork [`mawenyu/opencode@dataagent-v2`](https://github.com/mawenyu/opencode/tree/dataagent-v2)**（= 上游 v2 + MCP Tool Bridge 等定制）。
 
 ```bash
 # 安装 bun 后：
-git clone --depth 50 --branch dataagent-v2 https://github.com/mawenyu/opencode.git opencode-fork
-cd opencode-fork && bun install
-# 部署扩展到本工程 .opencode/（plugins/tools/skills/commands + opencode.jsonc）
-bash /path/to/本工程/agents/build-opencode.sh --target /path/to/本工程 --skip-build
-# 在本工程根创建 tsconfig.json（bun 转译 fork 内 tsx 需要）：
-echo '{"compilerOptions":{"jsx":"preserve","jsxImportSource":"@opentui/solid"}}' > /path/to/本工程/tsconfig.json
+git clone --depth 50 --branch dataagent-v2 https://github.com/mawenyu/opencode.git ../opencode-fork
+(cd ../opencode-fork && bun install)
+# fork 位置默认取 $HOME/opencode-fork；clone 到别处需 export OPENCODE_FORK_DIR=<fork 路径>
+# （up.sh 也读 .env.opencode 里的 OPENCODE_FORK_DIR）
+# 部署扩展到本工程 .opencode/（plugins + opencode.jsonc；缺失时自动从 example 拷贝）
+bash agents/build-opencode.sh --target . --skip-build
+# 在本工程根创建 tsconfig.json（bun 转译 fork 内 tsx 需要；gitignore 不入库，每台机器要建）：
+echo '{"compilerOptions":{"jsx":"preserve","jsxImportSource":"@opentui/solid"}}' > tsconfig.json
 # 启动（cwd 必须是本工程根，读取 .opencode/opencode.jsonc 里的 deepseek provider）：
-cd /path/to/本工程
-echo 'OPENCODE_SERVER_PASSWORD=<同 gateway application.yml 的 opencode.server.password>' > .env.opencode && chmod 600 .env.opencode
+echo 'OPENCODE_SERVER_PASSWORD=<自定义密码>' > .env.opencode && chmod 600 .env.opencode
 set -a; . ./.env.opencode; set +a
-bun run --conditions=browser /path/to/opencode-fork/packages/cli/src/index.ts serve --port 4096 --hostname 127.0.0.1
+bun run --conditions=browser ../opencode-fork/packages/cli/src/index.ts serve --port 4096 --hostname 127.0.0.1
 ```
 
-> 注意：DeepSeek key 在 `.opencode/opencode.jsonc` 的 `provider.deepseek.apiKey`（不入库，参考 `agents/opencode.jsonc.example`）；serve 密码只认环境变量 `OPENCODE_SERVER_PASSWORD`。
+> 注意：`OPENCODE_SERVER_PASSWORD` 是 opencode serve 与 gateway 之间的共享口令，自定义即可（application.yml 里只有 `${OPENCODE_SERVER_PASSWORD:}` 占位符，P0 起密码不入库）。DeepSeek key 在 `.opencode/opencode.jsonc` 的 `provider.deepseek.apiKey`（不入库，参考 `agents/opencode.jsonc.example`）。
 
 ### 1.1 生产启动方式（tmux 常驻，本服务器现行方式）
 
@@ -73,9 +83,12 @@ tmux new-session -d -s opencode2-4096 -x 220 -y 50 \
 - 密码通过 `.env.opencode` 注入（`chmod 600`），不要写进 tmux 命令行（`ps` 可见）
 - 健康检查：`curl -u opencode:<pw> http://127.0.0.1:4096/api/health` 返回 200
 
-### 2. Java gateway
+### 2. Java gateway + 前端（三件套一键）
 
 ```bash
+# 前置：先装好前端依赖（up.sh 的 vite 步骤需要 node_modules；只需一次）
+cd vue-frontend && npm install && cd ..   # 经 file:../packages/copilotkit-vue 安装 fork
+
 # 推荐(P-P 固化): 一键拉起/重启三件套(opencode :4096 + gateway :8090 + vite :3001,幂等)
 scripts/up.sh            # 缺啥起啥;已健康的服务跳过
 scripts/up.sh --build    # 强制重新打包 gateway
@@ -91,14 +104,14 @@ scripts/restart-gateway.sh --tests   # 先 mvn test 全绿再重启
 - 启动 cwd = 仓库根（workspace 落点 `./workspace/`，与现行一致）
 - 监听 :8090，健康检查 `curl localhost:8090/actuator/health`
 
-### 3. 前端
+### 3. 前端（生产构建）
 
 ```bash
 cd vue-frontend
-npm install       # 自动通过 file:../packages/copilotkit-vue 安装 fork
+npm install       # §2 已做则可跳过；自动通过 file:../packages/copilotkit-vue 安装 fork
 npm run build     # prebuild 钩子（scripts/build-fork.mjs）自动先构建 fork，无需手动
                   # 产物在 dist/；vite base 已配置为 /agui/（dev server 为 /）
-# 部署：cp -r dist/* /var/www/<站点根>/agui/
+# 部署：scripts/deploy-frontend.sh 或 cp -r dist/* /var/www/<站点根>/agui/
 ```
 
 ### 4. nginx 参考配置

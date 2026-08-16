@@ -27,7 +27,7 @@ fork 既有失败基线 10 → **0**（A 线 5 commit 修复 9 例 + P28-A 根�
 - **前端（已修复）**：部署 `main-BrDPfOk0.js` 落后于 HEAD（缺 b5f138f P-I parseRunError）。HEAD 全新构建 → rsync 部署 `/var/www/blog/agui/` → 现为 `main-yiUdb2Nq.js`，md5 与 dist 逐字节一致，公网 index/资源 200 ✅
 - **gateway（已修复）**：运行 jar（08:13）落后于 HEAD（缺 ebfb4aa RUN_ERROR 结构化 code + 8002a27 MDC traceId）。按 `restart-gateway.sh` 语义重启（并行会话在途红测试挡住主树 package，改为干净 worktree 打包 HEAD → 拷 `/tmp/agui-gateway-run.jar` → 副本启动，cwd=/home/ubuntu/dataagent、.env.opencode 注入已验）。健康 UP（本地 + 公网 `/agui-api/`），日志 pattern 带 `[traceId=]` 证明新 jar 生效；真链路冒烟（p24-smoke-1，DeepSeek 真实应答）RUN_STARTED→RUN_FINISHED 闭环无 RUN_ERROR ✅
 - opencode server：2026-08-16 重启装载新 `/api/tool` 端点（opencode-fork d5d737f 已 push origin/dataagent-v2），能力清单 serverTools 通车 ✅
-- 注意：repo 根有个陈旧顶层 `dist/`（历史残留，非部署源，忽略）
+- 注意：repo 根有个陈旧顶层 `dist/`（历史残留，非部署源，忽略）（P34 复核 2026-08-16：已不存在）
 
 ## ③ READY 条目汇总
 

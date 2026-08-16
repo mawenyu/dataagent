@@ -70,7 +70,7 @@
   `plugins tool skills command agent` 五个顶层目录复制到 `<target>/.opencode/`；
   `upstream-examples/` **不部署**（P1#4 隔离，脚本循环不含它）。
   opencode server 以仓库根为 cwd 启动（`scripts/up.sh`），运行时读取 `.opencode/`。
-  当前运行侧 `.opencode/` 只有 `plugins/a2ui-tools.ts` + `opencode.jsonc`。
+  当前运行侧 `.opencode/` 有 `plugins/a2ui-tools.ts` + `plugins/workspace-guard.ts`（P33-B 写护栏，2026-08-16 起）+ `opencode.jsonc`。
 - 改完后重启 opencode 生效（bun 源码运行，无构建）。
 
 ## 4. 插件清单（面板「插件」区）

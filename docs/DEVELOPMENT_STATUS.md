@@ -13,7 +13,7 @@
 ### P1（本轮修）
 
 4. ~~agents/ 混入上游样例死代码~~ ✅ 514c13f（全部 git mv 到 `agents/upstream-examples/`，build-opencode.sh 部署循环只含 plugins/tool/skills/command/agent 顶层目录；P30 复核 2026-08-16：脚本排除逻辑结构核验 ✓、运行侧 .opencode/ 仅剩 a2ui-tools.ts ✓、gateway 221/221 绿）。
-5. ~~a2ui-tools.ts 过时注释~~ ✅ 514c13f（P32 复核 2026-08-16：头注释已是"5 个 UI 工具"，与 name: 计数一致；build-opencode.sh 已不存在，部署循环并入 up.sh，无残留）。
+5. ~~a2ui-tools.ts 过时注释~~ ✅ 514c13f（P32 复核 2026-08-16：头注释已是"5 个 UI 工具"，与 name: 计数一致；P34 复核更正：build-opencode.sh 存在且仍是部署入口（DELIVERY-README §1），部署循环覆盖 plugins/（含 workspace-guard.ts）——此前"已不存在/并入 up.sh"的表述有误）。
 6. **文档漂移**：DELIVERY-README 与现状 6 处矛盾（vendor 空目录 / DEEPSEEK_API_KEY 不存在 / scripts 清单 / 版本状态停滞 / example 空 provider）；`docs/spec/workspace-files.md` 仍写 5MB（实际 50MB）且缺 PUT/子目录/baseModified；`workspace-isolation.md` 缺 409 契约。
 7. ~~applySpreadsheetEdits 原生 confirm~~ ✅ db7bc07（Promise 化 askConfirm + 自绘 ConfirmDialog，全仓原生弹窗清零；P30 复核 2026-08-16：grep 零残留、ConfirmDialog/spreadsheetEdits 17 例绿、公网 HITL 取消路径实测 PASS，证据 docs/evidence/2026-08-16-p30-hitl-modal-cancel.txt）。
 

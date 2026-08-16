@@ -11,10 +11,10 @@
 │ 浏览器  Vue 3 + @copilotkit/vue 1.67.1-fork.1             │
 │  ├─ CopilotChat（消息流 / reasoning 折叠 / 工具卡 / 欢迎页）│
 │  ├─ HttpAgent（@ag-ui/client）POST /agui-api/agent/run    │
-│  ├─ frontendTools: showNotification（浏览器侧执行）        │
+│  ├─ frontendTools: showNotification + applySpreadsheetEdits（浏览器侧执行）│
 │  ├─ renderToolCalls: render_a2ui 命名渲染器(generative UI) │
 │  │   + "*" 通配可折叠渲染器(DefaultToolRender)             │
-│  ├─ A2UI renderer（本地 catalog = basic + 7 个业务组件）    │
+│  ├─ A2UI renderer（本地 catalog = basic 18 + 10 个业务组件）│
 │  └─ ThreadSidebar（多会话）+ context 徽章 + toast           │
 └──────────────────────┬───────────────────────────────────┘
                        │ AG-UI（SSE）
@@ -28,7 +28,7 @@
 │  ├─ A2UiBridgeService    render_a2ui → ACTIVITY_SNAPSHOT  │
 │  │   （嵌套组件拍平 + null 属性剥离 + 白名单校验）          │
 │  ├─ A2UiActionHandler    a2uiAction → A2UI_ACTION 续跑     │
-│  ├─ ChatThreadStore      会话持久化（threads.json 原子写）  │
+│  ├─ ThreadRepository   会话持久化（JsonThreadRepository, threads.json 原子写）│
 │  └─ ChatThreadsController /chat/threads REST              │
 └──────────────────────┬───────────────────────────────────┘
                        │ HTTP/SSE（basic 认证）
@@ -74,7 +74,12 @@
 | /agui-api/agent/run | POST | AG-UI RunAgentInput → SSE 事件流（gateway :8090 /agent/run） |
 | /agui-api/chat/threads | GET/POST | 会话列表 / 新建 |
 | /agui-api/chat/threads/{id} | PATCH/DELETE | 重命名 / 删除 |
+| /agui-api/chat/threads/{id}/branch | POST | 从某条消息分叉新会话 |
 | /agui-api/chat/threads/{id}/messages | GET | 历史消息（OpenCode session → AG-UI Message[]） |
+| /agui-api/files, /agui-api/files/{name} | GET/POST/PUT/DELETE | 数据工作区文件（白名单/50MB/子目录，multipart 上传） |
+| /agui-api/chat/threads/{id}/files* | GET/POST/PUT/DELETE | 会话级文件（同上五件套，落 workspace/threads/{id}/） |
+| /agui-api/capabilities | GET | 能力清单聚合（内置工具 + 插件工具 + 前端工具） |
+| /agui-api/a2ui/validate | POST | render_a2ui 回执前的服务端裁决 |
 | /actuator/health | GET | 健康检查 |
 
 nginx：/agui/ → /var/www/blog/agui/（vite 构建产物）；/agui-api/ → 127.0.0.1:8090（SSE 关 buffering）。
@@ -101,7 +106,7 @@ server tool（render_a2ui）→ 立即执行产生 ACTIVITY_SNAPSHOT，run 继�
 
 ACTIVITY_SNAPSHOT，activityType="a2ui-surface"，content.a2ui_operations =
 createSurface/updateComponents/updateDataModel。组件扁平列表 + children 为 id 数组 +
-root id="root"。gateway 拍平嵌套 children、剥 null 属性、白名单校验（25 个组件）。
+root id="root"。gateway 拍平嵌套 children、剥 null 属性、白名单校验（28 个组件 = basic 18 + 业务 10）。
 surface 快照按 thread 持久化（历史回放重放看板）。
 
 ### 4.4 a2uiAction 回环
@@ -115,7 +120,7 @@ Java ACTIVITY_SNAPSHOT → Vue 渲染 → 用户点击/提交表单
 
 ## 5. 多会话模型
 
-- threadId（AG-UI）↔ sessionId（OpenCode）映射存 ChatThreadStore（data/threads.json 原子写）
+- threadId（AG-UI）↔ sessionId（OpenCode）映射存 ThreadRepository（JsonThreadRepository, data/threads.json 原子写）
 - 复用前 GET /api/session/{id} 存活校验，失效自动重建 rebind
 - 标题 = 首条用户消息截断 30 字；run 结束自动命名
 - 前端 useThreads：API 权威 + localStorage 兜底；切换会话把历史写入 per-thread clone 渲染

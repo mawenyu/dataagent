@@ -25,9 +25,9 @@
 界面可能动态出现：KPI Card、Table、Bar/Line/Pie/Donut Chart、Ranking、Comparison、Filters、Date Range、Drill Down、Insight Card、Warning、SQL/Query details、Data Source information、Analysis Plan、Agent execution progress。而不是所有东西都塞进聊天 Markdown。
 
 ## 四、五层架构职责
-- Layer 1 CopilotKit：Agent Chat UX、React UI integration、frontend agent interaction、shared application state、human-in-the-loop、tool interaction UI、generative UI integration。不要把 CopilotKit 当成整个 Agent Backend。
+- Layer 1 CopilotKit：Agent Chat UX、Chat UI integration（本项目为 Vue 3 fork）、frontend agent interaction、shared application state、human-in-the-loop、tool interaction UI、generative UI integration。不要把 CopilotKit 当成整个 Agent Backend。
 - Layer 2 AG-UI：Agent 与 UI 之间的实时交互协议。处理 streaming、message events、tool events、state updates、lifecycle、progress、Agent→UI events、UI→Agent interaction。避免自定义 JSON streaming 协议、前端字符串解析、大量特殊事件 hack。AG-UI 已提供标准能力就优先用标准协议。
-- Layer 3 A2UI：Agent 动态生成结构化 UI 描述（KPI/Table/Chart/Filter/Form/Insight/Alert/Container/Tabs/Drilldown），Agent 不直接生成 React JSX。Frontend 用稳定、安全、可控的 Component Catalog 渲染。原则：Agent 决定展示什么，Frontend 决定怎么漂亮地展示。不让 LLM 自由输出任意 HTML/JSX。
+- Layer 3 A2UI：Agent 动态生成结构化 UI 描述（KPI/Table/Chart/Filter/Form/Insight/Alert/Container/Tabs/Drilldown），Agent 不直接生成前端框架代码（JSX/模板）。Frontend 用稳定、安全、可控的 Component Catalog 渲染。原则：Agent 决定展示什么，Frontend 决定怎么漂亮地展示。不让 LLM 自由输出任意 HTML/JSX。
 
 ## 五、Java Web 的职责
 Java Web 必须承担清晰的生产级职责：Authentication、Authorization、Tenant、User、Conversation、Session、Data source configuration、Agent configuration、Audit、API Gateway/BFF、persistence、permission control、business API、sensitive operations、enterprise integration。
