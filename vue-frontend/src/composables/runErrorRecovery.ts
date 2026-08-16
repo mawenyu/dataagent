@@ -1,4 +1,5 @@
 import { ref, watch, type Ref } from 'vue'
+import { uuid } from './uuid'
 
 /**
  * P-B: run 失败/中断的内联错误恢复。
@@ -100,7 +101,7 @@ export function useRunErrorRecovery(deps: {
     clear() // 重试开始即收起错误卡
     try {
       agent.setMessages(messages.slice(0, idx))
-      agent.addMessage({ id: crypto.randomUUID(), role: 'user', content })
+      agent.addMessage({ id: uuid(), role: 'user', content })
       await deps.run(agent)
       return true
     } catch (e: any) {

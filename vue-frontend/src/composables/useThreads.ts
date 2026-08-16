@@ -2,6 +2,7 @@ import { ref, watch, nextTick } from 'vue'
 import type { Ref } from 'vue'
 import type { AbstractAgent } from '@ag-ui/client'
 import { getThreadClone } from '@copilotkit/vue'
+import { uuid } from './uuid'
 
 /**
  * 需求1: 多会话管理。
@@ -41,6 +42,8 @@ export function useThreads(agent: AbstractAgent) {
   const threads = ref<ThreadMeta[]>([])
   const currentId = ref<string>('')
   const loading = ref(false)
+  /** 在途 refresh 的 Promise（竞态防护见 refresh 注释）。 */
+  let pendingRefresh: Promise<void> | null = null
 
   function persistCache() {
     try {
@@ -52,21 +55,41 @@ export function useThreads(agent: AbstractAgent) {
   }
 
   async function refresh(): Promise<void> {
+    // P29: 竞态防护 —— refresh 可能被 onRunFinalized 等事件在任意时刻触发
+    // （connect 回放/上一轮 run 收尾都会冒泡）。若在途的 refresh 晚于
+    // createNew/remove 的本地列表变更落地，会用旧的 gateway 快照把新会话
+    // 顶掉（实测：点「新建」后新会话从列表消失、高亮丢失）。变更操作前
+    // 必须先等在途 refresh 落定（见 createNew/remove/rename 的 await）。
+    const p = (async () => {
+      try {
+        const res = await fetch(API)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const body = await res.json()
+        threads.value = body.data ?? []
+        persistCache()
+      } catch {
+        const cache = readCache()
+        if (cache) threads.value = cache.threads ?? []
+      }
+    })()
+    pendingRefresh = p
     try {
-      const res = await fetch(API)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const body = await res.json()
-      threads.value = body.data ?? []
-      persistCache()
-    } catch {
-      const cache = readCache()
-      if (cache) threads.value = cache.threads ?? []
+      await p
+    } finally {
+      if (pendingRefresh === p) pendingRefresh = null
     }
+  }
+
+  /** 等待在途 refresh 落定，避免旧快照回写覆盖本地列表变更。 */
+  async function settlePendingRefresh(): Promise<void> {
+    try {
+      await pendingRefresh
+    } catch { /* refresh 自身已兜底 */ }
   }
 
   /** 新建会话：gateway 建档 + 清空 agent 消息。 */
   async function createNew(): Promise<string> {
-    const id = crypto.randomUUID()
+    const id = uuid()
     try {
       await fetch(API, {
         method: 'POST',
@@ -74,6 +97,9 @@ export function useThreads(agent: AbstractAgent) {
         body: JSON.stringify({ id }),
       })
     } catch { /* gateway 挂掉时也允许本地新建（run 时会自动建档） */ }
+    // P29: 先等在途 refresh 落定 —— 否则其旧快照会晚于本地 prepend 落地，
+    // 把刚建的会话从列表顶掉（用户视角 = 点新建没反应、高亮留在旧会话）。
+    await settlePendingRefresh()
     currentId.value = id
     agent.setMessages([])
     await nextTick()
@@ -107,6 +133,7 @@ export function useThreads(agent: AbstractAgent) {
     try {
       await fetch(`${API}/${id}`, { method: 'DELETE' })
     } catch { /* 离线也从本地列表移除 */ }
+    await settlePendingRefresh() // P29: 同 createNew 的竞态防护
     threads.value = threads.value.filter((t) => t.id !== id)
     if (currentId.value === id) {
       const next = threads.value[0]
@@ -125,6 +152,7 @@ export function useThreads(agent: AbstractAgent) {
         body: JSON.stringify({ title: title.trim() }),
       })
     } catch { /* 离线仅本地改名 */ }
+    await settlePendingRefresh() // P29: 同 createNew 的竞态防护
     threads.value = threads.value.map((t) => (t.id === id ? { ...t, title: title.trim() } : t))
     persistCache()
   }
@@ -149,7 +177,7 @@ export function useThreads(agent: AbstractAgent) {
       await switchTo(first.id)
       return
     }
-    currentId.value = crypto.randomUUID()
+    currentId.value = uuid()
     agent.setMessages([])
     persistCache()
   }

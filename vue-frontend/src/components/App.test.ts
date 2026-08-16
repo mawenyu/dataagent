@@ -460,6 +460,49 @@ describe('App P-R（切换会话骨架屏）', () => {
   })
 })
 
+describe('P29 新建会话回归', () => {
+  const flush = async (n = 10, ms = 15) => {
+    for (let i = 0; i < n; i++) { await nextTick(); await new Promise((r) => setTimeout(r, ms)) }
+  }
+
+  it('点「+ 新建」→ 聊天区清空回到欢迎页、侧边栏高亮切到新会话', async () => {
+    const old = { id: 't-old', title: '旧会话', sessionId: null, createdAt: '', updatedAt: '' }
+    const history = [{ id: 'u1', role: 'user', content: '旧会话的消息内容' }]
+    // 有状态网关：POST 真建档、GET 返回实时列表（connect 回放/run 收尾触发
+    // 的 refresh 会晚于 createNew 落地 —— 只有有状态 mock 才贴近生产时序）
+    let store = [old]
+    const fetchMock = vi.fn(async (input: any, init?: any) => {
+      const url = String(input)
+      if (url.endsWith('/chat/threads') && init?.method === 'POST') {
+        const created = { id: JSON.parse(init.body).id, title: '新会话', sessionId: null, createdAt: '', updatedAt: '' }
+        store = [created, ...store]
+        return { ok: true, json: async () => ({ data: created }) }
+      }
+      if (url.endsWith('/chat/threads')) return { ok: true, json: async () => ({ data: store }) }
+      if (url.includes('/t-old/messages')) return { ok: true, json: async () => ({ data: history }) }
+      return { ok: true, json: async () => ({ data: [] }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const w = mount(App, { attachTo: document.body })
+    await flush()
+
+    // 旧会话历史已渲染（init 落在第一个会话并加载历史）
+    expect(w.text(), '挂载后应渲染旧会话历史').toContain('旧会话的消息内容')
+
+    await w.find('[data-testid="new-thread"]').trigger('click')
+    await flush()
+
+    // 1) 侧边栏：出现「新会话」且为 active，旧会话不再 active
+    const active = w.find('.thread-item.active')
+    expect(active.exists(), '应有一个高亮会话').toBe(true)
+    expect(active.text(), '高亮应切到新会话').toContain('新会话')
+    // 2) 聊天区：旧消息消失，欢迎页回来
+    expect(w.text(), '旧会话消息必须从聊天区消失').not.toContain('旧会话的消息内容')
+    expect(w.find('[data-testid="welcome-screen"]').exists(), '新会话应回到欢迎页').toBe(true)
+    w.unmount()
+  })
+})
+
 describe('移动端 UI 细节', () => {
   it('welcome 占位文案单行容纳(≤16 字,390px 不截断),完整提示进 title', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))

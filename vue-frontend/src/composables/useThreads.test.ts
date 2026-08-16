@@ -91,6 +91,62 @@ describe('useThreads (需求1)', () => {
     vi.unstubAllGlobals()
   })
 
+  it('P29: crypto.randomUUID 缺失（裸 HTTP 非安全上下文）时 createNew 仍生效', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /agui-api/chat/threads': { data: [T('a', '旧会话')] },
+      'POST /agui-api/chat/threads': (init) => ({ data: JSON.parse(init.body) }),
+    }))
+    // 模拟裸 HTTP 部署：randomUUID 不存在（生产实测 createNew 首行抛 TypeError）
+    const realCrypto = globalThis.crypto
+    vi.stubGlobal('crypto', { getRandomValues: realCrypto.getRandomValues.bind(realCrypto) })
+    const { agent, calls } = fakeAgent()
+    const th = useThreads(agent)
+    await th.refresh()
+    await th.switchTo('a')
+    const id = await th.createNew()
+    expect(id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(th.currentId.value).toBe(id)
+    expect(th.threads.value[0]?.id).toBe(id)
+    expect(calls[calls.length - 1]).toEqual([[]])
+    vi.unstubAllGlobals()
+  })
+
+  it('P29: 在途 refresh 晚于 createNew 落地时不得顶掉新会话（竞态回归）', async () => {
+    // gateway 有状态：POST 建档、GET 返回当前档案 —— 但首个 refresh 挂起，
+    // 直到 createNew 开始后才带着「旧快照」落地（connect 回放/run 收尾触发
+    // 的 refresh 真实时序）。没有 settle 防护时新会话会被旧快照顶掉。
+    const API_GET = '/agui-api/chat/threads'
+    let releaseStale!: () => void
+    let store = [T('a', '旧会话')]
+    let getCount = 0
+    const fetchMock = vi.fn(async (url: string, init?: any) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'POST') {
+        store = [{ ...T(JSON.parse(init.body).id, '新会话') }, ...store]
+        return { ok: true, json: async () => ({ data: {} }) } as any
+      }
+      getCount++
+      if (getCount === 1) {
+        // 第一次 GET：挂起的在途旧快照（只看到 [a]，永远看不到新建）
+        await new Promise<void>((r) => { releaseStale = r })
+        return { ok: true, json: async () => ({ data: [T('a', '旧会话')] }) } as any
+      }
+      return { ok: true, json: async () => ({ data: store }) } as any
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { agent } = fakeAgent()
+    const th = useThreads(agent)
+    void th.refresh() // 挂起的在途 refresh（快照 = 只有旧会话）
+    const creating = th.createNew()
+    await new Promise((r) => setTimeout(r, 10)) // 让 createNew 推进到 settle 等待点
+    releaseStale() // 旧快照此刻才落地
+    const id = await creating
+    await new Promise((r) => setTimeout(r, 10))
+    expect(th.threads.value.find((t) => t.id === id), '新会话不得被在途旧快照顶掉').toBeTruthy()
+    expect(th.threads.value[0]?.id).toBe(id)
+    vi.unstubAllGlobals()
+  })
+
   it('remove 删除当前会话后自动开新会话', async () => {
     vi.stubGlobal('fetch', mockFetch({
       'GET /agui-api/chat/threads': { data: [T('a', 'A')] },
