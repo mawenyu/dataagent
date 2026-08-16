@@ -1,0 +1,70 @@
+A2UI 协议边界第三批 —— 实测证据（2026-08-16）
+================================================
+
+任务：超过 20 个 op 的 pipeline 组合顺序交互（truncate 后 dedupe 的 key
+稳定性、deleteSurface 押后后再 createSurface 同 id 复活场景、JSONL 中
+坏行与超大 op 混合流）。规则：TDD 先红、真实实现、commit + 证据。
+
+commit：7267b07 test(fork): A2UI 协议边界第三批 —— pipeline 组合顺序交互，20+ op
+fork 条目：FORK.md #22
+
+------------------------------------------------------------
+1) TDD 红 → 绿
+------------------------------------------------------------
+先红（对第二批实现跑新测试）：6 绿 5 红 ——
+  - 复活序列全灭：全局 rank 排序把复活 create 当重复吞掉、把 delete
+    挪到复活点之后（[create, delete, create] → 终态面被删内容全丢）
+  - 段屏障纯函数用例红（第二批语义把队首 delete 押后）
+  - 2 例为我自己的用例算术 bug（op 数凑不齐 21/30），修正用例后转绿
+后绿（per-surface 分段归一化实现后）：11/11。
+
+关键实现语义（src/v2/components/a2ui.ts）：
+  管线顺序 = 解析（数组/JSONL 容错）→ 整条 op 4MB 闸口 → string 1MB
+  截断 → per-surface 分段归一化。deleteSurface 是段屏障：重排/去重
+  不得越过；段内字节级去重（key 取自截断后的 op，截断后相同 = 渲染
+  结果相同，理应去重）+ createSurface 提段首（同段重复 create 去重）。
+
+------------------------------------------------------------
+2) 调试取证：21 op 三轮复活渲染超时根因
+------------------------------------------------------------
+现象：sanitize 输出完美（探针 1：21 进 20 出，序列精确），但渲染层
+surface 停在 a2ui-shimmer 占位。逐层隔离：
+
+  探针 2（fork 渲染层直喂 20 op）：DOM 有 data-surface-id="cycle"
+    包裹但内部只有 shimmer —— 组件永不渲染。
+  探针 3（直连 @a2ui/web_core MessageProcessor 逐 op 喂）：
+    after round 0: surface=NO components=-
+    after round 1: surface=NO components=-
+    after round 2: surface=yes components=c0,c1,c2
+    → web_core 对双 delete/recreate 循环处理完全正确。
+
+根因 = 测试用例自身缺陷：组件 id 用了 c0/c1/c2，而 fork VueSurface.ts:178
+A2uiSurface 固定从 id="root" 起渲染（web_core 契约），无 root 的 surface
+永停 shimmer。修正用例（每轮补 root Column 挂 t0/t1）后 11/11 绿。
+教训留档：后续渲染级用例必须含 id="root" 组件。
+
+------------------------------------------------------------
+3) 绿测实录（2026-08-16）
+------------------------------------------------------------
+$ ./node_modules/.bin/vitest run A2UIBoundaryBatch3 A2UIBoundaryBatch2
+ ✓ A2UIBoundaryBatch2.test.ts (10 tests) 143ms
+ ✓ A2UIBoundaryBatch3.test.ts (11 tests) 92ms
+ Test Files  2 passed (2)
+      Tests  21 passed (21)
+
+fork 全量（收尾回归）：
+ Test Files  112 passed (112)
+      Tests  1177 passed (1177)   —— 0 红基线保持
+
+Batch3 用例清单（11）：
+  a) 截断后 dedupe key 稳定性：截断后逐字节相同 → 去重为 1；上限内差异
+     绝不误撞；26 op 流 13 对仅截断尾部不同 → 恰 13 存活
+  b) deleteSurface 屏障与复活：[create, delete, create] 三保留序不动；
+     段内重复 create 仍去重；段内乱序归一不越屏障；渲染级复活只渲染
+     New；21 op 三轮复活循环终态正确（前轮内容随 delete 消失）
+  c) JSONL 混合流：27 行（8 乱序 update + 6 坏行 + 1 整条超限 + 1 长串
+     截断 + 10 重复 + 押尾 create）→ 恰 10 存活精确序列 [create, c0..c7,
+     long(截断)]；渲染级 JSONL 混合流照常渲染
+  d) 30 op 总集成：4 surface（s1 乱序+复活、s2 完整序列+重复轮+3 data+
+     3 逐字节重复、s3 截断+整条超限、s4 押尾 create）+ 坏条目混入 →
+     19 存活，per-surface 与全局序列精确断言
