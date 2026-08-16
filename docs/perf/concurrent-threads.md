@@ -23,7 +23,7 @@
 
 ## 架构保障点（核验依据）
 
-- threadId → OpenCode session 映射在 ChatThreadStore（synchronized 单文件原子写）
+- threadId → OpenCode session 映射在 ThreadRepository（JsonThreadRepository，synchronized 单文件原子写）
 - 每 run 独立 event 流订阅（per-session /api/event），translator 实例状态按流隔离
 - surface registry / 文件工作区 / metrics hitlStarts 均以 threadId 为键
 - 共享根只读播种；会话工作区物理隔离（task6）
