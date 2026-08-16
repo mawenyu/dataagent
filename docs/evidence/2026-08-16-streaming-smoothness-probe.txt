@@ -1,0 +1,6 @@
+基线探针: 24ms | 流式探针 8 个 | p95=50ms worst=50ms | 完成=True
+PASS: run 完成(Thought for 出现)
+PASS: 流式窗口有效(探针 8 >= 3)
+PASS: 流式期间探针 p95(50ms) < 500ms（主线程基本不堵）
+PASS: 最差探针(50ms) < 2000ms（无秒级冻结）
+== RESULT: PASS ==
