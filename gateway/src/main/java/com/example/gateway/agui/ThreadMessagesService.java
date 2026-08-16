@@ -29,6 +29,8 @@ import java.util.regex.Pattern;
 public class ThreadMessagesService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** 伪 <tool_call> 标记解析（无状态，直接实例化；与流式路径同一套容错）。 */
+    private final FrontendToolBridge toolBridge = new FrontendToolBridge();
     private static final int TOOL_RESULT_MAX = 2000;
     /** P-M: 从 gateway 注入 prompt 的 <attachments> 段还原附件文件名(导出清单用)。 */
     private static final Pattern ATTACHMENTS_BLOCK = Pattern.compile(
@@ -172,8 +174,36 @@ public class ThreadMessagesService {
                             }
                             String cur = assistant.path("content").asText();
                             String delta = p.path("text").asText("");
-                            if (!delta.isBlank()) {
-                                assistant.put("content", cur.isEmpty() ? delta : cur + "\n" + delta);
+                            // 2026-08-16 线上 bug（spreadsheetEdits modal 不弹）根因修复：
+                            // 伪 <tool_call> 标记（prompt 契约 frontend tool 调用）在
+                            // OpenCode 历史里是裸文本。MESSAGES_SNAPSHOT 以历史为权威对账
+                            // 客户端消息流，裸标记会抹掉流式发出的 TOOL_CALL_* → 浏览器
+                            // 永不执行 handler。还原为 toolCalls（与线上截断语义一致：
+                            // 标记前文本保留，标记后余文丢弃），标记不再渲染成可见文本。
+                            String visible = delta;
+                            int markerIdx = delta.indexOf(FrontendToolBridge.MARKER);
+                            if (markerIdx >= 0) {
+                                var parsed = toolBridge.parseToolCall(delta.substring(markerIdx));
+                                if (parsed.isPresent()) {
+                                    visible = delta.substring(0, markerIdx).strip();
+                                    if (toolCalls == null) {
+                                        toolCalls = MAPPER.createArrayNode();
+                                        assistant.set("toolCalls", toolCalls);
+                                    }
+                                    ObjectNode fn = MAPPER.createObjectNode();
+                                    fn.put("name", parsed.get().name());
+                                    fn.put("arguments", parsed.get().arguments().toString());
+                                    ObjectNode tc = MAPPER.createObjectNode();
+                                    // opencode 历史里没有 gateway 流式生成的 call_ id，
+                                    // 用消息/分片 id 派生一个确定性 id
+                                    tc.put("id", "histcall-" + id + "-" + p.path("id").asText("t"));
+                                    tc.put("type", "function");
+                                    tc.set("function", fn);
+                                    toolCalls.add(tc);
+                                } // 解析失败：保留原文（与线上 dispatchToolCall 的兜底一致）
+                            }
+                            if (!visible.isBlank()) {
+                                assistant.put("content", cur.isEmpty() ? visible : cur + "\n" + visible);
                             }
                         }
                         case "tool" -> {

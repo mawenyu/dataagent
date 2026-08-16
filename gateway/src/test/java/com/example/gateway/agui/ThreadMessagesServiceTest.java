@@ -174,4 +174,74 @@ class ThreadMessagesServiceTest {
         long userCount = msgs.stream().filter(m -> "user".equals(m.path("role").asText())).count();
         assertEquals(2, userCount, "有完整回答的重复提问保留");
     }
+
+    /**
+     * 2026-08-16 线上 bug（spreadsheetEdits modal 不弹）根因修复：
+     * 伪 {@code <tool_call>} 纯标记消息进入 OpenCode 历史后是裸文本，
+     * MESSAGES_SNAPSHOT 以历史为权威冲刷客户端消息流 → 流式发出的
+     * TOOL_CALL_* 被抹掉，浏览器永不执行 frontend tool handler。
+     * 历史转换必须把标记还原成 toolCalls（AG-UI 语义），并把标记从正文剔除。
+     */
+    @Test
+    void pureToolCallMarkerTextBecomesToolCalls() {
+        String history = """
+            {"data":[
+              {"id":"m1","type":"assistant","content":[
+                {"type":"text","id":"t0","text":"<tool_call>{\\\"name\\\":\\\"applySpreadsheetEdits\\\",\\\"arguments\\\":{\\\"file\\\":\\\"sales.csv\\\",\\\"cells\\\":[{\\\"row\\\":1,\\\"col\\\":5,\\\"value\\\":\\\"999999\\\"}]}}</tool_call>"}
+              ]},
+              {"id":"u1","type":"user","content":[{"type":"text","text":"改销售额"}]}
+            ]}
+            """;
+        List<JsonNode> msgs = svc.toAguiMessages(history);
+        assertEquals(2, msgs.size());
+        JsonNode assistant = msgs.get(1);
+        assertEquals("assistant", assistant.path("role").asText());
+        assertEquals("", assistant.path("content").asText(), "标记不得残留为可见文本");
+        JsonNode tc = assistant.path("toolCalls").get(0);
+        assertEquals("function", tc.path("type").asText());
+        assertFalse(tc.path("id").asText().isBlank(), "快照 toolCall 需要非空 id");
+        assertEquals("applySpreadsheetEdits", tc.path("function").path("name").asText());
+        JsonNode args;
+        try {
+            args = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(tc.path("function").path("arguments").asText());
+        } catch (Exception e) {
+            fail("arguments 必须是 JSON 字符串: " + e.getMessage());
+            return;
+        }
+        assertEquals("sales.csv", args.path("file").asText());
+        assertEquals("999999", args.path("cells").get(0).path("value").asText());
+    }
+
+    /** 引导文本 + 标记混排：引导文本保留为正文，标记转 toolCalls。 */
+    @Test
+    void guideTextBeforeMarkerPreservedAsContent() {
+        String history = """
+            {"data":[
+              {"id":"m1","type":"assistant","content":[
+                {"type":"text","id":"t0","text":"好的，我来修改\\n<tool_call>{\\\"name\\\":\\\"showNotification\\\",\\\"arguments\\\":{\\\"message\\\":\\\"hi\\\"}}</tool_call>"}
+              ]}
+            ]}
+            """;
+        List<JsonNode> msgs = svc.toAguiMessages(history);
+        JsonNode assistant = msgs.get(0);
+        assertEquals("好的，我来修改", assistant.path("content").asText());
+        assertEquals("showNotification", assistant.path("toolCalls").get(0).path("function").path("name").asText());
+    }
+
+    /** DeepSeek 伪 DSML 尾巴（无 </tool_call> 结束标签）也要能还原。 */
+    @Test
+    void markerWithDsmlTailStillParsed() {
+        String history = """
+            {"data":[
+              {"id":"m1","type":"assistant","content":[
+                {"type":"text","id":"t0","text":"<tool_call>{\\\"name\\\":\\\"showNotification\\\",\\\"arguments\\\":{\\\"message\\\":\\\"hi\\\"}}</｜DSML｜parameter>"}
+              ]}
+            ]}
+            """;
+        List<JsonNode> msgs = svc.toAguiMessages(history);
+        JsonNode assistant = msgs.get(0);
+        assertEquals("", assistant.path("content").asText());
+        assertEquals("showNotification", assistant.path("toolCalls").get(0).path("function").path("name").asText());
+    }
 }
