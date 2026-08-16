@@ -29,6 +29,10 @@ import CapabilitiesPanel from './components/CapabilitiesPanel.vue'
 import ThreadSidebar from './components/ThreadSidebar.vue'
 import A2uiWorkspace from './components/A2uiWorkspace.vue'
 import A2uiRefCard from './components/A2uiRefCard.vue'
+import ImageLightbox from './components/ImageLightbox.vue'
+import FilePreviewModal from './components/FilePreviewModal.vue'
+import { resolveAttachmentPreview, type AttachmentPreviewTarget } from './composables/attachmentPreview'
+import { fetchPdfPreviewUrl, isImage, isPdf, isPreviewable } from './composables/filePreview'
 
 // Registered via the fork's `directAgents` prop (see packages/copilotkit-vue/FORK.md).
 // Business code never touches agents__unsafe_dev_only / selfManagedAgents.
@@ -105,6 +109,49 @@ const welcomeAttachments = useWelcomeAttachments({
 })
 const welcomeDrag = ref(false)
 const welcomeFileInput = ref<HTMLInputElement | null>(null)
+
+// 多模态预览: 对话附件区点击预览（App 级委托,不改 fork —— 附件 DOM 带稳定 testid）。
+// 图片 → lightbox;pdf → blob URL iframe;csv/md 等 → 256KB 文本预览 modal;
+// 文本预览复用 workspaceFilesApi.preview（本实例独立于文件面板实例,互不干扰）。
+const attachmentLightbox = ref<{ name: string; url: string } | null>(null)
+const attachmentPdf = ref<{ name: string; url: string } | null>(null)
+const attachmentPdfLoading = ref(false)
+
+function openAttachmentPreview(t: AttachmentPreviewTarget) {
+  if (t.kind === 'image') {
+    attachmentLightbox.value = { name: t.name, url: t.url }
+    return
+  }
+  if (t.kind === 'pdf') {
+    attachmentPdfLoading.value = true
+    void fetchPdfPreviewUrl(t.url)
+      .then((url) => { attachmentPdf.value = { name: t.name, url } })
+      .catch(() => pushToast({ title: '附件预览失败', message: `「${t.name}」加载失败，请下载查看`, type: 'error' }))
+      .finally(() => { attachmentPdfLoading.value = false })
+    return
+  }
+  void workspaceFilesApi.previewFile(t.name)
+}
+
+function closeAttachmentPdf() {
+  if (attachmentPdf.value) URL.revokeObjectURL(attachmentPdf.value.url)
+  attachmentPdf.value = null
+}
+
+/** 对话栏点击委托：附件元素 → 预览；其余 → 不干预。 */
+function onChatColClick(e: MouseEvent) {
+  const t = resolveAttachmentPreview(e.target, (name) => workspaceFilesApi.downloadUrl(name))
+  if (t) openAttachmentPreview(t)
+}
+
+/** 欢迎页附件 chip 点击预览（文件在选取时已传会话 workspace;仅 ready 态可预览）。 */
+function previewWelcomeAttachment(name: string) {
+  const url = workspaceFilesApi.downloadUrl(name)
+  if (isImage(name)) openAttachmentPreview({ kind: 'image', name, url })
+  else if (isPdf(name)) openAttachmentPreview({ kind: 'pdf', name, url })
+  else if (isPreviewable(name)) openAttachmentPreview({ kind: 'text', name, url })
+  else pushToast({ title: '暂不支持预览', message: `「${name}」请下载查看`, type: 'info' })
+}
 function onWelcomeFilesPicked(e: Event) {
   const input = e.target as HTMLInputElement
   void welcomeAttachments.addFiles(input.files ?? [])
@@ -600,7 +647,7 @@ async function exportThread(id: string, format: 'md' | 'json') {
                 :catalog="dataAgentCatalog"
               />
             </div>
-            <div class="chat-col" :class="{ 'chat-col-narrow': showA2uiWorkspace }">
+            <div class="chat-col" :class="{ 'chat-col-narrow': showA2uiWorkspace }" @click="onChatColClick">
               <CopilotChat
                 agent-id="default"
                 class="chat"
@@ -674,7 +721,12 @@ async function exportThread(id: string, format: 'md' | 'json') {
                         class="welcome-chip"
                         :data-status="a.status"
                       >
-                        📄 {{ a.name }}
+                        <span
+                          class="chip-name"
+                          :class="{ clickable: a.status === 'ready' }"
+                          :title="a.status === 'ready' ? '点击预览' : undefined"
+                          @click="a.status === 'ready' && previewWelcomeAttachment(a.name)"
+                        >📄 {{ a.name }}</span>
                         <span v-if="a.status === 'uploading'" class="chip-status">上传中…</span>
                         <span
                           v-else-if="a.status === 'error'"
@@ -785,6 +837,28 @@ async function exportThread(id: string, format: 'md' | 'json') {
       :busy="branchBusy"
       @select="branchFrom"
       @close="branchDialogOpen = false"
+    />
+    <!-- 多模态预览: 附件图片 lightbox -->
+    <ImageLightbox
+      v-if="attachmentLightbox"
+      :src="attachmentLightbox.url"
+      :name="attachmentLightbox.name"
+      @close="attachmentLightbox = null"
+    />
+    <!-- 多模态预览: 附件 PDF iframe(blob URL) -->
+    <FilePreviewModal
+      v-if="attachmentPdf"
+      :name="attachmentPdf.name"
+      :pdf-url="attachmentPdf.url"
+      @close="closeAttachmentPdf"
+    />
+    <!-- 多模态预览: 附件文本类(csv 表格/json/md/txt,256KB 截断) -->
+    <FilePreviewModal
+      v-if="workspaceFilesApi.preview.value"
+      :name="workspaceFilesApi.preview.value.name"
+      :content="workspaceFilesApi.preview.value.content"
+      :truncated="workspaceFilesApi.preview.value.truncated"
+      @close="workspaceFilesApi.closePreview()"
     />
     <!-- toast stack for the showNotification frontend tool -->
     <div class="toast-stack" aria-live="polite">
@@ -1169,6 +1243,12 @@ body {
   padding: 4px 8px 4px 10px;
 }
 .welcome-chip[data-status='error'] { border-color: #fecaca; background: #fef2f2; }
+.chip-name.clickable { cursor: pointer; }
+.chip-name.clickable:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* 多模态预览: 消息附件可点击提示（fork 渲染 DOM,App 级委托接管点击） */
+.chat-col img[data-testid='copilot-chat-attachment-renderer-image'] { cursor: zoom-in; }
+.chat-col [data-testid='copilot-chat-attachment-renderer-document'] { cursor: pointer; }
 .chip-status { color: var(--muted-foreground); font-size: 11.5px; }
 .chip-status.err { color: #dc2626; }
 .chip-remove {
