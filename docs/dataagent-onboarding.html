@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataAgent 协作指南</title>
+<style>
+  :root { --indigo:#6366f1; --bg:#f8fafc; --ink:#1e293b; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+        background:var(--bg); color:var(--ink); margin:0; padding:24px; line-height:1.7; }
+  .wrap { max-width:860px; margin:0 auto; background:#fff; padding:48px 56px;
+          border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  h1 { font-size:1.9em; border-bottom:3px solid var(--indigo); padding-bottom:12px; }
+  h2 { font-size:1.4em; margin-top:2em; color:var(--indigo); border-left:4px solid var(--indigo); padding-left:12px; }
+  h3 { font-size:1.15em; margin-top:1.6em; }
+  code { background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:"SF Mono",Consolas,monospace; font-size:.9em; color:#be185d; }
+  pre { background:#0f172a; color:#e2e8f0; padding:16px 20px; border-radius:8px; overflow-x:auto; }
+  pre code { background:none; color:inherit; padding:0; }
+  table { border-collapse:collapse; width:100%; margin:1em 0; }
+  th,td { border:1px solid #e2e8f0; padding:8px 14px; text-align:left; }
+  th { background:#f1f5f9; }
+  blockquote { border-left:4px solid #cbd5e1; margin:1em 0; padding:4px 16px; color:#64748b; background:#f8fafc; }
+  a { color:var(--indigo); }
+  hr { border:none; border-top:1px solid #e2e8f0; margin:2em 0; }
+</style>
+</head>
+<body><div class="wrap">
+<h1 id="dataagent">DataAgent 协作指南</h1>
+<blockquote>
+<p>发给同事的快速上手文档。包含：在线体验、代码仓库、本地搭建、提 issue 协作流程。<br>
+2026-08-16 全面更新：界面结构 / 能力页 / workspace 隔离 / 多模态 / 品牌化为 DataAgent。</p>
+</blockquote>
+<hr />
+<h2 id="1">1. 在线体验（无需搭建）</h2>
+<p><strong>产品地址：http://101.34.246.179/agui/</strong></p>
+<p>直接在浏览器打开即可体验。这是一个 AG-UI + A2UI 的数据分析 Agent（自称 DataAgent，AI 数据分析师）：</p>
+<ul>
+<li><strong>界面结构</strong>：左侧 60px 导航 rail，三个主视图 —— <strong>对话 / 能力 / 文件</strong>。对话视图 = 会话列表 + 聊天工作区；「新建会话」一键开聊</li>
+<li><strong>能力页</strong>：实时聚合展示 opencode2 的全部能力清单 —— server 工具（内置 12 + 插件注册 5 + 自定义）、插件、agents、skills、commands，外加<strong>前端工具区</strong>（showNotification / applySpreadsheetEdits 等客户端工具），分六区展示</li>
+<li><strong>文件面板</strong>：每个会话独占工作目录（会话隔离已生效，互不串数据），文件列表 / 上传 / 预览 / 下载 / 删除都按当前会话隔离；后续版本将加入「公共区」</li>
+<li><strong>多模态</strong>：聊天输入框「+」直接贴附件（点击选择或拖拽，CSV/JSON/图片等，最大 50MB），附件落进当前会话工作目录，agent 直接读取分析；文件面板里图片（png/jpg/gif/webp/svg 等）点击直接弹层预览</li>
+<li>Agent 思考过程（reasoning）实时可见；工具调用可见（可折叠展开参数和结果）</li>
+<li><strong>Generative UI</strong>：让 agent「显示个图表/看板/表单」，它渲染出真实交互组件（不是文字描述）；A2UI 表单支持交互回传（提交后 agent 继续处理）</li>
+<li><strong>表格编辑走 HITL</strong>：agent 改 CSV 会弹确认卡片，你确认才落盘</li>
+<li>context/token 用量显示、超时兜底、错误结构化提示</li>
+</ul>
+<p><strong>试一试：</strong>
+- <code>分析最近30天销售情况，告诉我最值得关注的问题</code>（完整分析链路）
+- <code>显示一个销售看板</code>（render_a2ui 渲染多组件 dashboard，验证 A2UI）
+- <code>华东区域为什么下降？</code>（多轮上下文追问 / drill down）
+- <code>把 sales-2026-08.csv 第 2 行的数量改成 9999</code>（HITL 确认弹窗 → 确认落盘）
+- 聊天框「+」上传一个 CSV，然后 <code>分析我刚上传的文件</code>（附件链路）
+- 切到「能力」视图，看 server 工具 / 插件 / skills 全清单</p>
+<hr />
+<h2 id="2">2. 代码仓库</h2>
+<table>
+<thead>
+<tr>
+<th>仓库</th>
+<th>地址</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>主仓库</strong></td>
+<td>https://github.com/mawenyu/dataagent</td>
+<td>gateway + Vue 前端 + opencode2 定制层（<code>agents/</code>）+ 文档</td>
+</tr>
+<tr>
+<td><strong>OpenCode fork</strong></td>
+<td>https://github.com/mawenyu/opencode</td>
+<td>fork 自 <code>anomalyco/opencode</code>，定制分支 <strong><code>dataagent-v2</code></strong>（上游 v2 + <code>/api/tool</code> 工具清单端点等定制）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>主仓库结构：</strong></p>
+<pre><code>dataagent/
+├── gateway/            # Java Spring WebFlux 网关（AG-UI 协议端点 + A2UI 桥 + 能力聚合），:8090
+├── vue-frontend/       # Vue3 + Vite 前端（composables 分层），部署到 /agui/
+├── agents/             # OpenCode2 定制层：plugins（a2ui-tools 等）+ 构建部署脚本
+│   ├── build-opencode.sh      # 从 fork 构建定制 opencode2 并部署扩展到 .opencode/
+│   └── upstream-examples/     # 上游样例（不部署，仅参考）
+├── packages/copilotkit-vue    # @copilotkit/vue fork（改动登记 FORK.md，patch 见 patches/）
+├── scripts/            # up.sh 一键拉起三件套 + 实测脚本（curl SSE 端到端验证）
+├── docs/               # 权威文档五件套 + spec/evidence/perf
+└── DELIVERY-README.md  # 完整重建指南（先看这个）
+</code></pre>
+<p><strong>docs/ 权威文档：</strong>
+<code>PRODUCT_REQUIREMENTS.md</code>（产品需求）/ <code>CURRENT_ARCHITECTURE.md</code>（现状架构）/ <code>TARGET_ARCHITECTURE.md</code>（目标架构）/ <code>DEVELOPMENT_STATUS.md</code>（完成度与问题清单）/ <code>ACCEPTANCE_TESTS.md</code>（端到端验收）；另有 <code>SYSTEM_PROMPT.md</code>（系统提示词维护）、<code>CAPABILITIES_DEFINITION.md</code>（能力定义出处）。</p>
+<hr />
+<h2 id="3">3. 本地搭建（干净机器重建）</h2>
+<p>依赖：JDK 17 + Maven 3.8+、Node 20+、bun 1.x（https://bun.sh）、DeepSeek API key。</p>
+<pre><code class="language-bash"># 1) 主仓库
+git clone https://github.com/mawenyu/dataagent.git
+cd dataagent
+
+# 2) opencode2 后端（fork 源码）
+git clone --depth 50 --branch dataagent-v2 https://github.com/mawenyu/opencode.git ../opencode-fork
+cd ../opencode-fork &amp;&amp; bun install &amp;&amp; cd ../dataagent
+
+# 3) 部署 opencode 扩展到本工程 .opencode/
+bash agents/build-opencode.sh --target . --skip-build
+
+# 4) 配置（密钥不入库）
+#    - .opencode/opencode.jsonc 里填 provider.deepseek.apiKey（参考 agents/opencode.jsonc.example）
+#    - echo 'OPENCODE_SERVER_PASSWORD=&lt;自定义&gt;' &gt; .env.opencode &amp;&amp; chmod 600 .env.opencode
+#      （gateway 经环境变量读取，application.yml 内无明文）
+
+# 5) 一键拉起三件套（幂等；opencode :4096 / gateway :8090 / vite :3001）
+scripts/up.sh
+</code></pre>
+<p><strong>验证：</strong></p>
+<pre><code class="language-bash">curl -u opencode:&lt;pw&gt; http://127.0.0.1:4096/api/health   # opencode2 → 200
+curl http://127.0.0.1:8090/actuator/health               # gateway → UP
+bash scripts/test-multi-turn.sh                          # 真实 5 轮连续对话回归
+</code></pre>
+<hr />
+<h2 id="4-issue">4. 协作流程（提 issue → 自动修复）</h2>
+<p><strong>直接到 https://github.com/mawenyu/dataagent/issues 提 issue。</strong></p>
+<p>有自动化监控（每 15 分钟轮询）：</p>
+<pre><code>你提 issue
+   ↓
+监控发现新 issue → 自动派发给 AI 编码助手（Claude Code）
+   ↓
+分析根因 → TDD 修复 → 测试全绿 → commit + push 到 main
+   ↓
+在你的 issue 下评论修复的 commit sha
+</code></pre>
+<p><strong>提 issue 的建议格式</strong>（能让 AI 修得更准）：
+- <strong>现象</strong>：你做了什么操作，看到什么（截图/报错文本最有用）
+- <strong>期望</strong>：应该是什么样
+- <strong>复现</strong>：步骤或输入的对话内容</p>
+<p>例如：</p>
+<blockquote>
+<p><strong>现象</strong>：问"显示个图表"，聊天里直接显示了一串 <code>&lt;tool_call&gt;{...}</code> JSON，没有渲染成图
+<strong>期望</strong>：渲染成柱状图组件
+<strong>复现</strong>：首页输入"随便显示个图表"</p>
+</blockquote>
+<hr />
+<h2 id="5">5. 技术栈速览</h2>
+<pre><code>浏览器 (Vue3 + @copilotkit/vue fork + @ag-ui/client)
+   │  AG-UI over SSE (POST /agui-api/agent/run)
+   ▼
+Java Gateway (Spring WebFlux, :8090)
+   │  事件翻译（v2 新方言）/ A2UI surface 注册 / a2uiAction 路由
+   │  frontend tool 桥接（FrontendToolBridge）/ capabilities 聚合 / 会话级文件 API
+   ▼
+OpenCode2 server (:4096, bun, fork v2 源码)  →  DeepSeek LLM
+</code></pre>
+<ul>
+<li><strong>AG-UI</strong>：agent 通信协议（文本流/思考流/工具调用/frontend tools/state）</li>
+<li><strong>A2UI</strong>：agent 生成式 UI（render_a2ui 渲染组件、a2uiAction 用户交互回传、request_user_confirm HITL 中断/恢复）</li>
+<li><strong>系统提示词</strong>已品牌化为 DataAgent：能力域 = 数据加工 / 数据分析 / 数据治理（维护方式见 <code>docs/SYSTEM_PROMPT.md</code>）</li>
+<li>详细架构见仓库 <code>docs/CURRENT_ARCHITECTURE.md</code>、<code>docs/TARGET_ARCHITECTURE.md</code></li>
+</ul>
+<hr />
+<p>有问题直接在 GitHub 提 issue，或找 @mawenyu。</p>
+</div></body></html>
