@@ -1,0 +1,40 @@
+P0-a/b/c 公网实测验收 —— 2026-08-16
+URL: http://101.34.246.179/agui/  (Playwright headless chromium, 1440x900)
+脚本: /tmp/p0abc-accept.py (14 项断言)
+
+== P0-a 能力页插件区 ==
+根因: opencode /api/plugin 返回 70 条仅 {"id"} 的对象，gateway 原样透传；
+前端 PluginInfo 契约是 {name, detail} → p.name 全 undefined → 70 条空白行 + key 冲突。
+修复(274421a): gateway CapabilitiesService 协议边界归一化，plugins 条目补 name=id。
+实测: count-plugins=70，70/70 行带名字（首行 opencode.wellknown），无空白行。
+
+== P0-b 文件面板升格 rail 主视图 ==
+修复(60a8163): rail 新增「文件」按钮（rail-files）；FilesPanel 从对话视图 sidebar
+挪出为独占主视图（files-view）；对话视图纯粹化 —— 删除 sidebar 会话/文件/能力
+tabs，只剩 ThreadSidebar 会话列表 + 聊天工作区。
+实测: rail 三按钮（对话/文件/能力）切换正常；对话视图 sidebar-tabs count=0；
+文件视图 FilesPanel 挂载且聊天区隐藏；aria-current 跟随。
+
+== P0-c 顶栏品牌净化 ==
+修复(589325a): 删除「Vue + CopilotKit · No Node Runtime · DeepSeek via OpenCode」
+badge；副标题 AG-UI Data Assistant → AI 数据分析助手。
+实测顶栏文本: "☰ | DataAgent | AI 数据分析助手 | ✨ 模板 | ⑂ 分支"
+技术栈字样(Vue/CopilotKit/DeepSeek/OpenCode/No Node Runtime/AG-UI) 0 残留。
+
+== 全量 ==
+PASS  P0-c 顶栏含 DataAgent
+PASS  P0-c 顶栏无技术栈文案
+PASS  P0-b 对话视图无 sidebar-tabs
+PASS  P0-b 对话视图会话列表常驻
+PASS  P0-b rail 按钮 rail-chat / rail-files / rail-caps
+PASS  P0-b rail→文件视图显示 FilesPanel
+PASS  P0-b 文件视图下聊天区隐藏
+PASS  P0-a 插件计数=70
+PASS  P0-a 70/70 行带名字无空白行
+PASS  P0-a 插件名真实性抽查
+PASS  P0-b rail 切回对话
+PASS  浏览器零 pageerror
+== ALL PASS (14/14) ==
+
+测试基线: 前端 vitest 281/281 (40 文件), typecheck 绿; gateway 223/223。
+部署: scripts/deploy-frontend.sh（prune 1 个陈旧 asset），入口 + 4 个静态资产全 200。

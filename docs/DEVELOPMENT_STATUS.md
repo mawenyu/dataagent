@@ -65,6 +65,8 @@
 
 - [x] **P31 长会话历史加载 256KB 缓冲截杀修复**（本轮 audit 新发现，308ce21）：生产日志实锤 vision-p6-form 历史加载 DataBufferLimitException（WebClient 默认 maxInMemorySize 256KB，多 A2UI surface 长会话历史 JSON 轻易超限）。修复：WebClientConfig maxInMemorySize 可配、默认 8MB 常量。TDD：JDK HttpServer 真实 512KB 响应体，显式 262144 完整复现生产异常（红）→ 默认路径绿 + 显式小上限保护语义不丢。gateway 223/223 绿；已重启上生产，70/70 会话历史回归 OK + multi-turn 7/7；证据 docs/evidence/2026-08-16-p31-webclient-buffer-limit.txt。旁证：P29 新 rail 移动端 390px 触屏实测无回归。
 
+- [x] **P0-abc 三连**（274421a / 60a8163 / 589325a）：**P0-a 能力页插件区空白行** —— 公网实测根因 = opencode /api/plugin 70 条仅含 id，gateway 透传，前端 PluginInfo 契约要 name → 70 条空白行 + key 冲突；修复在 gateway 协议边界归一化补 name=id（BFF 职责），CapabilitiesServiceTest 红→绿。**P0-b 文件面板升格 rail 第三主视图** —— rail 新增「文件」入口，FilesPanel 独占主视图绑定当前会话隔离工作目录；对话视图纯粹化：删 sidebar tabs，只剩会话列表 + 聊天工作区。**P0-c 顶栏品牌净化** —— 删「Vue + CopilotKit · No Node Runtime · DeepSeek via OpenCode」badge，副标题 → AI 数据分析助手。前端 281/281 + typecheck 绿；已部署，**公网实测 14/14 PASS**（插件 70 行全带名 / rail 三视图切换 / 顶栏零技术栈残留，证据 docs/evidence/2026-08-16-p0abc-plugins-rail-brand.txt）。
+
 ## 下一步（修完 P0/P1 后）
 
 剩余：
