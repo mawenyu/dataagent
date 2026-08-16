@@ -12,25 +12,37 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 需求1: 会话元数据 + threadId→sessionId 映射 + A2UI surface 的文件持久化。
  * 零外部依赖：store 目录下一个 threads.json（原子写：tmp + move）。
+ *
+ * <p>TARGET_ARCH §3: 存储面向 {@link ThreadRepository} 接口消费，
+ * {@link JsonThreadRepository} 是单 JSON 文件实现（将来可换 SQLite 实现）。</p>
  */
-class ChatThreadStoreTest {
+class JsonThreadRepositoryTest {
 
     @TempDir
     Path dir;
 
-    private ChatThreadStore store;
+    private JsonThreadRepository store;
 
     @BeforeEach
     void setUp() {
-        store = new ChatThreadStore(dir);
+        store = new JsonThreadRepository(dir);
+    }
+
+    /** TARGET_ARCH §3: JSON 实现必须实现 ThreadRepository 接口（Spring 注入面向接口）。 */
+    @Test
+    void implementsThreadRepositoryContract() {
+        assertInstanceOf(ThreadRepository.class, store);
+        ThreadRepository repo = store; // 面向接口持有，全部操作经接口可用
+        repo.createThread("t-iface", null);
+        assertTrue(repo.getThread("t-iface").isPresent());
     }
 
     @Test
     void createAndListThreadsSortedByUpdatedDesc() throws Exception {
-        ChatThreadStore.ChatThread a = store.createThread("t-1", null);
+        ThreadRepository.ChatThread a = store.createThread("t-1", null);
         Thread.sleep(5);
-        ChatThreadStore.ChatThread b = store.createThread("t-2", null);
-        List<ChatThreadStore.ChatThread> list = store.listThreads();
+        ThreadRepository.ChatThread b = store.createThread("t-2", null);
+        List<ThreadRepository.ChatThread> list = store.listThreads();
         assertEquals(2, list.size());
         assertEquals("t-2", list.get(0).id(), "newest first");
         assertEquals("新会话", a.title(), "default title");
@@ -64,7 +76,7 @@ class ChatThreadStoreTest {
         store.createThread("t-1", null);
         store.bindSession("t-1", "ses_abc");
         // 模拟 gateway 重启：新实例读同一目录
-        ChatThreadStore reloaded = new ChatThreadStore(dir);
+        JsonThreadRepository reloaded = new JsonThreadRepository(dir);
         assertEquals("ses_abc", reloaded.resolveSession("t-1"));
     }
 
@@ -74,7 +86,7 @@ class ChatThreadStoreTest {
         store.saveSurface("t-1", "sales-dashboard", "{\"a2ui_operations\":[{}]}");
         store.saveSurface("t-1", "sales-dashboard", "{\"a2ui_operations\":[{},{}]}");
         store.saveSurface("t-1", "other", "{\"a2ui_operations\":[]}");
-        List<ChatThreadStore.SurfaceRecord> surfaces = new ChatThreadStore(dir).listSurfaces("t-1");
+        List<ThreadRepository.SurfaceRecord> surfaces = new JsonThreadRepository(dir).listSurfaces("t-1");
         assertEquals(2, surfaces.size(), "same surfaceId overwritten");
         assertTrue(surfaces.stream().anyMatch(s -> s.surfaceId().equals("sales-dashboard")
                 && s.content().contains("{}")), "latest content kept");
@@ -91,7 +103,7 @@ class ChatThreadStoreTest {
     @Test
     void corruptStoreFileStartsEmpty() throws Exception {
         java.nio.file.Files.writeString(dir.resolve("threads.json"), "{not json");
-        ChatThreadStore s2 = new ChatThreadStore(dir);
+        JsonThreadRepository s2 = new JsonThreadRepository(dir);
         assertTrue(s2.listThreads().isEmpty());
     }
 

@@ -142,7 +142,7 @@ class AgUiProtocolServiceTest {
     @BeforeEach
     void setUp() {
         stub = new StubOpenCode();
-        threadStore = new ChatThreadStore(storeDir);
+        threadStore = new JsonThreadRepository(storeDir);
         surfaceRegistry = new A2UiSurfaceRegistry();
         A2UiService a2UiService = new A2UiService();
         A2UiBridgeService bridge = new A2UiBridgeService(a2UiService, surfaceRegistry);
@@ -612,7 +612,7 @@ class AgUiProtocolServiceTest {
                 new A2UiActionHandler(),
                 new AllowAllThreadAccessPolicy(),
                 java.time.Duration.ofSeconds(10), "/tmp/ws", "deepseek-reasoner", "deepseek",
-                new ChatThreadStore(storeDir),
+                new JsonThreadRepository(storeDir),
                 new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
                 new RunMetricsService(storeDir.resolve("m-unused.log")),
                 new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry(),
@@ -628,7 +628,7 @@ class AgUiProtocolServiceTest {
     @org.junit.jupiter.api.io.TempDir
     java.nio.file.Path storeDir;
 
-    private ChatThreadStore threadStore;
+    private JsonThreadRepository threadStore;
 
     @Test
     void runAutoCreatesThreadWithTitleFromFirstMessage() {
@@ -877,7 +877,7 @@ class AgUiProtocolServiceTest {
                 new AllowAllThreadAccessPolicy(),
                 java.time.Duration.ofSeconds(10), AgUiProtocolService.DEFAULT_DATA_WORKSPACE,
                 "deepseek-chat", "deepseek",
-                new ChatThreadStore(storeDir),
+                new JsonThreadRepository(storeDir),
                 new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
                 metrics,
                 new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry(), metrics));
@@ -923,7 +923,7 @@ class AgUiProtocolServiceTest {
                 new AllowAllThreadAccessPolicy(),
                 java.time.Duration.ofSeconds(10), AgUiProtocolService.DEFAULT_DATA_WORKSPACE,
                 "deepseek-chat", "deepseek",
-                new ChatThreadStore(storeDir),
+                new JsonThreadRepository(storeDir),
                 new WorkspaceFileService(storeDir.resolve("ws"), 5 * 1024 * 1024),
                 metrics,
                 new HitlConfirmHandler(new A2UiService(), new A2UiSurfaceRegistry(), metrics));

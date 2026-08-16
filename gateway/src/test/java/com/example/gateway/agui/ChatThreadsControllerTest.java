@@ -22,14 +22,14 @@ class ChatThreadsControllerTest {
     @TempDir
     Path dir;
 
-    private ChatThreadStore store;
+    private JsonThreadRepository store;
     private AgUiProtocolServiceTest.StubOpenCode stub;
     private ChatThreadsController controller;
     private WorkspaceFileService workspaceFiles;
 
     @BeforeEach
     void setUp() {
-        store = new ChatThreadStore(dir);
+        store = new JsonThreadRepository(dir);
         stub = new AgUiProtocolServiceTest.StubOpenCode();
         workspaceFiles = new WorkspaceFileService(dir.resolve("workspace"), 1024 * 1024);
         controller = new ChatThreadsController(store, new ThreadMessagesService(), stub.client(), workspaceFiles);

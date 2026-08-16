@@ -1,6 +1,7 @@
 package com.example.gateway;
 
-import com.example.gateway.agui.ChatThreadStore;
+import com.example.gateway.agui.JsonThreadRepository;
+import com.example.gateway.agui.ThreadRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
@@ -35,9 +36,12 @@ public class GatewayConfig {
                 .build();
     }
 
-    /** 需求1: 会话持久化目录（默认 gateway 工作目录下 data/，可用 agui.store-dir 覆盖）。 */
+    /**
+     * 需求1: 会话持久化目录（默认 gateway 工作目录下 data/，可用 agui.store-dir 覆盖）。
+     * TARGET_ARCH §3: 注入面向 ThreadRepository 接口（现 JSON 实现，将来可换 SQLite）。
+     */
     @Bean
-    public ChatThreadStore chatThreadStore(@Value("${agui.store-dir:data}") String storeDir) {
-        return new ChatThreadStore(Path.of(storeDir));
+    public ThreadRepository threadRepository(@Value("${agui.store-dir:data}") String storeDir) {
+        return new JsonThreadRepository(Path.of(storeDir));
     }
 }

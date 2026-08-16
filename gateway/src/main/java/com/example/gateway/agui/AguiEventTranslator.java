@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>OpenCode builtin tool calls (bash, read, ...) are mirrored as
  * TOOL_CALL_* for progress rendering, but never end the run.
  *
- * * <p>The threadId -> sessionId mapping lives in {@link ChatThreadStore}
+ * * <p>The threadId -> sessionId mapping lives in {@link ThreadRepository}
  * (需求1: persisted, with stale-session rebinding in AgUiProtocolService).
  */
 @Service

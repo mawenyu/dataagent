@@ -44,12 +44,12 @@ public class ChatThreadsController {
     private static final Logger log = LoggerFactory.getLogger(ChatThreadsController.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final ChatThreadStore store;
+    private final ThreadRepository store;
     private final ThreadMessagesService messagesService;
     private final WebClient webClient;
     private final WorkspaceFileService workspaceFiles;
 
-    public ChatThreadsController(ChatThreadStore store, ThreadMessagesService messagesService,
+    public ChatThreadsController(ThreadRepository store, ThreadMessagesService messagesService,
                                  WebClient opencodeWebClient, WorkspaceFileService workspaceFiles) {
         this.store = store;
         this.messagesService = messagesService;
@@ -57,7 +57,8 @@ public class ChatThreadsController {
         this.workspaceFiles = workspaceFiles;
     }
 
-    // P2-9b: ChatThreadStore 是 synchronized 单文件 JSON store（同步磁盘 IO），
+    // P2-9b: ThreadRepository（现 JsonThreadRepository 是 synchronized 单文件 JSON
+    // store，同步磁盘 IO），
     // WorkspaceFileService.deleteThreadDir 递归删目录 —— WebFlux handler 线程即
     // event loop，一律经 boundedElastic 下移；响应体/状态码契约不变。
 
@@ -65,7 +66,7 @@ public class ChatThreadsController {
     public Mono<JsonNode> list() {
         return Mono.fromCallable(() -> {
             ObjectNode res = MAPPER.createObjectNode();
-            res.set("data", ChatThreadStore.ChatThread.listToJson(store.listThreads()));
+            res.set("data", ThreadRepository.ChatThread.listToJson(store.listThreads()));
             return (JsonNode) res;
         }).subscribeOn(Schedulers.boundedElastic());
     }
@@ -156,7 +157,7 @@ public class ChatThreadsController {
         // P2-9b: store 三次同步读（session/surfaces/分叉前缀）移出 event loop
         return Mono.defer(() -> {
             String sessionId = store.resolveSession(id);
-            List<ChatThreadStore.SurfaceRecord> surfaces = store.listSurfaces(id);
+            List<ThreadRepository.SurfaceRecord> surfaces = store.listSurfaces(id);
             // P-Q: 分叉前缀(若有)始终并入历史头部
             List<JsonNode> prefix = store.forkPrefixMessages(id);
             if (sessionId == null) {
@@ -175,11 +176,11 @@ public class ChatThreadsController {
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
-    private JsonNode messagesResponse(List<JsonNode> messages, List<ChatThreadStore.SurfaceRecord> surfaces) {
+    private JsonNode messagesResponse(List<JsonNode> messages, List<ThreadRepository.SurfaceRecord> surfaces) {
         ArrayNode arr = MAPPER.createArrayNode();
         messages.forEach(arr::add);
         // A2UI surface 回放：追加为 activity 消息（与实时流的 ACTIVITY_SNAPSHOT 同构）
-        for (ChatThreadStore.SurfaceRecord s : surfaces) {
+        for (ThreadRepository.SurfaceRecord s : surfaces) {
             try {
                 ObjectNode am = MAPPER.createObjectNode();
                 am.put("id", "a2ui-" + s.surfaceId());

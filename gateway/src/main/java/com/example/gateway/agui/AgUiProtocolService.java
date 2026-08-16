@@ -75,7 +75,7 @@ public class AgUiProtocolService {
     private final String dataWorkspace;
     private final String modelId;
     private final String providerId;
-    private final ChatThreadStore threadStore;
+    private final ThreadRepository threadStore;
     private final WorkspaceFileService workspaceFiles;
     private final RunMetricsService metrics;
     private final HitlConfirmHandler hitlConfirmHandler;
@@ -107,7 +107,7 @@ public class AgUiProtocolService {
                                FrontendToolBridge toolBridge,
                                A2UiBridgeService a2UiBridge, A2UiActionHandler actionHandler,
                                ThreadAccessPolicy threadAccessPolicy,
-                               ChatThreadStore threadStore) {
+                               ThreadRepository threadStore) {
         this(opencodeWebClient, translator, toolBridge, a2UiBridge, actionHandler, threadAccessPolicy, DEFAULT_RUN_IDLE_TIMEOUT, DEFAULT_DATA_WORKSPACE,
                 DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, threadStore, throwawayWorkspace(), throwawayMetrics(), throwawayHitl());
     }
@@ -135,7 +135,7 @@ public class AgUiProtocolService {
                                String modelId,
                                @org.springframework.beans.factory.annotation.Value("${agui.model.provider-id:" + DEFAULT_PROVIDER_ID + "}")
                                String providerId,
-                               ChatThreadStore threadStore,
+                               ThreadRepository threadStore,
                                WorkspaceFileService workspaceFiles,
                                RunMetricsService metrics,
                                HitlConfirmHandler hitlConfirmHandler) {
@@ -155,9 +155,9 @@ public class AgUiProtocolService {
         this.hitlConfirmHandler = hitlConfirmHandler;
     }
 
-    private static ChatThreadStore throwawayStore() {
+    private static ThreadRepository throwawayStore() {
         try {
-            return new ChatThreadStore(java.nio.file.Files.createTempDirectory("agui-threads-test"));
+            return new JsonThreadRepository(java.nio.file.Files.createTempDirectory("agui-threads-test"));
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);
         }
@@ -560,7 +560,7 @@ public class AgUiProtocolService {
     }
 
     /**
-     * 需求1: threadId→sessionId 映射持久化在 {@link ChatThreadStore}；
+     * 需求1: threadId→sessionId 映射持久化在 {@link ThreadRepository}；
      * 复用前先存活校验（GET /api/session/{id}），失效（重启后 wedge / 404）
      * 自动创建新 session 并重新绑定，避免整线程报废。
      */

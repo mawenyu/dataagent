@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * P2-9b: 阻塞 IO 不得占用 WebFlux event loop —— controller/service 对
- * {@link ChatThreadStore}（synchronized 单文件 JSON）与
+ * {@link JsonThreadRepository}（synchronized 单文件 JSON）与
  * {@link WorkspaceFileService}（同步 Files.*）的调用必须发生在
  * boundedElastic 线程上（WebFlux handler 直接调同步方法 = 在
  * reactor-http-nio event loop 上跑磁盘 IO，磁盘抖动会冻结全部 SSE 流）。
@@ -38,7 +38,7 @@ class BlockingIoOffloadTest {
 
     // ------------------------------------------------------------ spies ---
 
-    static final class RecordingStore extends ChatThreadStore {
+    static final class RecordingStore extends JsonThreadRepository {
         final Map<String, String> calls = new ConcurrentHashMap<>();
 
         RecordingStore(Path dir) { super(dir); }

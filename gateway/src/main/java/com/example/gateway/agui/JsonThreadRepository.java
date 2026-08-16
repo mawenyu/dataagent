@@ -14,13 +14,13 @@ import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * 需求1: 会话持久化存储（零外部依赖，单 JSON 文件 + 原子写）。
+ * 需求1: 会话持久化存储（零外部依赖，单 JSON 文件 + 原子写）——
+ * {@link ThreadRepository} 的 JSON 文件实现（TARGET_ARCH §3: 将来可换 SQLite）。
  *
  * <p>持久化内容：
  * <ul>
@@ -31,21 +31,20 @@ import java.util.Optional;
  *
  * <p>消息正文不落盘 —— OpenCode 自身持久化 session 历史，messages API 实时拉取转换。</p>
  */
-public class ChatThreadStore {
+public class JsonThreadRepository implements ThreadRepository {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TITLE_MAX = 30;
 
     private final Path file;
 
-    public ChatThreadStore(Path dir) {
+    public JsonThreadRepository(Path dir) {
         this.file = dir.resolve("threads.json");
     }
 
-    public record SurfaceRecord(String surfaceId, String content, Instant updatedAt) {}
-
     // ---------------------------------------------------------- threads ---
 
+    @Override
     public synchronized ChatThread createThread(String id, String title) {
         ObjectNode root = load();
         ObjectNode threads = threadsNode(root);
@@ -61,6 +60,7 @@ public class ChatThreadStore {
         return toThread(t);
     }
 
+    @Override
     public synchronized List<ChatThread> listThreads() {
         List<ChatThread> out = new ArrayList<>();
         threadsNode(load()).fields().forEachRemaining(e -> out.add(toThread(e.getValue())));
@@ -68,11 +68,13 @@ public class ChatThreadStore {
         return out;
     }
 
+    @Override
     public synchronized Optional<ChatThread> getThread(String id) {
         JsonNode t = threadsNode(load()).get(id);
         return t == null ? Optional.empty() : Optional.of(toThread(t));
     }
 
+    @Override
     public synchronized void renameThread(String id, String title) {
         ObjectNode root = load();
         JsonNode t = threadsNode(root).get(id);
@@ -82,6 +84,7 @@ public class ChatThreadStore {
         }
     }
 
+    @Override
     public synchronized void deleteThread(String id) {
         ObjectNode root = load();
         threadsNode(root).remove(id);
@@ -90,6 +93,7 @@ public class ChatThreadStore {
     }
 
     /** Bump updatedAt（列表排序用）。 */
+    @Override
     public synchronized void touch(String id) {
         ObjectNode root = load();
         JsonNode t = threadsNode(root).get(id);
@@ -106,6 +110,7 @@ public class ChatThreadStore {
      * forkPrefix(分叉点之前的简化消息快照,user/assistant 文本),
      * forkContextPending=true 供首个 run 一次性注入上文。
      */
+    @Override
     public synchronized ChatThread createBranch(String newId, String parentId, String parentTitle,
                                                 String messageId, List<Map<String, String>> prefix) {
         ObjectNode root = load();
@@ -139,6 +144,7 @@ public class ChatThreadStore {
     }
 
     /** P-Q: 分叉前缀消息(id/role/content,与转换后 AG-UI 消息同构),无 → 空。 */
+    @Override
     public synchronized List<JsonNode> forkPrefixMessages(String id) {
         JsonNode t = threadsNode(load()).get(id);
         if (t == null || !t.path("forkPrefix").isArray()) return List.of();
@@ -151,6 +157,7 @@ public class ChatThreadStore {
      * P-Q: 首个 run 的一次性上文注入 —— 构建 <forked_context> 块并清标记
      * (落盘);非分叉会话或已注入过 → null。
      */
+    @Override
     public synchronized String consumeForkContext(String id) {
         ObjectNode root = load();
         JsonNode t = threadsNode(root).get(id);
@@ -173,6 +180,7 @@ public class ChatThreadStore {
     }
 
     /** 标题取首条用户消息截断；已有非默认标题不覆盖。 */
+    @Override
     public synchronized void setTitleFromFirstMessage(String id, String firstUserMessage) {
         if (firstUserMessage == null || firstUserMessage.isBlank()) return;
         ObjectNode root = load();
@@ -187,6 +195,7 @@ public class ChatThreadStore {
 
     // ---------------------------------------------------------- session ---
 
+    @Override
     public synchronized String resolveSession(String threadId) {
         JsonNode t = threadsNode(load()).get(threadId);
         if (t == null) return null;
@@ -194,6 +203,7 @@ public class ChatThreadStore {
         return (sid == null || sid.isBlank()) ? null : sid;
     }
 
+    @Override
     public synchronized void bindSession(String threadId, String sessionId) {
         ObjectNode root = load();
         JsonNode t = threadsNode(root).get(threadId);
@@ -205,6 +215,7 @@ public class ChatThreadStore {
 
     // --------------------------------------------------------- surfaces ---
 
+    @Override
     public synchronized void saveSurface(String threadId, String surfaceId, String content) {
         ObjectNode root = load();
         ObjectNode per = surfacesNode(root).withObject(threadId);
@@ -216,6 +227,7 @@ public class ChatThreadStore {
         save(root);
     }
 
+    @Override
     public synchronized List<SurfaceRecord> listSurfaces(String threadId) {
         List<SurfaceRecord> out = new ArrayList<>();
         JsonNode per = surfacesNode(load()).get(threadId);
@@ -273,28 +285,6 @@ public class ChatThreadStore {
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw new UncheckedIOException("failed to persist " + file, e);
-        }
-    }
-
-    // 供 messages API 使用：thread 记录的 JSON 表示
-    public record ChatThread(String id, String title, String sessionId, Instant createdAt, Instant updatedAt,
-                             JsonNode branchedFrom) {
-        public ObjectNode toJson() {
-            ObjectNode n = MAPPER.createObjectNode();
-            n.put("id", id);
-            n.put("title", title);
-            if (sessionId == null) n.putNull("sessionId"); else n.put("sessionId", sessionId);
-            n.put("createdAt", createdAt.toString());
-            n.put("updatedAt", updatedAt.toString());
-            // P-Q: 分叉来源(源会话+分叉消息),侧边栏 ⑂ 标记用
-            if (branchedFrom != null) n.set("branchedFrom", branchedFrom);
-            return n;
-        }
-
-        public static ArrayNode listToJson(List<ChatThread> threads) {
-            ArrayNode arr = MAPPER.createArrayNode();
-            threads.forEach(t -> arr.add(t.toJson()));
-            return arr;
         }
     }
 }
