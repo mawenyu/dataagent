@@ -1,0 +1,51 @@
+# bundle 瘦身验收证据（2026-08-17, HEAD be36c34 → 部署同 hash 重建）
+
+## 目标(架构师指令)
+首屏 JS 减 20%+ 且公网冷加载 LCP 实测改善。
+
+## 基线摸底(优化前, 9b382a1 构建)
+- index 首屏 JS(静态闭包, manifest 口径): **295.4KB gz / 1078KB raw**(main 63.4 + styles 232.0 gz)
+- 组成归因(rollup-plugin-visualizer raw-data 聚合):
+  - **同版本双实例**: @copilotkit/vue 为 file: 软链,fork 内 import 解析到 packages/copilotkit-vue/node_modules,
+    与应用根 node_modules 双份打包 —— zod 16.5+16.3 / date-fns ×2 合计 51.7 / @ag-ui/client 12.1+12.0 /
+    @a2ui/web_core 多处×2 / rxjs / @bufbuild/protobuf / fast-json-patch(单位 KB gz)
+  - **phoenix 10.2KB gz**: @copilotkit/core 顶层 `import { Socket } from "phoenix"`,
+    仅 ɵphoenixSocket$ 冷 Observable 订阅时构造(Cloud 托管模式通道),direct-agents 永不触达
+  - **date-fns 51.7KB gz**: 唯一引入方 @a2ui/web_core basic_functions.js:19 `import { format } from 'date-fns'`
+    (FormatDate 函数, basic_functions.js:316)
+  - streamdown-vue/shiki/mermaid 组件层已是 defineAsyncComponent 动态边界(fork dist 保留 import()) —— 不进首屏
+
+## 实施
+1. vite resolve.dedupe(9 个包,版本逐一核对 app/fork 一致) → 295.4→246.1KB gz
+2. phoenix 显式抛错 shim(src/shims/phoenix.ts) → 246.1→239.8KB gz
+3. date-fns mini shim(src/shims/date-fns.ts, TDD 5 例契约) → 239.8→234.6KB gz
+
+## 结果: 首屏 JS
+| 口径 | 基线 | 优化后 | 降幅 |
+|---|---|---|---|
+| index 初始 JS gzip(budget 口径) | 295.4KB | **234.6KB** | **-20.6%** ✅ |
+| index 初始 JS raw(线上 wire, nginx 未开 gzip) | 1078KB | **807KB** | **-25.2%** ✅ |
+| gallery 初始 JS gzip | 238.0KB | 209.3KB | -12.1% |
+
+visualizer 报告: `ANALYZE=1 npm run build` → dist/stats.html(treemap, 2.6MB, 不入库)
+
+## 结果: 公网冷加载 LCP(playwright, 每次全新 context, 同一空会话场景 ×5 取中位)
+| | 旧构建(9b382a1) | 新构建(be36c34) | 降幅 |
+|---|---|---|---|
+| LCP 中位 | 2328ms | **1816ms** | **-22.0%** ✅ |
+| DCL 中位 | 2265ms | 1767ms | -22.0% |
+| JS 传输 | 1053KB | 807KB | -23.4% |
+
+旧构建复测方式: git worktree 9b382a1 + 共享 node_modules/fork-dist(本任务未动 fork) 直跑 vite build →
+deploy-frontend.sh 换旧 → 测 ×5 → 换新 → 测 ×5;最终再确认一轮 LCP 中位 1588ms(服务器更闲)。
+
+## 顺带发现(记录在案, 未做)
+1. **回访用户 LCP 闸门 = 历史消息接口**: 冷加载自动选最新会话, 若该会话有 242KB 历史,
+   `GET /chat/threads/:id/messages` 服务端耗时 2.3s(冷)/0.8s(热), LCP 被顶到 4~5.8s
+   (LCP 元素 = fork 页脚 disclaimer, 在视图 settle 后才 paint)。bundle 优化对此场景无效。
+2. **nginx 对 JS 未开 gzip**(curl -H Accept-Encoding:gzip 无 Content-Encoding):
+   开启后 styles chunk 传输 807→~235KB, 杠杆大于任何 bundle 工作;nginx 配置在仓库外, 留架构师决策。
+3. 模板库 e2e 复跑 3 轮: 12/12, 11/12(首轮一项瞬时 fail, 部署刚切换时序窗), 12/12。
+
+## 回归
+前端 357/357(含 shim 5 新例) + typecheck exit 0;模板库公网 e2e 12/12;预算脚本双入口 ✅。
