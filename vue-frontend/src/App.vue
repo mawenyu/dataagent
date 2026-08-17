@@ -1083,7 +1083,9 @@ body {
   flex: 1;
   min-height: 0;
   width: 100%;
-  max-width: 56rem;
+  /* FORK#28 配套: 对话卡随宽屏拉伸(原 56rem 钉死);内容可读性上限在
+     fork CopilotChatView 的 cpk:max-w-5xl(64rem),此处给足外框余量 */
+  max-width: 72rem;
   display: flex;
   flex-direction: column;
   background: var(--card);

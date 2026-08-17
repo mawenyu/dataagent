@@ -501,7 +501,7 @@ onBeforeUnmount(() => {
         data-testid="copilot-chat-view-welcome-screen"
       >
         <div
-          class="cpk:w-full cpk:max-w-3xl cpk:flex cpk:flex-col cpk:items-center"
+          class="cpk:w-full cpk:max-w-5xl cpk:flex cpk:flex-col cpk:items-center"
         >
           <div class="cpk:mb-6">
             <slot name="welcome-message">
@@ -600,7 +600,7 @@ onBeforeUnmount(() => {
               data-testid="copilot-scroll-content"
               :style="{ paddingBottom: messagePaddingBottom }"
             >
-              <div class="cpk:max-w-3xl cpk:mx-auto">
+              <div class="cpk:max-w-5xl cpk:mx-auto">
                 <slot
                   name="message-view"
                   :messages="messages"
@@ -699,7 +699,7 @@ onBeforeUnmount(() => {
       >
         <div
           v-if="hasAttachments"
-          class="cpk:max-w-3xl cpk:mx-auto cpk:w-full cpk:pointer-events-auto"
+          class="cpk:max-w-5xl cpk:mx-auto cpk:w-full cpk:pointer-events-auto"
         >
           <CopilotChatAttachmentQueue
             :attachments="attachments ?? []"

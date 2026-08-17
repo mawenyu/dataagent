@@ -237,6 +237,17 @@ Enterprise-marked `selfManagedAgents`. The Vue app must register a local
     rIC 打桩路径 + setTimeout 降级路径 + 卸载取消 + 复位 + 历史回放直通）；
     两个 throttle 测试各新增"翻 false 同一 tick 仍降级、idle flush 后升格"
     断言。
+28. `src/v2/components/chat/CopilotChatView.vue` 三处 + `CopilotChatInput.vue`
+    两处内容容器 `cpk:max-w-3xl` → `cpk:max-w-5xl`（2026-08-17, bug 修复,
+    architect-dispatched）— 欢迎页（CopilotChatView L504）、消息列表
+    （copilot-scroll-content 内层, L603）、输入区附件队列
+    （copilot-input-overlay 内层, L702）、输入框本体容器
+    （copilot-chat-input-container 内层, CopilotChatInput L969）、输入区
+    disclaimer（L1268）原先钉死 48rem，宽屏下对话列大片留白。放宽到 64rem
+    （可读性上限保留），五处同步放宽保持消息列与输入列对齐；窄列/分栏模式
+    由外层列宽约束不受影响。配套 App 侧 `.chat-card` max-width 56rem → 72rem。
+    Covered by `__tests__/CopilotChatView.width.test.ts`（5 cases：五处容器
+    类名断言 + 不再含 max-w-3xl 回归闸）。
 
 (A2UI surface renderer/catalog extensions under `src/v2/components/a2ui/` are
 maintained by the vision line — see their own notes.)
