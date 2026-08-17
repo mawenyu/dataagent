@@ -1083,9 +1083,8 @@ body {
   flex: 1;
   min-height: 0;
   width: 100%;
-  /* FORK#28 配套: 对话卡随宽屏拉伸(原 56rem 钉死);内容可读性上限在
-     fork CopilotChatView 的 cpk:max-w-5xl(64rem),此处给足外框余量 */
-  max-width: 72rem;
+  /* 2026-08-17: 卡片外框不再设 max-width,随窗口自适应铺满(用户明确要求);
+     对话内容可读性上限由 fork CopilotChatView 的 cpk:max-w-5xl(64rem)居中约束 */
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -1096,11 +1095,12 @@ body {
 }
 .chat { flex: 1; min-height: 0; min-width: 0; }
 /* P29: 能力主视图 —— 比聊天列更宽的工作画布 */
+/* 2026-08-17: 能力页/文件页工作画布去掉 max-width 上限(原 72rem 钉死),
+   随窗口自适应铺满 —— 文件表格/能力卡片需要宽画布 */
 .caps-card {
   flex: 1;
   min-height: 0;
   width: 100%;
-  max-width: 72rem;
   display: flex;
   flex-direction: column;
   background: var(--card);
